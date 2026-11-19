@@ -19,7 +19,7 @@ def test_brain_prompt_has_words_not_numbers(cfg, conn):
     p = brain.situation_prompt(cfg, ctx(cfg, conn, last_outcome="A bird lands.", events=["It rains."],
                                        recent_actions=["nap", "wash"]))
     assert "7:40 pm" in p and "evening" in p and "the living room" in p
-    assert "empty" in p                               # need 12 -> band word
+    assert "running on nothing" in p                  # sustenance 12 -> its empty-band expression
     assert "calm and tired" in p and "tired" in p     # mood, energy words
     assert "the sofa [soft, warm, climbable]" in p
     assert "bold (boldness)" in p and "solitary (sociability)" in p and "neither scruffy nor tidy" in p

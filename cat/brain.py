@@ -50,6 +50,54 @@ class BrainContext:
     stale_here: bool = False                                     # it has stayed in this area for a while
 
 
+PRESSING_BANDS = ("empty", "low")      # the bands that pull at the entity, most pressing first
+
+
+def select_needs(cfg: Config, needs: dict[str, float]) -> dict:
+    """Which needs' expressions the prompt shows, and why. A need is pressing in the empty or low
+    band; the lowest bands come first, ties broken by config order, at most `max_pressing_needs`
+    shown. If nothing is pressing, one full-band expression (first in config order) may stand in.
+    Pure words: no numbers leave this function and nothing here picks or ranks actions."""
+    s = cfg.settings
+    rows = []
+    for i, (nid, spec) in enumerate(cfg.character["needs"].items()):
+        band = character.need_band(float(needs[nid]), cfg)
+        rows.append({"need": nid, "band": band, "order": i, "expression": spec["expressions"].get(band),
+                     "selected": False, "reason": f"{band} band: not pressing"})
+    pressing = sorted((r for r in rows if r["band"] in PRESSING_BANDS),
+                      key=lambda r: (PRESSING_BANDS.index(r["band"]), r["order"]))
+    cap = s["max_pressing_needs"]
+    chosen = pressing[:cap]
+    for rank, r in enumerate(pressing, 1):
+        if rank <= cap:
+            r["selected"] = True
+            r["reason"] = (f"{r['band']} band: pressing, #{rank} of {len(pressing)} "
+                           f"(lowest band first, ties by config order)")
+        else:
+            r["reason"] = f"{r['band']} band: pressing, but only {cap} are shown"
+    if not pressing:
+        full = next((r for r in rows if r["band"] == "full" and r["expression"]), None)
+        if full:
+            full["selected"] = True
+            full["reason"] = "nothing is pressing: a full-band expression is shown instead"
+            chosen = [full]
+    return {"max": cap, "none_pressing": not pressing,
+            "selected": [r["need"] for r in chosen], "rows": rows}
+
+
+def pulling_section(cfg: Config, needs: dict[str, float], stale: bool) -> list[str]:
+    """The prompt lines under "What's pulling at you right now"."""
+    R = lambda key, **kw: P.render(cfg, "brain.situation." + key, **kw)
+    sel = select_needs(cfg, needs)
+    by_need = {r["need"]: r for r in sel["rows"]}
+    lines = [by_need[n]["expression"] for n in sel["selected"]]               # most pressing first
+    if sel["none_pressing"]:
+        lines = [R("none_pulling")] + lines
+    if stale and cfg.character.get("stale_here"):
+        lines.append(cfg.character["stale_here"].strip())
+    return [R("heading_pulling")] + lines
+
+
 def seed_self_image(cfg: Config) -> list[str]:
     """The optional text hint from character.yaml (empty by default)."""
     seed = (cfg.character.get("self_image") or {}).get("seed", "")
@@ -120,9 +168,8 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     L.append(R("time", time=clock.time_label(dt), part=clock.part_of_day(dt), weather=ctx.weather))
     L.append(R("place", area=area["name"], description=area["description"]))
     L.append(R("feeling", mood=ctx.mood["description"], energy=character.energy_word(ctx.energy, cfg)))
-    L.append(R("needs", needs="; ".join(
-        f"{character.need_label(k, cfg)}: {character.need_word(k, v, cfg)}"
-        for k, v in ctx.needs.items())))
+
+    L.append("\n" + "\n".join(pulling_section(cfg, ctx.needs, ctx.stale_here)))
 
     L.append("\n" + R("heading_around"))
     L.append(R("here", items="; ".join(_obj(o) for o in ctx.objects_here) or R("here_nothing")))

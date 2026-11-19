@@ -33,7 +33,8 @@ brain:
     time: "It is {time} ({part}). Weather: {weather}."        # {time} {part} {weather}
     place: "You are in {area}. {description}"                 # {area} {description}
     feeling: "You feel {mood}. Energy: {energy}."             # {mood} {energy}
-    needs: "Needs: {needs}."                                  # {needs}
+    heading_pulling: "## What's pulling at you right now"
+    none_pulling: "Nothing in particular is pulling at you right now."   # shown when no need is in the low or empty band
     heading_around: "## Around you"
     here: "Here: {items}."                                    # {items}
     here_nothing: "nothing in particular"
