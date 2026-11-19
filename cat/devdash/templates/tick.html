@@ -141,6 +141,22 @@
   {% endif %}
 </section>
 
+{% if d.director %}
+{% set w = d.director %}
+<section class="card" id="director">
+  <h2>World director <span class="dim small">(an LLM proposes a small happening; code validates it; it never sees needs or mood)</span></h2>
+  <table class="data">
+    <tr><th>ran because</th><td>{{ w.trigger }} ({{ w.gap }} action ticks since last run)</td></tr>
+    <tr><th>outcome</th><td>{{ pill(w.action, 'ok' if w.action == 'happened' else ('bad' if w.action in ('failed', 'rejected') else '')) }}{% if w.reason %} <span class="dim">{{ w.reason }}</span>{% endif %}</td></tr>
+    {% if w.action == 'happened' %}
+    <tr><th>happening</th><td>{{ w.text }}</td></tr>
+    <tr><th>effects</th><td>mood nudge {{ w.mood }}{% if w.weather %} · weather → {{ w.weather }}{% endif %}{% if w.spawn %} · object: {{ w.spawn.name }}{% endif %}{% if w.drains %} · drains {{ w.drains|tojson }}{% endif %}</td></tr>
+    {% if w.notes %}<tr><th>ignored or clamped</th><td class="dim">{{ w.notes|join('; ') }}</td></tr>{% endif %}
+    {% endif %}
+  </table>
+</section>
+{% endif %}
+
 {% if d.project %}
 {% set j = d.project %}
 <section class="card" id="project">

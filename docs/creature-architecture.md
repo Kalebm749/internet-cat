@@ -52,7 +52,7 @@ Related docs: `server-architecture.md` (how it is built and deployed, including 
 ### World model
 - **Areas:** description and which areas connect to which. v1 uses a fixed, hand-written map in config.
 - **Objects:** each has a name, a location (an area, or the creature's inventory), **tags** (`edible`, `climbable`, `warm`, `movable`, `fragile`…) and simple **state** (`full/empty`, `open/closed`). Objects define what's possible. Actions don't. Objects can be added at runtime by events or by the creature (`create`).
-- **Events:** the world changes on its own (weather, things dropped, deliveries, seasons), so the creature always has something new to react to.
+- **Events:** the world changes on its own (weather, things dropped, deliveries, seasons), from two sources: a hand-written table in `world.yaml` (seeds and fallback) and **the world director**, an LLM role that proposes at most one small happening every few ticks (sooner when the entity is stuck in one place). The director never sees needs or mood, and code validates and applies its proposal as an event. So the creature always has something new to react to.
 
 ---
 

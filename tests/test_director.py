@@ -264,3 +264,32 @@ def test_the_director_settings_are_validated(tmp_path):
         tmp_path / "c", "settings.yaml", lambda s: s["director"].update(max_mood=3))
     assert "director.enabled: must be true or false" in _problems(
         tmp_path / "d", "settings.yaml", lambda s: s["director"].update(enabled="yes"))
+
+
+# ---------- dev dashboard ----------
+def test_tick_page_explains_the_director(cfg, monkeypatch):
+    from fastapi.testclient import TestClient
+    from cat.devdash import data
+    from cat.devdash.app import create_app
+    for k in ("DEVDASH_BIND", "DEVDASH_USER", "DEVDASH_PASS"):
+        monkeypatch.delenv(k, raising=False)
+    cfg.settings["director"]["every_ticks"] = 1
+    e, b, _ = make(cfg, {"text": "A bell rings.", "mood": 0.9, "weather": "volcano",
+                         "spawn": {"name": "a pebble", "tags": ["movable"]}})
+    e.tick()
+    tid = e.tick()["id"]
+    d = data.tick_detail(cfg, tid)["director"]
+    assert d["action"] == "happened" and d["trigger"] == "interval" and d["mood"] == cfg.settings["director"]["max_mood"]
+    html = TestClient(create_app(cfg)).get(f"/ticks/{tid}").text
+    assert 'id="director"' in html and "A bell rings." in html and "never sees needs or mood" in html
+    assert "ignored or clamped" in html and "volcano" in html
+
+
+def test_ticks_without_a_director_run_have_no_section(cfg, monkeypatch):
+    from fastapi.testclient import TestClient
+    from cat.devdash.app import create_app
+    for k in ("DEVDASH_BIND", "DEVDASH_USER", "DEVDASH_PASS"):
+        monkeypatch.delenv(k, raising=False)
+    e, b, _ = make(cfg, {"text": "x"})
+    tid = e.tick()["id"]
+    assert 'id="director"' not in TestClient(create_app(cfg)).get(f"/ticks/{tid}").text

@@ -293,6 +293,7 @@ def tick_detail(cfg: Config, tick_id: int) -> dict | None:
             return None
         d: dict[str, Any] = {"id": tick_id, "tick": tick, "trace": trace}
         d["project"] = jload(trace.get("project"), None) if trace else None
+        d["director"] = jload(trace.get("director"), None) if trace else None
         pr = jload(trace.get("pressing"), None) if trace else None
         d["pressing"] = pr
         d["pressing_marks"] = ([r["expression"] for r in pr["rows"] if r["selected"] and r["expression"]]

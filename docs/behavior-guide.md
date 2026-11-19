@@ -33,7 +33,7 @@ One rule runs through the whole design: **plain code owns time, needs and rules;
 | **The brain (LLM call #1)** | what the entity thinks, feels and chooses to do next, in free text | say what happened, change a need, or change the world |
 | **The narrator (LLM call #2)** | what actually happened, which needs the action *helped* (coarse buckets), effort, duration, and a list of proposed world changes | subtract from a need, or change anything the code does not validate |
 
-A third LLM role, **the sleeping mind**, runs once per night and does the slow work: consolidating memories, nudging tendencies, forming preferences, and proposing at most one self-image line.
+A third LLM role, **the world director**, proposes the occasional small happening in the entity's area (§3, §9). A fourth, **the sleeping mind**, runs once per night and does the slow work: consolidating memories, nudging tendencies, forming preferences, and proposing at most one self-image line.
 
 Some consequences that explain almost every behavior you will see:
 
@@ -83,6 +83,7 @@ Everything below happens in this order. The LLM calls happen **outside** any dat
 
 ```
   1. World events roll            ── events may fire; may carry mood nudge, weather change, spawn, drains
+     + the world director        ── every few ticks, one LLM-proposed happening (validated by code)
   2. Rest check                   ── asleep? or exhausted at night?  → a rest tick (no LLM), skip to 6
   3. Brain online?                ── cached health check (GET /api/tags); offline → doze tick, skip to 5
   4a. Recall + Brain call         ── builds the prompt, picks the need expressions, asks for JSON
@@ -108,6 +109,14 @@ Otherwise it fires with probability `chance`. A fired event can:
 - **drain needs** (`drains: {need: points}`): subtracted from those needs in step 5.
 
 Events roll on *every* tick type, including sleeping and dozing, so a loud noise can drain peace while the entity sleeps.
+
+**The world director.** The hand-written events are a small, fixed table, so on their own the world runs out of novelty. After they roll, an LLM role called **the director** may add one more happening, in the same shape as an event:
+- **When:** every `director.every_ticks` (6) action ticks, or every `stale_every_ticks` (2) when the entity has stayed in one place (the stale flag, §4). Never while asleep or exhausted at night, never with the brain offline, and only if the tick has not already used `events_max_per_tick`.
+- **What it sees:** the place and its objects, the time, the weather, the last `avoid_repeat` (10) happenings, and its last 3 actions. It **never sees needs or mood** and is told not to rescue, reward or punish: it answers to the place, the hour and the weather, so the world cannot quietly steer the entity by its state.
+- **What it may propose:** one or two sentences of what happens; a small mood nudge (clamped to ±`max_mood`, 0.5); a weather change (only to a weather name in `world.yaml`); one small object (only `allowed_tags`, only if the area is not full); and optionally a small drain on at most `max_drain_needs` (2) needs, at most `max_drain_points` (6) each. Most of the time it should say nothing happens.
+- **What code does:** rejects empty text and anything that repeats a recent happening; clamps and filters the rest (notes say what was ignored); applies the result exactly like an event, so the brain perceives it in "What just happened", spawns obey the area cap, drains show in the need math, and it appears in the diary as a margin note.
+- **If the call fails** the tick simply has no director happening; it never dozes the tick. Every run and outcome is traced (the dashboard's tick page shows it).
+- **Turn it off** with `director.enabled: false` to get only the hand-written events. The hand-written events keep rolling either way; use them for things you always want possible.
 
 ### Step 2: rest check
 - If the entity is **asleep**, the tick is a rest tick.
@@ -328,7 +337,7 @@ Nothing here picks an action: code never chooses, suggests or ranks actions by p
 
 ## 9. The world: objects, events, and what the narrator may change
 
-**Areas** (`world.yaml`): a name, a description and exits; exits must be mirrored. **Objects**: an id, name, area (or `inventory`), **tags** and a small state. Tags decide what is possible: `edible` (can be consumed), `movable` (can be taken and moved). Other tags (`warm`, `climbable`, `soft`, `toy`, …) are information for the narrator and entity. Objects are **seeded once**, on the very first start.
+**Areas** (`world.yaml`): a name, a description and exits; exits must be mirrored. (Happenings come from two sources: the hand-written `events` in `world.yaml` and the world director, §3. Objects it spawns are marked `created_by = director`.) **Objects**: an id, name, area (or `inventory`), **tags** and a small state. Tags decide what is possible: `edible` (can be consumed), `movable` (can be taken and moved). Other tags (`warm`, `climbable`, `soft`, `toy`, …) are information for the narrator and entity. Objects are **seeded once**, on the very first start.
 
 The narrator may only change the saved world through these operations (the same list is in the narrator's prompt). Changes are checked **in order**; a rejected one is logged and skipped, the rest still apply, and at most `max_changes_per_tick` (6) are accepted.
 
@@ -356,6 +365,8 @@ All fixed wording lives in `config/prompts.yaml` (see §13). The dynamic parts a
 - It never contains need numbers, ids of objects, or a list of options.
 
 **The narrator's prompt:** a neutral system prompt (no personality; it must respect the world as given, do not invent objects or exits; it only adds to needs, never subtracts; the exact JSON and the seven operations) plus the world description, each need's meaning and band word, the active projects with their ids and stage words (if any), and "The creature does: <action>".
+
+**The world director's prompt:** the place, time, weather, objects, recent happenings and its last few actions, with the rules above in its system prompt. No needs, no mood.
 
 **The sleeping mind's prompts:** the day's summary material for each of the five steps (§5).
 
@@ -391,10 +402,12 @@ All fixed wording lives in `config/prompts.yaml` (see §13). The dynamic parts a
 | **Project advanced** | the narrator's valid `project` report with `+`/`++` | progress steps up (tapering); note and artifact saved; this action skips the repetition penalty; no stale tick | the brain is reminded where it got to; pieces accumulate on the site |
 | **Project milestone / finished** | progress crosses a multiple of 25 / reaches 100 | a short-term memory; finishing pays joy +20, wonder +10 | consolidated at sleep; finished projects stay listed |
 | **Project untouched for 3 nights** | each sleep | the project is paused | the brain stops being reminded; a later night may resume it |
+| **Director due** | every 6 action ticks, or 2 when the place is stale | one LLM call proposes at most one happening; code validates and applies it as an event | novelty: new sounds, light, visitors and objects; its mood nudges and capped drains colour the next ticks |
 | **Notable tick** | need jump ≥ 20, strong feeling, creation, rejected change | a short-term memory | consolidated into long-term at sleep |
 | **Energy low (< −25) at night** | each night tick | falls asleep without a brain call | the nightly cycle runs |
 | **Brain says `wants_sleep`** | energy < 10 or night | falls asleep | the nightly cycle runs |
 | **Asleep** | each asleep tick | +12 energy/h, needs decay at half speed | wakes at energy ≥ 40 after 06:00 (or 12 h) |
+| **Director call fails** | the model is unreachable or returns junk | no happening this time; the tick carries on normally | none; the hand-written events still roll |
 | **Sleep cycle succeeds** | at sleep onset, brain online | memories consolidated; tendencies drift ≤ 0.05; preferences updated; ≤ 1 self-image line; ≤ 1 project change | personality, tastes and self-image evolve slowly; diary "Last night…" card |
 | **Brain offline** | health check or call fails | doze tick: +2 energy, needs decay | a gap in the diary; nothing else lost |
 | **Engine down** | process or host stopped | per `downtime_policy` | pause: nothing; catch_up: one entry and decay |
@@ -479,6 +492,21 @@ Reading the numbers: a need that decays 5/hour needs about +15 every 3 sim hours
 | `sleep.preference_blend`, `max_preferences_per_night`, `preference_min_abs`, `max_preferences_total` | how fast tastes form and fade |
 | `sleep.max_self_image_lines`, `self_image_min_confidence`, `max_self_image_length` | how much self-image it can hold and how sure it must be |
 | `recent_actions_shown`, `preferences_shown`, `short_term_shown` | how much context the brain gets (more = longer prompts; mind `llm_num_ctx`) |
+
+### The world director
+
+| Parameter (`director.*`) | Effect |
+|---|---|
+| `enabled` | `false` = only the hand-written events |
+| `every_ticks` | how often it runs in a normal stretch. Lower = a livelier world and more LLM calls; higher = a quieter, cheaper one |
+| `stale_every_ticks` | how soon it runs when the entity is stuck in one place doing the same things. Must not exceed `every_ticks` |
+| `max_mood` | the strongest mood nudge a happening may carry (events say −1..1). `0` makes happenings mood-neutral |
+| `max_drain_points`, `max_drain_needs` | how hard a happening may hit needs. `max_drain_points: 0` removes drains entirely |
+| `avoid_repeat` | how many recent happenings it sees and is rejected for repeating. Raise if it keeps saying similar things |
+| `recent_actions_shown` | how much of what the entity did it can react to |
+| `text_max_length` | how long a happening may be |
+
+The wording is in the `director` section of `prompts.yaml`. To make the world gentler or harsher, edit "Most of the time nothing should [happen]" and the tone examples; to forbid a kind of happening, say so there (code will not catch it). Also `llm_temperature.director` (0.8) controls how adventurous it is. Keep it from reading needs or mood: that is what stops the world from steering the entity.
 
 ### Projects
 
@@ -612,6 +640,7 @@ The **dev dashboard** (`http://127.0.0.1:8090`, see the README) explains every n
 | Is it running well? | **Overview** (tick time, doze count, errors, service health); **LLM calls** (latency, invalid JSON) |
 | How are needs and mood trending? | **Needs & mood** (charts over 24 h / 7 d / all, sleep and doze shaded, critical time per need) |
 | What is it working on, and what has it made? | **Projects** (progress numbers, idle nights, every artifact); a tick page's **Project work** section |
+| Why did something just happen in the room? | tick detail → **World director** (why it ran, the proposal, what code kept or ignored) |
 | What did last night do? | **Sleep** (each step's input, proposal and what code applied; tendency history) |
 | What does it remember? | **Memory** (short/long-term, recall stats, embedding map, search) |
 | Are my edits live? | **Config** (loaded vs on disk; *Reload settings*) |

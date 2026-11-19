@@ -135,7 +135,7 @@ Four YAML files in `config/` (`settings.yaml`, `character.yaml`, `world.yaml`, `
 
 Follow `creature-architecture.md` §3. As built:
 
-1. **World events** roll at the start of the tick (weather changes, spawned objects, and `drains` that take points from needs).
+1. **World events** roll at the start of the tick, then the **world director** may add one more happening (an LLM call every `director.every_ticks` action ticks, or `stale_every_ticks` when the place is stale; never asleep or offline; validated by `cat/director.py` and applied as an event, traced in `tick_traces.director`). Events (weather changes, spawned objects, and `drains` that take points from needs).
 2. **Rest checks.** If asleep, or exhausted at night, the tick is a *rest* tick (no brain call, §11).
 3. **Brain call** builds the situation overview (words, never numbers). Each need level becomes a band; the prompt's "What's pulling at you right now" section shows the expression text of the most pressing needs (lowest bands first, at most `max_pressing_needs`), and `stale_here` after `stale_after_ticks` ticks in one area. The selection and the reasons are traced for the dashboard. and asks Ollama for `reaction, thought, action, intent, feeling, wants_sleep` with a JSON schema. Relevant long-term and recent short-term memories are included.
 4. **Narrator call** gets the action plus the area's objects (ids, tags, state), inventory, exits, time and weather, and each need's meaning with its band as a word. It returns `outcome, gains, effort, duration, changes[]`.
