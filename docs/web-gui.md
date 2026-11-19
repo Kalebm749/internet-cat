@@ -170,7 +170,7 @@ Polled every 10s. Everything except old diary pages.
            "label": "Wednesday, Day 12 · 7:40 pm", "phase": "dusk"},
   "location": {"id": "bookshop", "name": "the bookshop"},
   "status": {"state": "awake", "brain_online": true,
-             "brain_last_seen": "2026-11-18T18:02:11", "model": "qwen3:8b"},
+             "brain_last_seen": "2026-11-18T18:02:11", "model": "qwen3:14b"},
   "mood": {"word": "content", "description": "tired but glowing",
            "value": 18.0, "slider_pct": 68.0, "aria": "Mood slider: content, positive, from negative to positive"},
   "energy": {"value": -12, "pct": 38, "word": "tired"},

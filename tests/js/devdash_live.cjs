@@ -175,12 +175,12 @@ async function load(url, { confirmAnswers = [], promptAnswers = [], clip = [] } 
       assert.ok(d.querySelector("#pg-user").value.includes("## Who you are right now"));
       assert.ok(d.querySelector("#pg-system").value.length > 100);
       assert.ok(d.querySelector("#pg-original"));
-      d.querySelector("#pg-extra-model").value = "qwen3:8b";
+      d.querySelector("#pg-extra-model").value = "qwen3:14b";
       d.querySelector("#pg-form").dispatchEvent(new w.Event("submit", { cancelable: true }));
       await sleep(4000);
       const cards = d.querySelectorAll("#pg-results .rcard");
       assert.strictEqual(cards.length, 2, "original + 1 run");
-      assert.match(cards[1].textContent, /qwen3:8b/); assert.match(cards[1].textContent, /error/);
+      assert.match(cards[1].textContent, /qwen3:14b/); assert.match(cards[1].textContent, /error/);
       assert.match(d.querySelector("#pg-status").textContent, /done in/);
       assert.ok(!d.querySelector("#pg-run").disabled);
     });

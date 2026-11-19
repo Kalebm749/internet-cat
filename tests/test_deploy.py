@@ -252,26 +252,26 @@ def pull_client(have, pull_lines=None, fail_pull=False, calls=None):
 
 
 def test_wanted_models_deduplicated_in_order(cfg):
-    assert pullmodels.wanted_models(cfg.settings) == ["qwen3:8b", "nomic-embed-text"]
+    assert pullmodels.wanted_models(cfg.settings) == ["qwen3:14b", "nomic-embed-text"]
     cfg.settings["narrator_model"] = "other:7b"
-    assert pullmodels.wanted_models(cfg.settings) == ["qwen3:8b", "other:7b", "nomic-embed-text"]
+    assert pullmodels.wanted_models(cfg.settings) == ["qwen3:14b", "other:7b", "nomic-embed-text"]
 
 
 def test_pull_skips_present_and_pulls_missing(cfg):
     calls, out = [], io.StringIO()
-    rc = pullmodels.run(pull_client(["qwen3:8b"], calls=calls), "http://x", cfg.settings, out=out)
+    rc = pullmodels.run(pull_client(["qwen3:14b"], calls=calls), "http://x", cfg.settings, out=out)
     pulled = [json.loads(c[2])["model"] for c in calls if c[1] == "/api/pull"]
     assert rc == 0 and pulled == ["nomic-embed-text"]
-    assert "qwen3:8b: already present" in out.getvalue() and "all models ready" in out.getvalue()
+    assert "qwen3:14b: already present" in out.getvalue() and "all models ready" in out.getvalue()
 
 
 def test_pull_force_and_bare_name_counts_as_latest(cfg):
     calls = []
-    pullmodels.run(pull_client(["qwen3:8b", "nomic-embed-text:latest"], calls=calls), "http://x",
+    pullmodels.run(pull_client(["qwen3:14b", "nomic-embed-text:latest"], calls=calls), "http://x",
                    cfg.settings, out=io.StringIO())
     assert not [c for c in calls if c[1] == "/api/pull"]
     calls.clear()
-    pullmodels.run(pull_client(["qwen3:8b", "nomic-embed-text:latest"], calls=calls), "http://x",
+    pullmodels.run(pull_client(["qwen3:14b", "nomic-embed-text:latest"], calls=calls), "http://x",
                    cfg.settings, force=True, out=io.StringIO())
     assert len([c for c in calls if c[1] == "/api/pull"]) == 2
 
