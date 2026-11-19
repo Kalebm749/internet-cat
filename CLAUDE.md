@@ -39,6 +39,15 @@ Web layout: `cat/web/views.py` (all words/labels/phases), `app.py` (routes), `te
 Markup for live-added items lives in `<template>` elements in `index.html`; keep it in step with
 `_diary_entry.html` and the server-rendered panels.
 
+Docker Compose (don't run these for the user; document them):
+```
+cp .env.example .env && mkdir -p data
+docker compose up -d --build        # ollama + engine + web
+deploy/pull-models.sh               # one-off model download
+deploy/backup.sh                    # sqlite3 .backup into data/backups (host cron)
+docker compose config -q            # validate compose.yaml (safe, starts nothing)
+```
+
 ## Conventions
 - Python 3.11+ (image: 3.12-slim); keep dependencies light and pure-Python.
 - All tuning numbers live in `config/settings.yaml`, never hard-coded.

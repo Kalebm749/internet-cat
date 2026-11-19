@@ -13,6 +13,7 @@ from cat.llm import MockBackend, OllamaBackend, hash_embed
 # ---------- a fake Ollama we can take down and bring back ----------
 class FakeOllama:
     def __init__(self):
+        self.models = ["qwen3:8b", "nomic-embed-text:latest"]
         self.mode = "up"            # up | down | hang (tags answer, chat times out)
         self.prompts = []
         self.requests = 0
@@ -23,7 +24,7 @@ class FakeOllama:
             raise httpx.ConnectError("connection refused", request=req)
         path = req.url.path
         if path == "/api/tags":
-            return httpx.Response(200, json={"models": []})
+            return httpx.Response(200, json={"models": [{"name": m} for m in self.models]})
         if self.mode == "hang":
             raise httpx.ReadTimeout("model is stuck", request=req)
         body = json.loads(req.content)
@@ -197,3 +198,12 @@ def test_error_backoff_sleeps_longer_after_unexpected_failure(cfg, monkeypatch):
     waits = []
     e.run(ticks=3, interval=5, sleep=waits.append)
     assert waits == [cfg.settings["error_backoff_seconds"], 5]
+
+
+def test_models_not_pulled_yet_is_a_clean_doze_then_recovers(rig, cfg):
+    e, fake = rig
+    fake.models = []                                       # fresh install, before deploy/pull-models.sh
+    assert [e.tick()["kind"] for _ in range(3)] == ["doze"] * 3
+    assert fake.prompts == []                              # no brain calls were even attempted
+    fake.models = ["qwen3:8b", "nomic-embed-text"]         # bare name == :latest
+    assert e.tick()["kind"] == "tick"

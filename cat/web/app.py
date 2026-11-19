@@ -54,6 +54,18 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             close(conn)
         return templates.TemplateResponse(request, "index.html", {"s": state, "before": before})
 
+    @app.get("/healthz")
+    def healthz():
+        """Liveness for the container healthcheck: the app is up (and whether the DB is readable)."""
+        conn = open_db()
+        try:
+            ok = conn is not None and conn.execute("SELECT 1").fetchone() is not None
+        except sqlite3.Error:
+            ok = False
+        finally:
+            close(conn)
+        return JSONResponse({"status": "ok", "db": ok}, headers={"Cache-Control": "no-store"})
+
     @app.get("/api/state")
     def api_state():
         conn = open_db()

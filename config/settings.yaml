@@ -16,6 +16,14 @@ llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
 
 # --- storage ---
 db_path: data/cat.db
+heartbeat_file: data/engine.heartbeat   # written by the engine every loop; read by its healthcheck
+
+# --- container healthchecks ---
+healthcheck:
+  engine_max_age_seconds: 600   # engine is unhealthy if its heartbeat is older (or 3x the tick interval)
+  http_timeout_seconds: 5
+health_require_models: true     # brain counts as online only if all configured models are pulled
+pull_timeout_seconds: 3600      # model download may take a long time
 
 # --- pacing ---
 tick_interval_seconds: 90      # real seconds between ticks (0 = as fast as possible)
@@ -118,4 +126,4 @@ web_ui:
   keepsakes_all_limit: 200
 
 # --- backup (deploy/backup.sh reads these via env, kept here for reference) ---
-backup_keep: 14
+backup_keep: 14                # deploy/backup.sh reads this line

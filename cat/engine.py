@@ -14,6 +14,7 @@ from collections import deque
 from cat import brain, character, clock, db, effects, narrator, sleep
 from cat.config import Config
 from cat.db import dumps
+from cat.healthcheck import write_heartbeat
 from cat.llm import BackendError, LLMBackend, cosine
 from cat.memory import Memory, build_query, importance_for, notable_reasons
 from cat.world import WorldState
@@ -337,8 +338,10 @@ class Engine:
         errors are logged and the loop carries on."""
         interval = self.cfg.settings["tick_interval_seconds"] if interval is None else interval
         done = 0
+        write_heartbeat(self.cfg.heartbeat_path)
         while not self.stop_requested and (ticks is None or done < ticks):
             failed = False
+            write_heartbeat(self.cfg.heartbeat_path)
             try:
                 info = self.tick()
                 if on_tick:

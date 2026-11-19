@@ -46,7 +46,9 @@ Every tuning number. Groups:
 - **Doze/sleep**: `doze.*`, `sleep.*` (thresholds, restore rate, `tendency_max_step`).
 - **Memory**: `notable.*` (what counts as a notable tick, importance of short-term memories), `recall`, `recency_half_life_sim_hours`, `short_term_shown`, `notable`, `long_term_cap`.
 - **Web**: `web_port`, `diary_page_size`, `keepsakes_first_page`, and `web_ui.*` (poll interval, when a need counts as low/critical, trend and chip thresholds, keepsake dot thresholds, page-size limits).
-- `db_path`, `backup_keep`.
+- `db_path`, `backup_keep` (also read by `deploy/backup.sh`).
+- **Deployment**: `heartbeat_file` (written by the engine each loop), `healthcheck.engine_max_age_seconds` (the engine is unhealthy when its heartbeat is older than this or 3x the tick interval) and `healthcheck.http_timeout_seconds`, `health_require_models` (brain is online only if all configured models are pulled), `pull_timeout_seconds`.
+- `CAT_CONFIG_DIR` (env) selects the config directory (set to `/app/config` in the containers); relative paths such as `data/cat.db` resolve against its parent.
 
 ## Effects: how narrator changes are validated (`cat/effects.py`)
 Changes are checked **in order** against the real world; invalid ones are dropped, stored in `ticks.rejected_changes` with a reason, and logged.

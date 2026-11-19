@@ -60,8 +60,12 @@ def test_http_error_and_timeout_and_connect(cfg):
         backend(cfg, refused).chat_json("brain", "m", [], {})
 
 
+def tags(*names):
+    return lambda r: httpx.Response(200, json={"models": [{"name": n} for n in names]})
+
+
 def test_is_online(cfg):
-    assert backend(cfg, lambda r: httpx.Response(200, json={"models": []})).is_online()
+    assert backend(cfg, tags("qwen3:8b", "nomic-embed-text:latest")).is_online()
     assert not backend(cfg, lambda r: httpx.Response(503)).is_online()
 
     def refused(req):
@@ -102,3 +106,23 @@ def test_call_json_retries_on_unparseable_content():
             raise BackendError("no outcome")
         return raw
     assert call_json(m, "narrator", "m", [], {}, parse, retries=1) == {"outcome": "ok"}
+
+
+def test_online_requires_configured_models(cfg):
+    b = backend(cfg, tags("qwen3:8b"))                       # embedding model not pulled
+    assert b.missing_models() == ["nomic-embed-text"] and not b.is_online()
+    cfg.settings["health_require_models"] = False
+    assert b.is_online()                                     # reachable is enough when disabled
+
+
+def test_bare_model_name_matches_latest_tag(cfg):
+    assert backend(cfg, tags("qwen3:8b", "nomic-embed-text:latest")).missing_models() == []
+    cfg.settings["brain_model"] = cfg.settings["narrator_model"] = cfg.settings["sleep_model"] = "llama3.1"
+    assert backend(cfg, tags("llama3.1:latest", "nomic-embed-text")).missing_models() == []
+    assert backend(cfg, tags("llama3.1:8b", "nomic-embed-text")).missing_models() == ["llama3.1"]
+
+
+def test_missing_models_unreachable_is_none(cfg):
+    def refused(req):
+        raise httpx.ConnectError("refused", request=req)
+    assert backend(cfg, refused).missing_models() is None

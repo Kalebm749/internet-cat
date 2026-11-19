@@ -216,14 +216,15 @@ docker compose run --rm engine python scripts/check_ollama.py
 
 Docker Compose. See `README.md` for the full walkthrough.
 
-- `compose.yaml` defines the services; `Dockerfile` builds one slim non-root image used by `engine` and `web`.
-- `./data` is a bind mount (database, backups, logs) so it can be inspected and backed up from the host. `./config` is mounted read-only, so YAML can be edited without rebuilding.
-- Models are pulled once into the Ollama volume by a one-off step (`deploy/pull-models.sh`).
-- `deploy/backup.sh` runs `sqlite3 .backup` into `./data/backups` and keeps 14 copies; run it from host cron.
-- `deploy/update.sh` pulls the code and rebuilds/restarts the services.
-- Logs go to `docker logs` (and later to `data/logs/*.jsonl`).
-
----
+- **Image:** one slim `python:3.12-slim` image (`Dockerfile`, targets `test` and `runtime`), non-root user (uid/gid from `CAT_UID`/`CAT_GID`, default 1000, so it can write `./data`). The `engine` and `web` services use it with different commands. `ollama` is the official image with the NVIDIA GPU reservation.
+- **Mounts:** `./data` is a bind mount (database, backups, logs) so it can be inspected and backed up from the host. `./config` is mounted **read-only**, so YAML can be edited without rebuilding (restart the engine to apply). The Ollama models live in a named volume.
+- **Ports:** only the website (`${WEB_PORT:-8080}` → 8080) is published. Ollama is reachable only as `http://ollama:11434` inside the compose network.
+- **Start order:** `engine` starts after `ollama` *starts* but is **not** gated on its health. If Ollama is down, or the models are not pulled yet, the engine starts anyway and dozes (§12). The brain only counts as online when Ollama answers and every configured model is pulled (`health_require_models`).
+- **Healthchecks:** `ollama` runs `ollama list`; `web` serves `/healthz`; the engine rewrites `data/engine.heartbeat` every loop iteration and `python -m cat.healthcheck engine` checks its age. All services `restart: unless-stopped`.
+- **Models:** `deploy/pull-models.sh` (the `model-pull` compose service, profile `init`) pulls the models named in `settings.yaml` into the Ollama volume. Safe to re-run.
+- **Backup:** `deploy/backup.sh` runs `sqlite3 .backup` into `./data/backups` (safe while the engine runs), integrity-checks it, and keeps the newest `backup_keep` copies; run it from host cron. Needs `sqlite3` on the host.
+- **Update:** `deploy/update.sh` pulls the code, rebuilds the image and restarts the services; data and models are untouched.
+- **Logs:** `docker compose logs -f engine` (JSON log files in `data/logs/` come with the dev dashboard work).
 
 ## 16. Build order
 

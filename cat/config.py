@@ -1,6 +1,7 @@
 """Load and validate config/{settings,character,world}.yaml."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,10 +23,17 @@ class Config:
     world: dict[str, Any]
     root: Path = ROOT
 
+    def path(self, key: str) -> Path:
+        p = Path(self.settings[key])
+        return p if p.is_absolute() else self.root / p
+
     @property
     def db_path(self) -> Path:
-        p = Path(self.settings["db_path"])
-        return p if p.is_absolute() else self.root / p
+        return self.path("db_path")
+
+    @property
+    def heartbeat_path(self) -> Path:
+        return self.path("heartbeat_file")
 
 
 def _load_yaml(path: Path) -> dict:
@@ -53,7 +61,8 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "default_need_words", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "tendency_words", "max_objects_per_area",
+    "consume_min_gain", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "pull_timeout_seconds", "backup_keep", "tendency_words", "max_objects_per_area",
 ]
 
 
@@ -131,7 +140,7 @@ def validate(settings: dict, character: dict, world: dict) -> None:
 
 
 def load_config(config_dir: Path | str | None = None, overrides: dict | None = None) -> Config:
-    d = Path(config_dir) if config_dir else CONFIG_DIR
+    d = Path(config_dir or os.environ.get("CAT_CONFIG_DIR") or CONFIG_DIR)
     settings = _load_yaml(d / "settings.yaml")
     if overrides:
         settings.update(overrides)
@@ -140,4 +149,4 @@ def load_config(config_dir: Path | str | None = None, overrides: dict | None = N
     validate(settings, character, world)
     # YAML may parse bucket keys as strings already ("0"); normalise
     settings["gain_values"] = {str(k): v for k, v in settings["gain_values"].items()}
-    return Config(settings, character, world, root=d.parent if config_dir else ROOT)
+    return Config(settings, character, world, root=d.resolve().parent)

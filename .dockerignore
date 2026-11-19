@@ -1,0 +1,26 @@
+# runtime state and secrets never go into the image
+data/
+.env
+.env.*
+!.env.example
+# VCS / editors / caches
+.git
+.gitignore
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+*.db
+*.db-wal
+*.db-shm
+*.jsonl
+# not needed to build the image
+docs/
+deploy/
+compose.yaml
+Dockerfile
+.dockerignore
+README.md
+CLAUDE.md
+tests/js/

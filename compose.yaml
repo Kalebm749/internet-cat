@@ -1,0 +1,91 @@
+# Internet Cat: everything on one Ubuntu laptop. See README.md and docs/server-architecture.md.
+#   docker compose up -d --build        start (engine dozes until Ollama and the models are ready)
+#   deploy/pull-models.sh               one-off: pull the models named in config/settings.yaml
+name: internet-cat
+
+# Shared by the services that run our own image.
+x-app: &app
+  build:
+    context: .
+    target: runtime
+    args:
+      CAT_UID: ${CAT_UID:-1000}
+      CAT_GID: ${CAT_GID:-1000}
+  image: internet-cat:local
+  restart: unless-stopped
+  environment:
+    CAT_CONFIG_DIR: /app/config
+    TZ: ${TZ:-UTC}
+  volumes:
+    - ./data:/app/data            # database, backups, logs: visible and back-up-able from the host
+    - ./config:/app/config:ro     # edit the YAML without rebuilding; restart the engine to apply
+
+services:
+  ollama:
+    image: ollama/ollama:${OLLAMA_TAG:-latest}
+    restart: unless-stopped
+    # Not published to the network (Ollama has no authentication). The other services reach it as
+    # http://ollama:11434. To debug from the host, add:  ports: ["127.0.0.1:11434:11434"]
+    environment:
+      OLLAMA_KEEP_ALIVE: "-1"           # keep models loaded: no reload delay each tick
+      OLLAMA_MAX_LOADED_MODELS: "2"     # chat model + embedding model together
+      OLLAMA_NUM_PARALLEL: "1"          # one request at a time; saves VRAM
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ollama:/root/.ollama            # named volume: the downloaded models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]   # the image has no curl
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  engine:
+    <<: *app
+    command: ["python", "-m", "cat.main"]
+    # Start order only, NOT health-gated: the engine must start even if Ollama is down or has no
+    # models yet, and doze until it is ready (the engine's own offline handling).
+    depends_on:
+      ollama:
+        condition: service_started
+    stop_grace_period: 45s              # lets an in-flight tick finish; ticks are atomic anyway
+    healthcheck:
+      test: ["CMD", "python", "-m", "cat.healthcheck", "engine"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  web:
+    <<: *app
+    command: ["uvicorn", "cat.web.app:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
+    ports:
+      - "${WEB_PORT:-8080}:8080"        # the only port exposed to the network
+    healthcheck:
+      test: ["CMD", "python", "-m", "cat.healthcheck", "http", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # One-off: docker compose --profile init run --rm model-pull   (or deploy/pull-models.sh)
+  model-pull:
+    <<: *app
+    profiles: ["init"]
+    restart: "no"
+    command: ["python", "-m", "cat.pullmodels"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+volumes:
+  ollama:

@@ -68,6 +68,12 @@ def extract_json(text: str) -> dict:
     return v
 
 
+def model_present(wanted: str, have: list[str]) -> bool:
+    """Ollama lists 'name:tag'; a bare name means ':latest'."""
+    norm = lambda m: m if ":" in m else m + ":latest"
+    return norm(wanted) in {norm(h) for h in have}
+
+
 class OllamaBackend(LLMBackend):
     """Talks to Ollama over HTTP: /api/chat (JSON-schema `format`), /api/embed, /api/tags."""
 
@@ -75,15 +81,35 @@ class OllamaBackend(LLMBackend):
         s = cfg.settings
         self.s = s
         self.base = s["ollama_host"].rstrip("/")
+        self._warned_missing: list[str] = []
         self.client = client or httpx.Client(
             timeout=httpx.Timeout(s["llm_timeout_seconds"], connect=s["health_timeout_seconds"]))
 
-    def is_online(self) -> bool:
+    def missing_models(self) -> list[str] | None:
+        """Configured models that are not pulled yet; None if Ollama is unreachable."""
         try:
             r = self.client.get(f"{self.base}/api/tags", timeout=self.s["health_timeout_seconds"])
-            return r.status_code == 200
-        except httpx.HTTPError:
+            if r.status_code != 200:
+                return None
+            have = [m.get("name", "") for m in r.json().get("models", [])]
+        except (httpx.HTTPError, ValueError):
+            return None
+        wanted = {self.s[k] for k in ("brain_model", "narrator_model", "sleep_model", "embed_model")}
+        return sorted(m for m in wanted if not model_present(m, have))
+
+    def is_online(self) -> bool:
+        """Reachable and (if `health_require_models`) every configured model is pulled. A fresh
+        install before the model pull is therefore a clean doze, not a stream of failed calls."""
+        missing = self.missing_models()
+        if missing is None:
             return False
+        if missing and self.s.get("health_require_models", True):
+            if missing != self._warned_missing:
+                log.warning("Ollama is up but models are missing: %s (run deploy/pull-models.sh)", missing)
+                self._warned_missing = missing
+            return False
+        self._warned_missing = []
+        return True
 
     def _post(self, path: str, payload: dict) -> dict:
         try:
