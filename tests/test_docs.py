@@ -65,3 +65,46 @@ def test_hardware_references_updated():
     web = (ROOT / "docs" / "web-gui.md").read_text()
     assert "Pi 3B+" not in web and "Pi-hosted" not in web
     assert "docker" in (ROOT / "CLAUDE.md").read_text().lower()
+
+
+# ---------- the behavior guide ----------
+def _settings_path_exists(settings, dotted):
+    cur = settings
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return False
+        cur = cur[part]
+    return True
+
+
+def test_behavior_guide_covers_the_essentials():
+    doc = (ROOT / "docs" / "behavior-guide.md").read_text()
+    for needle in ("Anatomy of one tick", "Master table", "Tuning guide", "Resetting the simulation",
+                   "Full reset", "Partial resets", "data/cat.db", "What's pulling at you right now",
+                   "sustenance rule", "never subtracts", "separate resource", "−50 to 50",
+                   "downtime_policy", "Reload settings", "prompts.yaml"):
+        assert needle in doc, needle
+    assert "docs/behavior-guide.md" in README and "behavior-guide.md" in (ROOT / "CLAUDE.md").read_text()
+
+
+def test_every_setting_the_behavior_guide_names_exists():
+    import yaml
+    settings = yaml.safe_load((ROOT / "config" / "settings.yaml").read_text())
+    doc = (ROOT / "docs" / "behavior-guide.md").read_text()
+    bad = []
+    for tok in set(re.findall(r"`([a-z_]+(?:\.[a-z_*]+)+)`", doc)):
+        head = tok.split(".")[0]
+        if head in settings and "*" not in tok and not _settings_path_exists(settings, tok):
+            bad.append(tok)
+    assert not bad, bad
+
+
+def test_behavior_guide_reset_commands_match_the_real_tables():
+    import sqlite3
+    from cat import db
+    conn = sqlite3.connect(":memory:")
+    db.init_db(conn)
+    doc = (ROOT / "docs" / "behavior-guide.md").read_text()
+    for sql in re.findall(r"`((?:DELETE FROM|UPDATE) [^`]+;)`", doc):
+        if sql.startswith("DELETE FROM") or "json_object" in sql or "state SET" in sql or "meta SET" in sql:
+            conn.execute(sql)                     # every documented statement must be valid against the schema

@@ -11,6 +11,7 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 
 ## Docs (in `docs/`)
 - `creature-architecture.md` — concepts (background)
+- `behavior-guide.md` — how the whole simulation behaves (triggers, impacts), the tuning guide and how to reset
 - `server-architecture.md` — how it is built and deployed, incl. host setup (wins for implementation)
 - `web-gui.md` — the website (wins for the web)
 - `config-reference.md` — every config field (`settings.yaml`, `character.yaml`, `world.yaml`, `prompts.yaml`)
