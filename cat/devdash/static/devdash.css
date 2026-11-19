@@ -68,3 +68,12 @@ fieldset.models { border: 1px solid var(--rule); border-radius: 4px; display: fl
 .rcard h3 { margin-top: 0; text-transform: none; letter-spacing: 0; color: var(--ink); font-size: 13px; }
 .rcard pre { white-space: pre-wrap; word-break: break-word; max-height: 440px; overflow: auto; font-size: 12px; margin: 6px 0 0; }
 .ok { color: var(--ok); }
+
+/* ---- embedding map ---- */
+.embmap { width: 100%; max-width: 1000px; height: auto; margin: 0 auto; display: block; border: 1px solid var(--rule); border-radius: 4px; }
+.mapbg { fill: var(--bg); }
+.pt { stroke: var(--card); stroke-width: 1; cursor: pointer; } .pt-long { fill: var(--accent); } .pt-short { fill: var(--warn); }
+.pt-sel { stroke: var(--ink); stroke-width: 2.5; } .qmark path { fill: var(--bad); stroke: var(--card); stroke-width: 1; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; } .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+.dot.pt-long { background: var(--accent); } .dot.pt-short { background: var(--warn); }
+tr:target td { outline: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }

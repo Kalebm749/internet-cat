@@ -20,7 +20,7 @@ from cat.devqueue import CommandError
 HERE = Path(__file__).parent
 
 NAV = [("overview", "Overview", "/"), ("ticks", "Ticks", "/ticks"), ("llm", "LLM calls", "/llm"),
-       ("playground", "Playground", "/playground")]
+       ("memory", "Memory", "/memory"), ("playground", "Playground", "/playground")]
 SECURITY_HEADERS = {"X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
                     "X-Content-Type-Options": "nosniff"}
 
@@ -94,6 +94,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if c is None:
             raise HTTPException(404, f"no LLM call {call_id}")
         return page(request, "llm_call.html", "llm", f"LLM call {call_id}", c=c)
+
+    @app.get("/memory", response_class=HTMLResponse)
+    def memory_page(request: Request, q: str = "", page_no: int = Query(1, alias="page", ge=1)):
+        tables = data.memory_tables(cfg, page_no)
+        search = data.memory_search(cfg, q.strip()) if q.strip() else None
+        selected = {r["memory_id"] for r in search["results"] if r["selected"]} if search else set()
+        emap = data.embedding_map(cfg, search["vector"] if search else None, selected)
+        return page(request, "memory.html", "memory", "Memory & embeddings", t=tables, search=search, emap=emap, q=q)
 
     @app.get("/playground", response_class=HTMLResponse)
     def playground_page(request: Request, call_id: int | None = None):
@@ -181,6 +189,20 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if c is None:
             raise HTTPException(404, f"no LLM call {call_id}")
         return j(c)
+
+    @app.get("/api/dev/memory")
+    def api_memory(page_no: int = Query(1, alias="page", ge=1), limit: int = Query(50, ge=1, le=500)):
+        return j(data.memory_tables(cfg, page_no, limit))
+
+    @app.get("/api/dev/memory/map")
+    def api_memory_map():
+        return j(data.embedding_map(cfg))
+
+    @app.get("/api/dev/memory/search")
+    def api_memory_search(q: str = Query(..., min_length=1, max_length=2000)):
+        r = data.memory_search(cfg, q)
+        r.pop("vector", None)
+        return j(r)
 
     @app.get("/api/dev/playground/models")
     def api_pg_models():

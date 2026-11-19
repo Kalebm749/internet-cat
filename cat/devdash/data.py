@@ -464,3 +464,164 @@ def llm_series(cfg: Config, kind: str = "", model: str = "", x: str = "tick", bu
         out["invalid"].append(round(100 * sum(1 for r in g if (not r["valid_json"]) or r["error"]) / len(g), 1))
         out["n"].append(len(g))
     return out
+
+
+# ---------- Memory and embeddings ----------
+def recall_stats(conn: sqlite3.Connection) -> tuple[dict[int, int], dict[int, int], int]:
+    """How often each memory was *selected* by recall (from recall_logs), the last tick that
+    selected it, and how many recall events there were."""
+    counts: dict[int, int] = {}
+    last: dict[int, int] = {}
+    n = 0
+    for r in conn.execute("SELECT tick_id, candidates FROM recall_logs ORDER BY id"):
+        n += 1
+        for c in jload(r["candidates"], []):
+            if c.get("selected"):
+                counts[c["memory_id"]] = counts.get(c["memory_id"], 0) + 1
+                last[c["memory_id"]] = r["tick_id"]
+    return counts, last, n
+
+
+def _mem_row(cfg: Config, first: datetime, r: dict, counts: dict, last: dict) -> dict:
+    created = clock.parse(r["created_sim_time"])
+    return {"id": r["id"], "kind": r["kind"], "text": r["text"], "importance": r["importance"],
+            "created": r["created_sim_time"], "day_number": clock.day_number(first, created),
+            "created_label": f"{clock.day_label(first, created)} {clock.time_label(created)}",
+            "last_recalled": r["last_recalled"], "times_recalled": counts.get(r["id"], 0),
+            "last_recall_tick": last.get(r["id"]), "has_embedding": bool(r["has_embedding"]),
+            "embed_model": r["embed_model"], "tick_id": r["tick_id"]}
+
+
+def memory_tables(cfg: Config, page: int = 1, limit: int | None = None) -> dict:
+    limit = min(limit or cfg.settings["devdash"]["page_size"], 500)
+    page = max(1, page)
+    with game_db(cfg) as conn:
+        if conn is None:
+            return {"long": [], "short": [], "long_total": 0, "page": page, "pages": 1, "recall_events": 0,
+                    "most_recalled": [], "never_recalled": [], "dims": None}
+        first = clock.parse(db.get_meta(conn, "first_sim_time") or cfg.settings["sim_start"])
+        counts, last, n_events = recall_stats(conn)
+        cols = ("id, kind, text, importance, created_sim_time, last_recalled, embed_model, tick_id, "
+                "(embedding IS NOT NULL) AS has_embedding")
+        long_total = one(conn, "SELECT COUNT(*) n FROM memories WHERE kind='long'")["n"]
+        longs = [_mem_row(cfg, first, r, counts, last) for r in rows(
+            conn, f"SELECT {cols} FROM memories WHERE kind='long' ORDER BY id DESC LIMIT ? OFFSET ?", limit, (page - 1) * limit)]
+        shorts = [_mem_row(cfg, first, r, counts, last) for r in rows(
+            conn, f"SELECT {cols} FROM memories WHERE kind='short' ORDER BY id DESC LIMIT 200")]
+        all_long = [_mem_row(cfg, first, r, counts, last) for r in rows(
+            conn, f"SELECT {cols} FROM memories WHERE kind='long' ORDER BY id DESC")]
+    most = sorted((m for m in all_long if m["times_recalled"]), key=lambda m: (-m["times_recalled"], -m["id"]))[:10]
+    never = [m for m in all_long if not m["times_recalled"]]
+    return {"long": longs, "short": shorts, "long_total": long_total, "page": page,
+            "pages": max(1, math.ceil(long_total / limit)), "recall_events": n_events,
+            "most_recalled": most, "never_recalled": never[:50], "never_total": len(never)}
+
+
+def embedding_map(cfg: Config, query_vec: list[float] | None = None, selected_ids: set[int] | None = None) -> dict:
+    """2D PCA (numpy, computed here on the server) of every memory embedding made with the current
+    embed model. Optionally projects a query vector into the same plane."""
+    import numpy as np
+    from cat.memory import from_blob
+    out: dict[str, Any] = {"points": [], "n": 0, "explained": None, "note": None, "query": None, "dims": None, "model": cfg.settings["embed_model"]}
+    with game_db(cfg) as conn:
+        if conn is None:
+            out["note"] = "no memories yet"
+            return out
+        counts, _, _ = recall_stats(conn)
+        first = clock.parse(db.get_meta(conn, "first_sim_time") or cfg.settings["sim_start"])
+        recs = rows(conn, "SELECT id, kind, text, importance, created_sim_time, embedding, embed_model FROM memories "
+                          "WHERE embedding IS NOT NULL ORDER BY id DESC LIMIT ?", cfg.settings["devdash"]["embedding_map_max_points"])
+    use = [r for r in recs if r["embed_model"] == cfg.settings["embed_model"]]
+    vecs = [(r, from_blob(r["embedding"])) for r in use]
+    vecs = [(r, v) for r, v in vecs if v is not None and v.size]
+    if not vecs:
+        out["note"] = "no memory has an embedding made with the current embed model" if recs else "no memories yet"
+        return out
+    dim = max({v.size for _, v in vecs}, key=lambda d: sum(v.size == d for _, v in vecs))
+    vecs = [(r, v) for r, v in vecs if v.size == dim]
+    X = np.vstack([v for _, v in vecs]).astype(np.float64)
+    mu = X.mean(axis=0)
+    Xc = X - mu
+    comps = np.zeros((2, dim))
+    ratio = [0.0, 0.0]
+    if len(vecs) >= 2:
+        _, S, Vt = np.linalg.svd(Xc, full_matrices=False)
+        k = min(2, Vt.shape[0])
+        comps[:k] = Vt[:k]
+        var = S ** 2
+        if var.sum() > 0:
+            ratio = [float(var[i] / var.sum()) if i < len(var) else 0.0 for i in range(2)]
+    P = Xc @ comps.T
+    q2 = None
+    if query_vec is not None and len(query_vec) == dim:
+        q2 = (np.asarray(query_vec, dtype=np.float64) - mu) @ comps.T
+    pts = P if q2 is None else np.vstack([P, q2])
+    lo, hi = pts.min(axis=0), pts.max(axis=0)
+    span = max(float((hi - lo).max()), 1e-9)
+    center = (lo + hi) / 2
+
+    def norm(p):
+        return [round(0.5 + float((p[0] - center[0]) / span) * 0.92, 4), round(0.5 + float((p[1] - center[1]) / span) * 0.92, 4)]
+    newest = max(clock.parse(r["created_sim_time"]) for r, _ in vecs)
+    oldest = min(clock.parse(r["created_sim_time"]) for r, _ in vecs)
+    age_span = max((newest - oldest).total_seconds(), 1.0)
+    selected_ids = selected_ids or set()
+    for (r, _), p in zip(vecs, P):
+        created = clock.parse(r["created_sim_time"])
+        x, y = norm(p)
+        out["points"].append({"id": r["id"], "kind": r["kind"], "text": r["text"], "importance": r["importance"], "x": x, "y": y,
+                              "age": round((newest - created).total_seconds() / age_span, 3),
+                              "day_number": clock.day_number(first, created), "recalled": counts.get(r["id"], 0),
+                              "selected": r["id"] in selected_ids})
+    out.update(n=len(vecs), explained=[round(x, 4) for x in ratio], dims=dim)
+    if q2 is not None:
+        out["query"] = dict(zip(("x", "y"), norm(q2)))
+    skipped = len(recs) - len(vecs)
+    if skipped:
+        out["note"] = f"{skipped} memories skipped: embedded with another model or dimension (run scripts/reembed.py)"
+    return out
+
+
+def embed_text(cfg: Config, text: str) -> tuple[list[float] | None, str | None]:
+    host = cfg.settings["ollama_host"].rstrip("/")
+    try:
+        with httpx.Client(timeout=cfg.settings["devdash"]["llm_timeout_seconds"]) as c:
+            r = c.post(f"{host}/api/embed", json={"model": cfg.settings["embed_model"], "input": [text]})
+            r.raise_for_status()
+            vecs = r.json().get("embeddings")
+        if not vecs or not vecs[0]:
+            return None, "Ollama returned no embedding"
+        return vecs[0], None
+    except (httpx.HTTPError, ValueError) as e:
+        return None, f"{type(e).__name__}: {e}"
+
+
+def memory_search(cfg: Config, text: str) -> dict:
+    """Embed `text` and score every long-term memory with the engine's own Memory.score_candidates:
+    recency, importance, relevance (cosine), weighted score, and whether it would be selected."""
+    from cat.memory import Memory
+    rc = cfg.settings["recall"]
+    out: dict[str, Any] = {"query": text, "error": None, "weights": rc, "results": [], "dims": None, "used_embedding": False}
+    vec, err = embed_text(cfg, text)
+    out["error"] = err
+    out["dims"] = len(vec) if vec else None
+    out["vector"] = vec
+    with game_db(cfg) as conn:
+        if conn is None:
+            return out
+        st = db.get_state(conn)
+        now = st["sim_time"] if st else cfg.settings["sim_start"]
+        out["now"] = now
+        mem = Memory(conn, cfg, None)
+        cands = mem.score_candidates(vec, now)
+        counts, _, _ = recall_stats(conn)
+    cands.sort(key=lambda c: (-c["score"], -c["row"]["id"]))
+    out["used_embedding"] = vec is not None
+    out["results"] = [{"memory_id": c["row"]["id"], "text": c["row"]["text"], "recency": round(c["recency"], 4),
+                       "importance": round(c["importance"], 4), "relevance": round(c["relevance"], 4),
+                       "score": round(c["score"], 4), "selected": i < rc["k"], "times_recalled": counts.get(c["row"]["id"], 0),
+                       "terms": {"recency": round(rc["w_recency"] * c["recency"], 4),
+                                 "importance": round(rc["w_importance"] * c["importance"], 4),
+                                 "relevance": round(rc["w_relevance"] * c["relevance"], 4)}}
+                      for i, c in enumerate(cands)]
+    return out
