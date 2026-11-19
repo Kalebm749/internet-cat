@@ -268,7 +268,7 @@ def test_sleep_nights_show_inputs_outputs_proposed_vs_clamped(cfg):
     assert night["traces"]["consolidate"]["input"]["day_log"] and night["traces"]["consolidate"]["output"]["memories"]
     assert night["new_memories"] and night["pref_table"][0]["subject"] == "the rain"
     assert [c["kind"] for c in night["calls"]] == ["sleep_consolidate", "sleep_tendencies", "sleep_preferences"]
-    assert night["pref_table"][0]["previous"] is None                                       # first time it is liked
+    assert s["nights"][-1]["pref_table"][0]["previous"] is None                             # the first night it is liked
     assert s["nights"][0]["pref_table"][0]["previous"] == s["nights"][1]["pref_table"][0]["valence"]   # blended with last night
 
 
