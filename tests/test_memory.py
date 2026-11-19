@@ -154,6 +154,7 @@ def test_reembed_all(M, conn):
 def engine(cfg, seed=1):
     b = MockBackend(seed=seed)
     b.need_ids = list(cfg.character["needs"])
+    b.tendency_names = list(cfg.character["tendencies"])
     return Engine(cfg, b, rng=random.Random(seed)), b
 
 
@@ -205,13 +206,14 @@ def test_embed_outage_does_not_break_tick(cfg):
         from cat.llm import BackendError
         raise BackendError("no embeddings today")
     b.embed = flaky
-    for _ in range(20):
-        assert e.tick()["kind"] == "tick"
+    kinds = {e.tick()["kind"] for _ in range(20)}
+    assert "tick" in kinds and "doze" not in kinds           # embedding outage never dozes the cat
     assert any(m["embedding"] is None for m in e.memory.all_short())
 
 
 def test_1000_ticks_with_memory(cfg):
     e, _ = engine(cfg, seed=5)
     e.run(ticks=1000, interval=0)
-    assert e.conn.execute("SELECT COUNT(*) FROM ticks WHERE kind='tick'").fetchone()[0] == 1000
-    assert e.conn.execute("SELECT COUNT(*) FROM memories WHERE kind='short'").fetchone()[0] > 50
+    assert e.conn.execute("SELECT COUNT(*) FROM ticks").fetchone()[0] == 1000
+    # short-term memories are consolidated into long-term ones at sleep
+    assert e.conn.execute("SELECT COUNT(*) FROM memories WHERE kind='long'").fetchone()[0] > 0

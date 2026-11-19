@@ -61,3 +61,10 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 - Recall: `w_recency*recency + w_importance*importance + w_relevance*cosine(query, memory)`, recency = 0.5^(sim hours since created/last recalled / `recency_half_life_sim_hours`). Recalled memories get `last_recalled` updated.
 - If the embedding call fails, memories are still stored (no index) and recall falls back to recency + importance.
 - After changing `embed_model`, run `scripts/reembed.py`.
+
+## Sleep (`cat/sleep.py`, settings `sleep.*`)
+- **Falls asleep** when it is night and energy < `fall_asleep_energy_below` (no brain call), or the brain's `wants_sleep` is true and energy < `wants_sleep_energy_below` (or it is night).
+- **Asleep ticks** (`ticks.kind = 'asleep'`) skip the brain/narrator, restore the `sleep_restore` need by `restore_per_sim_hour`, and decay needs at `decay_multiplier` speed. It **wakes** when that need reaches `wake_rest_at_least`, it is past `wake_not_before_hour` and not night, or after `max_hours`.
+- **The cycle** runs when sleep begins and makes 3 LLM calls (consolidate, tendencies, preferences). Nothing is written unless all succeed; if the brain is offline it stays pending (`meta.sleep_pending`) and retries on every sleeping tick. Short-term memories are kept until then.
+- LLM output is turned into numbers by code: memory importance is `low|medium|high` -> `importance_values`; tendency proposals are -1..1, scaled by `tendency_max_step` and clamped to 0..1 (core traits are never touched); preference valences are blended with the existing value (`preference_blend`), so new likes start weak and strengthen by repetition. Weak ones (< `preference_min_abs`) are forgotten and the total is capped.
+- `sleep_log.sim_date` is the date the sleep began.

@@ -148,6 +148,7 @@ class MockBackend(LLMBackend):
         self.fail_next = 0
         self.handlers: dict[str, Callable[[list[dict], dict], dict]] = {}
         self.calls: list[tuple[str, str]] = []  # (task, model)
+        self.tendency_names: list[str] = []  # set by the engine so mock sleep output names real tendencies
         self.need_ids: list[str] = []  # set by the engine so mock gains name real needs
 
     def is_online(self) -> bool:
@@ -207,9 +208,11 @@ class MockBackend(LLMBackend):
         if task == "brain":
             act = r.choice(["looks out of the window", "bats at the red ball", "naps on the sofa",
                             "sniffs around", "washes a paw"])
+            tired = any(w in (messages[-1]["content"] if messages else "")
+                        for w in ("Energy: tired", "Energy: exhausted"))
             return {"reaction": "hm, ok.", "thought": "what next?", "action": act,
                     "intent": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"]),
-                    "wants_sleep": False}
+                    "wants_sleep": tired and r.random() < 0.5}
         if task == "narrator":
             gains = {n: r.choice(["0", "+", "+", "++"]) for n in r.sample(
                 self.need_ids, min(2, len(self.need_ids)))}
@@ -218,12 +221,18 @@ class MockBackend(LLMBackend):
                     "duration": r.choice([10, 20, 30]),
                     "changes": self._mock_changes(messages)}
         if task == "consolidate":
-            return {"memories": [{"text": "A quiet day at home.", "importance": 0.4}],
-                    "summary": "An uneventful day."}
+            first = re.search(r"^- (.+)$", messages[-1]["content"] if messages else "", re.M)
+            text = first.group(1)[:120] if first else "A quiet day at home."
+            return {"memories": [{"text": text, "importance": r.choice(["low", "medium", "high"])}],
+                    "summary": "A day like any other."}
         if task == "tendencies":
-            return {"changes": {}}
+            # deliberately over-eager (+-1) so the engine's clamp is exercised
+            return {"changes": {t: r.choice([-1, 0, 1, 5]) for t in self.tendency_names}}
         if task == "preferences":
-            return {"preferences": []}
+            if r.random() < 0.5:
+                return {"preferences": []}
+            return {"preferences": [{"subject": r.choice(["the old tree", "the sofa", "rain"]),
+                                     "valence": r.choice([-0.8, 0.6, 0.9]), "reason": "mock"}]}
         raise BackendError(f"mock: unknown task '{task}'")
 
 

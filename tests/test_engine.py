@@ -11,6 +11,7 @@ from cat.llm import MockBackend
 def make_engine(cfg, seed=1, backend=None):
     b = backend or MockBackend(seed=seed)
     b.need_ids = list(cfg.character["needs"])
+    b.tendency_names = list(cfg.character["tendencies"])
     return Engine(cfg, b, rng=random.Random(seed)), b
 
 

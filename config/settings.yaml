@@ -64,14 +64,23 @@ doze:
   energy_restore: 2            # points of the sleep_restore need per dozing tick
   sim_minutes: 20
 sleep:
-  fall_asleep_energy_below: 25     # energy below this at night => falls asleep
+  fall_asleep_energy_below: 25     # at night, energy below this => falls asleep (no brain call)
   wants_sleep_energy_below: 60     # brain's wants_sleep honoured below this (or at night)
-  wake_energy_at_least: 90
-  wake_not_before_hour: 6
-  restore_per_sim_hour: 12     # sleep_restore need points per sim hour asleep
+  wake_rest_at_least: 90           # wakes when the sleep_restore need reaches this ...
+  wake_not_before_hour: 6          # ... and it is past this hour and not night
+  max_hours: 12                    # safety cap on one sleep (sim hours)
+  restore_per_sim_hour: 12         # sleep_restore need points per sim hour asleep
+  decay_multiplier: 0.5            # needs decay this much slower while asleep
   sim_minutes_per_tick: 60
-  tendency_max_step: 0.05
+  tendency_max_step: 0.05          # max drift per tendency per night; LLM gives -1..1, scaled by this
   max_new_memories: 5
+  importance_values: {low: 0.25, medium: 0.55, high: 0.85}   # LLM says a bucket, code makes the number
+  day_log_max_ticks: 40            # how much of the day's log the consolidation prompt sees
+  preference_blend: 0.5            # weight of tonight's opinion vs the existing valence
+  max_preferences_per_night: 3
+  max_preferences_total: 40
+  preference_min_abs: 0.1          # preferences weaker than this are forgotten
+  max_preference_subject_length: 60
 
 # --- memory ---
 recall: {k: 5, w_recency: 1.0, w_importance: 1.0, w_relevance: 1.5}

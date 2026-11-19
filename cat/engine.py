@@ -11,7 +11,7 @@ from typing import Callable
 
 from collections import deque
 
-from cat import brain, character, clock, db, effects, narrator
+from cat import brain, character, clock, db, effects, narrator, sleep
 from cat.config import Config
 from cat.db import dumps
 from cat.llm import BackendError, LLMBackend, cosine
@@ -135,6 +135,12 @@ class Engine:
         nudge = st["mood"].get("event_nudge", 0.0) * s["mood"]["event_decay"] \
             + sum(e["mood"] for e in fired)
 
+        # sleeping, or too exhausted at night to carry on: no brain call this tick
+        if st["is_asleep"]:
+            return self._rest_tick(fired, nudge, onset=False)
+        if clock.is_night(dt, s["phases"]) and st["energy"] < s["sleep"]["fall_asleep_energy_below"]:
+            return self._rest_tick(fired, nudge, onset=True)
+
         # 2+3. brain and narrator (LLM calls, outside any transaction)
         result = None
         recalled: list[dict] = []
@@ -175,18 +181,22 @@ class Engine:
                    "intent": None, "outcome": "dozing", "gains": {}, "effort": None,
                    "duration": minutes, "changes": [], "rejected": []}
 
-        for e in fired:  # event-spawned objects are world changes too (audit trail)
-            if e["spawned"]:   # recorded from spawn time: the narrator may consume it this tick
-                row["changes"] = [e["spawn_info"]] + row["changes"]
         mood = character.compute_mood(needs, before, nudge, feeling, cfg)
-        new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes), "needs": needs,
-                     "mood": mood, "energy": character.energy(needs, cfg),
+        new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes),
+                     "needs": needs, "mood": mood, "energy": character.energy(needs, cfg),
                      "weather": self.world.weather, "brain_online": online}
+
+        # the creature chose to sleep (honoured when tired enough, or at night)
+        falls_asleep = bool(result) and result[0]["wants_sleep"] and (
+            new_state["energy"] < s["sleep"]["wants_sleep_energy_below"]
+            or clock.is_night(dt, s["phases"]))
+        new_state["is_asleep"] = falls_asleep
 
         # notable moment -> short-term memory (embedding is an HTTP call: do it before the txn)
         short_mem = None
         if result:
-            why = notable_reasons(cfg, before, needs, feeling, row["changes"], row["rejected"])
+            why = notable_reasons(cfg, before, needs, feeling,
+                                  row["changes"], row["rejected"])
             if why:
                 t = clock.time_label(dt)
                 text = (f"{t}, {cfg.world['areas'][st['area']]['name']}: {row['action']}. "
@@ -195,33 +205,111 @@ class Engine:
                     text += f' You felt: "{row["reaction"]}"'
                 short_mem = self.memory.prepare(text, importance_for(cfg, len(why)), now)
 
-        # 5. record: one transaction; a crash leaves the previous state intact
+        info = self._commit(row, fired, now, st["area"], new_state, short_mem, recalled,
+                            online, sleep_start=falls_asleep)
+        if result:
+            self.last_outcome = row["outcome"]
+        if falls_asleep:
+            self._try_sleep_cycle()
+        return info
+
+    # ---------- sleeping ----------
+    def _rest_tick(self, fired: list[dict], nudge: float, onset: bool) -> dict:
+        """One tick of sleep: no brain or narrator. Restores rest, advances the clock, wakes
+        when rested (and it is morning), retries the sleep cycle if it is still pending."""
+        cfg, st, s = self.cfg, self.state, self.cfg.settings
+        sl = s["sleep"]
+        now = st["sim_time"]
+        online = self.backend.is_online()
+        before = dict(st["needs"])
+        minutes = sl["sim_minutes_per_tick"]
+        needs = character.decay(before, minutes * sl["decay_multiplier"], cfg)
+        needs = character.restore(needs, sl["restore_per_sim_hour"] * minutes / 60, cfg)
+        new_time = clock.advance(now, minutes)
+        new_dt = clock.parse(new_time)
+        wake = False
+        if not onset:
+            started = db.get_meta(self.conn, "sleep_started", now)
+            slept_h = (new_dt - clock.parse(started)).total_seconds() / 3600
+            rested = needs[character.need_with_flag(cfg, "sleep_restore")] >= sl["wake_rest_at_least"]
+            morning = (new_dt.hour >= sl["wake_not_before_hour"]
+                       and not clock.is_night(new_dt, s["phases"]))
+            wake = (rested and morning) or slept_h >= sl["max_hours"]
+        mood = character.compute_mood(needs, before, nudge, None, cfg)
+        new_state = {**st, "sim_time": new_time, "needs": needs, "mood": mood,
+                     "energy": character.energy(needs, cfg), "weather": self.world.weather,
+                     "brain_online": online, "is_asleep": not wake}
+        outcome = ("settles down to sleep." if onset else
+                   "wakes up, rested." if wake else "sleeping.")
+        row = {"kind": "asleep", "reaction": None, "thought": None, "action": None,
+               "intent": None, "outcome": outcome, "gains": {}, "effort": None,
+               "duration": minutes, "changes": [], "rejected": []}
+        info = self._commit(row, fired, now, st["area"], new_state, None, [], online,
+                            sleep_start=onset, wake=wake)
+        self._try_sleep_cycle()
+        return info
+
+    def _try_sleep_cycle(self) -> None:
+        """Run the nightly consolidation if one is pending and the brain is reachable. A failure
+        writes nothing; it is retried on the next sleeping tick."""
+        if db.get_meta(self.conn, "sleep_pending") != "1" or not self.backend.is_online():
+            return
+        st = self.state
+        try:
+            plan = sleep.plan(self.cfg, self.backend, self.conn, self.memory,
+                              st["tendencies"], st["sim_time"])
+        except BackendError as e:
+            log.warning("sleep cycle postponed (brain unavailable): %s", e)
+            return
+        new_state = {**st, "tendencies": plan.tendencies}
+        real = _now_real()
+        with db.transaction(self.conn):
+            sleep.commit(self.conn, self.cfg, self.memory, plan, st["sim_time"], real,
+                         sim_date=(db.get_meta(self.conn, "sleep_started") or st["sim_time"])[:10])
+            db.save_state(self.conn, new_state, real)
+        self.state = new_state
+        self.memory._dirty = True
+        log.info("sleep cycle done: %d memories, %d tendency changes, %d preferences",
+                 len(plan.memories), len(plan.tendency_changes), len(plan.preferences))
+
+    # ---------- recording ----------
+    def _commit(self, row: dict, fired: list[dict], now: str, area: str, new_state: dict,
+                short_mem: dict | None, recalled: list[dict], online: bool,
+                sleep_start: bool = False, wake: bool = False) -> dict:
+        """Record the tick: one transaction; a crash leaves the previous state intact."""
+        for e in fired:  # event-spawned objects are world changes too (audit trail)
+            if e["spawned"]:   # recorded from spawn time: the narrator may consume it this tick
+                row["changes"] = [e["spawn_info"]] + row["changes"]
+        needs, mood = new_state["needs"], new_state["mood"]
         real = _now_real()
         with db.transaction(self.conn):
             cur = self.conn.execute(
                 "INSERT INTO ticks(kind,sim_time,real_time,area,reaction,thought,action,intent,"
                 "outcome,gains,effort,duration,changes,rejected_changes,needs_after,mood_after) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (row["kind"], now, real, st["area"], row["reaction"], row["thought"],
+                (row["kind"], now, real, area, row["reaction"], row["thought"],
                  row["action"], row["intent"], row["outcome"], dumps(row["gains"]), row["effort"],
                  row["duration"], dumps(row["changes"]), dumps(row["rejected"]), dumps(needs),
                  dumps(mood)))
             tick_id = cur.lastrowid
             for e in fired:
                 self.conn.execute("INSERT INTO events(tick_id,sim_time,area,text) VALUES(?,?,?,?)",
-                                  (tick_id, now, e["area"] or st["area"], e["text"]))
+                                  (tick_id, now, e["area"] or area, e["text"]))
             self.world.sync(self.conn)
             if short_mem:
                 self.memory.save(short_mem, "short")
             if recalled:
                 self.memory.mark_recalled([m["id"] for m in recalled], now)
+            if sleep_start:
+                db.set_meta(self.conn, "sleep_started", now)
+                db.set_meta(self.conn, "sleep_pending", 1)
+            if wake:
+                db.set_meta(self.conn, "sleep_started", "")
             db.save_state(self.conn, new_state, real)
             if online:
                 db.set_meta(self.conn, "brain_last_seen", real)
         self.state = new_state
-        if result:
-            self.last_outcome = row["outcome"]
-        return {"id": tick_id, "kind": row["kind"], "sim_time": now, "area": st["area"],
+        return {"id": tick_id, "kind": row["kind"], "sim_time": now, "area": area,
                 "action": row["action"], "outcome": row["outcome"], "mood": mood["word"],
                 "energy": new_state["energy"], "fired": [e["text"] for e in fired]}
 

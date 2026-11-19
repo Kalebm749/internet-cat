@@ -15,6 +15,7 @@ def make_backend(cfg, mock: bool, seed: int | None) -> LLMBackend:
     if mock:
         b = MockBackend(seed=seed or 0)
         b.need_ids = list(cfg.character["needs"])
+        b.tendency_names = list(cfg.character["tendencies"])
         return b
     from cat.llm import OllamaBackend
     return OllamaBackend(cfg)
