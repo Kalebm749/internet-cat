@@ -267,29 +267,23 @@ def test_the_placeholder_world_has_an_event_with_drains():
 
 # ---- mood mapping ----
 def test_mood_mapping_is_validated(tmp_path):
-    assert "mood.valence_bands: 'fun' is not a need" in _problems(
-        tmp_path, "settings.yaml", lambda s: s["mood"]["valence_bands"].update(fun={"full": 5}))
+    assert "mood.bands: 'fun' is not a need" in _problems(
+        tmp_path, "settings.yaml", lambda s: s["mood"]["bands"].update(fun={"full": 5}))
     assert "unknown band 'great'" in _problems(
-        tmp_path / "b", "settings.yaml", lambda s: s["mood"]["valence_bands"]["joy"].update(great=1))
-    assert "mood.valence_bands.joy.full: must be a number -50..50" in _problems(
-        tmp_path / "c", "settings.yaml", lambda s: s["mood"]["valence_bands"]["joy"].update(full=90))
-
-
-def test_arousal_rules_are_validated(tmp_path):
-    def bad(s):
-        s["mood"]["arousal_rules"] = [{"when": {"fun": ["full"]}, "add": 5},
-                                      {"when": {"joy": ["huge"]}, "add": 5},
-                                      {"when": {}, "add": 5},
-                                      {"when": {"joy": ["full"]}, "add": 99}]
-    msg = _problems(tmp_path, "settings.yaml", bad)
-    assert "'fun' is not a need" in msg and "non-empty list of bands" in msg
-    assert "non-empty `when` mapping" in msg and "add must be a number -50..50" in msg
+        tmp_path / "b", "settings.yaml", lambda s: s["mood"]["bands"]["joy"].update(great=1))
+    assert "mood.bands.joy.full: must be a number -50..50" in _problems(
+        tmp_path / "c", "settings.yaml", lambda s: s["mood"]["bands"]["joy"].update(full=90))
 
 
 def test_mood_numbers_are_validated(tmp_path):
     def bad(s):
-        s["mood"].update(event_decay=2, word_threshold=80, arousal_high=-90, arousal_base="x")
+        s["mood"].update(event_decay=2, word_threshold=80, event_points="x")
     msg = _problems(tmp_path, "settings.yaml", bad)
     for part in ("event_decay: must be a number 0..1", "word_threshold: must be a number 0..50",
-                 "arousal_high: must be a number -50..50", "arousal_base: must be a number"):
+                 "event_points: must be a number"):
         assert part in msg
+
+
+def test_there_is_no_arousal_setting():
+    mood = load_config().settings["mood"]
+    assert not any("arousal" in k for k in mood) and "valence_bands" not in mood

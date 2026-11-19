@@ -378,7 +378,7 @@ def test_tick_detail_numbers_equal_the_public_site(cfg, seeded):
     assert (pub["energy"]["value"], pub["energy"]["word"]) == (state["energy"]["value"], state["energy"]["word"])
     assert d["energy"] == pytest.approx(state["energy"]["value"], abs=0.5)          # stored, not derived
     assert d["mood_math"]["word"] == state["mood"]["word"] == pub["mood"]["word"]
-    assert d["mood_math"]["valence"] == state["mood"]["valence"] and d["mood_math"]["arousal"] == state["mood"]["arousal"]
+    assert d["mood_math"]["value"] == state["mood"]["value"]
     # trend arrows on the site compare with the previous tick: the math's `before` is that previous value
     prev = [json.loads(r[0]) for r in conn.execute("SELECT needs_after FROM ticks ORDER BY id DESC LIMIT 2")][1]
     for m in d["need_math"]:

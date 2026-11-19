@@ -46,7 +46,7 @@ Related docs: `server-architecture.md` (how it is built and deployed, including 
 - **Preferences:** learned likes and dislikes ("the oak tree in the park"). Formed during sleep.
 - **Needs:** five in the placeholder character: sustenance, wonder, joy, peace and curiosity. Each runs 0–100 and has a `decay_per_hour`, a **meaning** (a sentence saying what the need is) and text **expressions** for four bands: `full`, `okay` (may be null), `low` and `empty`. A level becomes a band by thresholds in `settings.yaml` (`need_bands`). Which needs exist is set per character. There are no per-need flags: the only special rule is that the sustenance need only rises when an edible object is consumed.
 - **Energy:** a separate resource, one number from −50 to 50. Effort spends it; sleep (and dozing) restore it. It is not a need and is never derived from the needs.
-- **Mood:** two numbers, valence (unpleasant to pleasant) and arousal (calm to lively), each from −50 to 50, worked out from need **bands**, events and the brain's own feeling (see §5). Never set directly.
+- **Mood:** one number, a simple slider from −50 (negative) to 50 (positive), worked out from need **bands**, events and the brain's own feeling (see §5). Never set directly.
 
 ### World model
 - **Areas:** description and which areas connect to which. v1 uses a fixed, hand-written map in config.
@@ -123,11 +123,7 @@ The action, the creature's location, the area's objects (with tags and state), t
 - **Clamp everything:** needs to 0–100, energy and mood to −50–50.
 
 ### Mood calculation
-Mood is two numbers, **valence** and **arousal**, each from −50 to 50, computed from need **bands** using a mapping in `settings.yaml` (`mood`):
-- **Valence:** points per band for the needs listed (joy and peace raise it, sustenance `empty` lowers it), plus a decaying nudge from world events and the brain's own `feeling`, so mood isn't purely mechanical.
-- **Arousal:** a base, plus the energy, plus rules over bands (curiosity `full` with peace `low` or `empty` raises it).
-
-Raw levels never enter the mood. Mood is turned into words before it goes into the brain prompt.
+Mood is **one number**, a slider from −50 (negative) to 50 (positive), computed from need **bands** using a mapping in `settings.yaml` (`mood.bands`): points per band for the needs listed (joy and peace raise it, sustenance `empty` lowers it), plus a decaying nudge from world events and the brain's own `feeling`, so mood isn't purely mechanical. Raw levels never enter the mood. Mood is turned into words before it goes into the brain prompt.
 
 ---
 

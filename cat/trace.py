@@ -179,8 +179,8 @@ class Tracer:
                               r.get("dislike_drain", 0.0), r["clamp_adjust"], r["after"]))
             if self.mood is not None:
                 m = self.mood["mood"]
-                conn.execute("INSERT OR REPLACE INTO mood_math(tick_id,inputs,valence,arousal,word) VALUES(?,?,?,?,?)",
-                             (tick_id, dumps(self.mood["inputs"]), m["valence"], m["arousal"], m["word"]))
+                conn.execute("INSERT OR REPLACE INTO mood_math(tick_id,inputs,value,word) VALUES(?,?,?,?)",
+                             (tick_id, dumps(self.mood["inputs"]), m["value"], m["word"]))
             for r in self.rolls:
                 conn.execute("INSERT INTO event_rolls(tick_id,event_text,chance,roll,fired,filtered_reason) "
                              "VALUES(?,?,?,?,?,?)",

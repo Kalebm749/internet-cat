@@ -47,7 +47,7 @@ def tick(conn, i, sim, kind="tick", dur=30, needs=None, mood=None, area="living_
     conn.execute("INSERT INTO ticks(id,kind,sim_time,real_time,area,action,outcome,duration,changes,rejected_changes,needs_after,mood_after,energy_after,gains) "
                  "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'{}')",
                  (i, kind, sim, "2026-11-18T10:00:00", area, action, outcome, dur, json.dumps(list(changes)), json.dumps(list(rejected)),
-                  json.dumps(needs), json.dumps(mood or {"valence": 0.1, "arousal": 0.4, "word": "calm"}), energy))
+                  json.dumps(needs), json.dumps(mood or {"value": 5.0, "word": "calm"}), energy))
 
 
 # =============================== needs & mood ===============================
@@ -58,7 +58,7 @@ def synthetic_needs_run(cfg):
         food = 10.0 if 3 <= i <= 6 else 60.0         # critical (<15) for ticks 3..6 = 4 x 30 min
         kind = "asleep" if i in (7, 8) else ("doze" if i == 9 else "tick")
         tick(conn, i + 1, t, kind=kind, needs={"sustenance": food, "wonder": 80, "joy": 40, "peace": 90, "curiosity": 20},
-             mood={"valence": 0.1 * i, "arousal": 0.5, "word": "calm"})
+             mood={"value": 4.0 * i, "word": "calm"})
     return conn
 
 
@@ -69,7 +69,7 @@ def test_needs_series_shapes_values_and_stored_energy(cfg):
     assert s["x"] == sorted(s["x"]) and s["x"][1] - s["x"][0] == 30 * 60                   # epoch seconds, 30 sim minutes apart
     assert s["x"][0] == 1_795_000_000 + (s["x"][0] - 1_795_000_000) and s["from"] == "2026-11-18T08:00"
     assert s["needs"]["sustenance"][3] == 10.0 and s["needs"]["sustenance"][0] == 60.0
-    assert s["valence"] == pytest.approx([0.1 * i for i in range(10)]) and s["arousal"] == [0.5] * 10
+    assert s["mood"] == pytest.approx([4.0 * i for i in range(10)]) and "arousal" not in s
     assert s["energy"] == [20.0] * 10                                                    # stored per tick, not derived
     assert set(s["labels"]) == set(cfg.character["needs"])
 

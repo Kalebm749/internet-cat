@@ -104,23 +104,18 @@ max_objects_per_area: 12       # event spawns are skipped when the area is this 
 allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet]
 state_value_max_length: 40
 
-# --- mood: two numbers, valence (unpleasant..pleasant) and arousal (calm..lively), each -50..50 ---
-# Computed from need BANDS (never raw levels). Valence = the points below for each need's band
-# + event nudge + the brain's own feeling. Needs not listed here add nothing.
+# --- mood: ONE number, a slider from -50 (negative) to 50 (positive) ---
+# Computed from need BANDS (never raw levels): the points below for each need's band, plus the
+# decaying event nudge and the brain's own feeling. Needs not listed here add nothing.
 mood:
-  valence_bands:               # points added to valence by a need's band (a missing band adds 0)
-    sustenance: {empty: -20, low: -6}                  # sustenance empty lowers valence
-    joy:        {empty: -15, low: -6, okay: 4, full: 15}   # joy and peace raise valence
+  bands:                       # points added to mood by a need's band (a missing band adds 0)
+    sustenance: {empty: -20, low: -6}                  # sustenance empty lowers mood
+    joy:        {empty: -15, low: -6, okay: 4, full: 15}   # joy and peace raise mood
     peace:      {empty: -12, low: -5, okay: 3, full: 12}
-  arousal_base: -10
-  arousal_energy_weight: 0.4   # arousal points per point of energy (-50..50)
-  arousal_rules:               # when every listed need is in one of its bands, add points to arousal
-    - {when: {curiosity: [full], peace: [low, empty]}, add: 25}    # curious and unsettled: lively
-  event_points: 20             # valence points per unit of an event's mood nudge (events say -1..1)
+  event_points: 20             # mood points per unit of an event's mood nudge (events say -1..1)
   event_decay: 0.7             # per-tick decay of the event nudge
-  feeling_values: {negative: -10, neutral: 0, positive: 10}   # the brain's own `feeling`, in valence points
-  word_threshold: 12           # |valence| above this picks a happy/low word instead of calm
-  arousal_high: 5              # arousal at/above this => excited/tense instead of content/low
+  feeling_values: {negative: -10, neutral: 0, positive: 10}   # the brain's own `feeling`, in mood points
+  word_threshold: 12           # mood above this => "content"; below minus this => "low"; otherwise "calm"
 
 # --- words (value is below the key => that word; first match wins) ---
 energy_words: {-25: exhausted, 0: tired, 25: fine, 51: wide awake}   # energy is -50..50
@@ -183,15 +178,15 @@ web_ui:
   max_page_size: 100
   keepsakes_all_limit: 200
   presence:                    # the abstract presence in the portrait frame (no figure, no body)
-    hue_low_valence: 220       # colour follows valence: this hue at -1 (blue) ...
-    hue_high_valence: 40       # ... to this hue at +1 (amber)
+    hue_low_valence: 220       # colour follows mood: this hue at -50 (blue) ...
+    hue_high_valence: 40       # ... to this hue at +50 (amber)
     saturation_awake: 70       # % ; also used while asleep
     saturation_dozing: 12      # desaturated while dozing (brain offline)
     lightness_awake: 58        # % ; dims while asleep or dozing
     lightness_asleep: 28
     lightness_dozing: 48
-    pulse_seconds_calm: 7.0    # motion follows arousal: one breath takes this long at arousal 0 ...
-    pulse_seconds_aroused: 1.4 # ... and this long at arousal 1
+    pulse_seconds_tired: 7.0   # motion follows energy: one breath takes this long at energy -50 ...
+    pulse_seconds_energetic: 1.4   # ... and this long at energy 50
 
 # --- backup (deploy/backup.sh reads these via env, kept here for reference) ---
 backup_keep: 14                # deploy/backup.sh reads this line

@@ -78,7 +78,7 @@
     body.className = keep.join(" ");
 
     // mood pad + energy
-    var dot = $("#pad-dot"); dot.style.left = s.mood.pad_x + "%"; dot.style.top = s.mood.pad_y + "%";
+    $("#mood-dot").style.left = s.mood.slider_pct + "%";
     var eb = $("#energy-bar");
     eb.setAttribute("aria-valuenow", s.energy.value); eb.setAttribute("aria-label", s.energy.aria);
     eb.firstElementChild.style.width = s.energy.pct + "%";

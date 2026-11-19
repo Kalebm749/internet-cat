@@ -131,6 +131,7 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) ->
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _add_column(conn, "mood_math", "value", "REAL")        # the one mood number (valence/arousal are legacy)
     _add_column(conn, "tick_traces", "pressing", "JSON")   # the brain prompt's need selection and why
     _add_column(conn, "need_math", "dislike_drain", "REAL")  # points a disliked thing being present drained
     _add_column(conn, "need_math", "event_drain", "REAL")   # points an event drained from this need

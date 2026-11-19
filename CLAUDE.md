@@ -20,7 +20,7 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 Decided: "open actions, closed effects" (server-architecture §9). Need levels shape the brain's prompt
 (band words for the most pressing needs), never its choices: code never picks, suggests or ranks actions
 by need. Energy is a **separate resource** (-50..50: effort spends it, sleep restores it), never a need.
-Mood is two numbers (valence, arousal), each -50..50, computed from need bands.
+Mood is one number, a slider from -50 (negative) to 50 (positive), computed from need bands.
 
 ## Commands
 ```

@@ -225,17 +225,30 @@ If the brain cannot be reached the tick is a **doze**: 20 sim minutes, no LLM ca
 
 ## 6. Mood
 
-Mood is **two numbers**, each from −50 to 50:
+Mood is **one number**, a simple slider from **−50 (negative) to 50 (positive)**. It is never set directly. It is recomputed every tick as the sum of:
 
-- **valence**: unpleasant (−) to pleasant (+)
-- **arousal**: calm (−) to lively (+)
+- the points `mood.bands` gives each listed need for its *band*,
+- the event nudge × `event_points`,
+- the brain's own `feeling` (`feeling_values`),
 
-It is never set directly. It is recomputed every tick from:
-
-**Valence** = the points `mood.valence_bands` gives each listed need for its *band* + the event nudge × `event_points` + the brain's own `feeling` (`feeling_values`).
+clamped to −50..50.
 
 | Need | empty | low | okay | full |
 |---|---|---|---|---|
+| sustenance | −20 | −6 | 0 | 0 |
+| joy | −15 | −6 | +4 | +15 |
+| peace | −12 | −5 | +3 | +12 |
+| wonder, curiosity | not listed: add nothing | | | |
+
+The event nudge is the sum of the `mood` values of events that fired, decayed by `event_decay` (0.7) each tick. The feeling adds −10 / 0 / +10. Raw need levels and energy never enter the number.
+
+**Words.** Above `word_threshold` (12) the word is *content*; below −12 it is *low*; in between it is *calm*. The description adds the most pressing need by band ("calm, though peace is low") or the energy word. Mood only reaches the entity as words.
+
+**Worked example (a fresh start).** All needs okay: sustenance okay adds 0, joy okay +4, peace okay +3 → 7; feeling neutral → **7**. |7| < 12 → **calm**.
+
+**Where mood matters.** It never changes needs or choices directly. It affects: the words in the next prompt; the recall query (the mood word is part of it); the website's mood slider and mood word, and the *colour* of the abstract presence (blue at −50 to amber at +50); and the dev dashboard. (How fast the presence breathes follows *energy*, not mood.)
+
+---|---|---|---|---|
 | sustenance | −20 | −6 | 0 | 0 |
 | joy | −15 | −6 | +4 | +15 |
 | peace | −12 | −5 | +3 | +12 |
@@ -249,7 +262,7 @@ The event nudge is the sum of the `mood` values of events that fired, decayed by
 
 **Worked example (a fresh start).** All needs okay: valence = 0 (sustenance) + 4 (joy okay) + 3 (peace okay) = 7; feeling neutral → 7. Arousal = −10 + 0.4 × 30 = 2. |7| < 12 and 2 < 5 → **calm**.
 
-**Where mood matters.** It never changes needs or choices directly. It affects: the words in the next prompt; the recall query (the mood word is part of it); the website's mood pad, mood word and the colour and motion of the abstract presence (colour from valence, breathing speed from arousal); and the dev dashboard.
+**Where mood matters.** It never changes needs or choices directly. It affects: the words in the next prompt; the recall query (the mood word is part of it); the website's mood slider, mood word and the colour and motion of the abstract presence (colour from valence, breathing speed from arousal); and the dev dashboard.
 
 ---
 
@@ -429,12 +442,10 @@ Reading the numbers: a need that decays 5/hour needs about +15 every 3 sim hours
 
 | Parameter | Effect |
 |---|---|
-| `mood.valence_bands` | the whole mood map: which needs and bands move valence, by how many points. Add `wonder: {empty: -8}` to let wonder matter, or remove joy to decouple it |
-| `mood.arousal_base`, `arousal_energy_weight` | baseline liveliness; tired entities calm down |
-| `mood.arousal_rules` | band combinations that make it lively or flat. Add `{when: {sustenance: [empty]}, add: 15}` for "frantic when starving" |
+| `mood.bands` | the whole mood map: which needs and bands move the mood, by how many points. Add `wonder: {empty: -8}` to let wonder matter, or remove joy to decouple it |
 | `event_points`, `event_decay` | how strongly and how long events colour mood |
 | `feeling_values` | how much the brain's own feeling counts |
-| `word_threshold`, `arousal_high` | where the mood words flip |
+| `word_threshold` | where the mood word flips between low, calm and content |
 
 ### Memory, personality
 
@@ -472,11 +483,11 @@ For the character's voice and wording of needs, edit `character.yaml`: `meaning`
 | **More varied behavior** | `repetition_penalty.multiplier: 0.2`, `stale_after_ticks: 2`, raise `llm_temperature.brain` to 1.0 |
 | **Sleeps more** | `effort_energy_cost: {low: 3, medium: 9, high: 18}`; `sleep.fall_asleep_energy_below: -10` |
 | **Never sleeps by day** | `sleep.wants_sleep_energy_below: -50` |
-| **Moodier** | raise `valence_bands` magnitudes (e.g. joy full 25, empty −25) and `event_points` to 30 |
+| **Moodier** | raise `mood.bands` magnitudes (e.g. joy full 25, empty −25) and `event_points` to 30 |
 | **Remembers more** | raise `recall.k` to 8 and `recency_half_life_sim_hours` to 120 |
 | **Faster personality drift** | `sleep.tendency_max_step: 0.1` |
 | **No dislike penalty** | `dislike_drain.points_per_hour: 0` |
-| Make a **new need** | add it to `character.yaml` (start, decay_per_hour, meaning, all required expressions); it joins at its start value after a restart. Optionally list it in `mood.valence_bands`, `repetition_penalty.needs`, `dislike_drain.needs` |
+| Make a **new need** | add it to `character.yaml` (start, decay_per_hour, meaning, all required expressions); it joins at its start value after a restart. Optionally list it in `mood.bands`, `repetition_penalty.needs`, `dislike_drain.needs` |
 | **Remove a need** | delete it from `character.yaml` *and* from any `settings.yaml` / `world.yaml` list that names it (the validator names each leftover) |
 
 ### Safety notes
@@ -559,7 +570,7 @@ The **dev dashboard** (`http://127.0.0.1:8090`, see the README) explains every n
 |---|---|
 | Why did it do/feel that? | **Ticks → tick detail**: the prompts, raw responses, which need expressions were selected and why, recall scores, event rolls, effect validation |
 | Why did a need go up or down? | tick detail → **Need math** (before, decay, event drain, dislike drain, bucket, repetition, clamp, after) |
-| Why is the mood *calm*? | tick detail → **Mood math** (every band term, event nudge, feeling, arousal terms) |
+| Why is the mood *calm*? | tick detail → **Mood math** (every band term, event nudge, feeling) |
 | Is it running well? | **Overview** (tick time, doze count, errors, service health); **LLM calls** (latency, invalid JSON) |
 | How are needs and mood trending? | **Needs & mood** (charts over 24 h / 7 d / all, sleep and doze shaded, critical time per need) |
 | What did last night do? | **Sleep** (each step's input, proposal and what code applied; tendency history) |

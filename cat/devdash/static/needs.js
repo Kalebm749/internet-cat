@@ -22,8 +22,8 @@
         plots.push(L.make(document.getElementById("chart-energy"),
           { series: [{ label: "sim time" }, L.line("energy", L.PALETTE[2])], scales: { x: { time: true }, y: { range: [-50, 50] } } }, [d.x, d.energy], ex));
         plots.push(L.make(document.getElementById("chart-mood"),
-          { series: [{ label: "sim time" }, L.line("valence", L.PALETTE[0]), L.line("arousal", L.PALETTE[3])], scales: { x: { time: true }, y: { range: [-50, 50] } } },
-          [d.x, d.valence, d.arousal], ex));
+          { series: [{ label: "sim time" }, L.line("mood", L.PALETTE[0])], scales: { x: { time: true }, y: { range: [-50, 50] } } },
+          [d.x, d.mood], ex));
       });
   }
   window.addEventListener("resize", function () { clearTimeout(load._t); load._t = setTimeout(load, 250); });

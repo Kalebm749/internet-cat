@@ -649,11 +649,11 @@ def _downsample(n: int, limit: int) -> list[int]:
 
 
 def needs_series(cfg: Config, rng: str = "24h") -> dict:
-    """Needs, derived energy, valence and arousal over sim time, plus sleep/doze bands and the needs
+    """Needs, energy and the mood slider over sim time, plus sleep/doze bands and the needs
     that sat at a critical level the longest."""
     rng = rng if rng in RANGES else "24h"
     crit = cfg.settings["need_bands"]["empty_below"]       # the empty band is the critical one
-    out: dict[str, Any] = {"range": rng, "x": [], "needs": {}, "energy": [], "valence": [], "arousal": [],
+    out: dict[str, Any] = {"range": rng, "x": [], "needs": {}, "energy": [], "mood": [],
                            "bands": [], "critical": [], "critical_below": crit, "from": None, "to": None, "ticks": 0,
                            "labels": {k: character.need_label(k, cfg) for k in cfg.character["needs"]}}
     with game_db(cfg) as conn:
@@ -709,8 +709,7 @@ def needs_series(cfg: Config, rng: str = "24h") -> dict:
     out["needs"] = {nid: [round(r["_n"].get(nid), 2) if r["_n"].get(nid) is not None else None for r in sel]
                     for nid in cfg.character["needs"]}
     out["energy"] = [r.get("energy_after") for r in sel]
-    out["valence"] = [r["_m"].get("valence") for r in sel]
-    out["arousal"] = [r["_m"].get("arousal") for r in sel]
+    out["mood"] = [r["_m"].get("value", r["_m"].get("valence")) for r in sel]
     return out
 
 

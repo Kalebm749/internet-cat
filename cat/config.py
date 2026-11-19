@@ -144,7 +144,7 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
         pres = ui.get("presence")
         pkeys = ("hue_low_valence", "hue_high_valence", "saturation_awake", "saturation_dozing",
                  "lightness_awake", "lightness_asleep", "lightness_dozing",
-                 "pulse_seconds_calm", "pulse_seconds_aroused")
+                 "pulse_seconds_tired", "pulse_seconds_energetic")
         if not isinstance(pres, dict):
             errs.append("settings.yaml web_ui: missing required field 'presence'")
         else:
@@ -155,7 +155,7 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                       "lightness_asleep", "lightness_dozing"):
                 if _num(pres.get(k)) and not 0 <= pres[k] <= 100:
                     errs.append(f"settings.yaml web_ui.presence.{k}: must be 0..100")
-            for k in ("pulse_seconds_calm", "pulse_seconds_aroused"):
+            for k in ("pulse_seconds_tired", "pulse_seconds_energetic"):
                 if _num(pres.get(k)) and pres[k] <= 0:
                     errs.append(f"settings.yaml web_ui.presence.{k}: must be > 0")
     sl = st.get("sleep")
@@ -285,46 +285,27 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                         errs.append(f"settings.yaml repetition_penalty.needs: '{x}' is not a need")
         md = st.get("mood")
         if isinstance(md, dict):
-            vb = md.get("valence_bands")
+            vb = md.get("bands")
             if not isinstance(vb, dict):
-                errs.append("settings.yaml mood.valence_bands: must be a mapping of need id -> {band: points}")
+                errs.append("settings.yaml mood.bands: must be a mapping of need id -> {band: points}")
             else:
                 for nid, table in vb.items():
                     if needs and nid not in needs:
-                        errs.append(f"settings.yaml mood.valence_bands: '{nid}' is not a need")
+                        errs.append(f"settings.yaml mood.bands: '{nid}' is not a need")
                     if not isinstance(table, dict):
-                        errs.append(f"settings.yaml mood.valence_bands.{nid}: must be a mapping of band -> points")
+                        errs.append(f"settings.yaml mood.bands.{nid}: must be a mapping of band -> points")
                         continue
                     for band, pts in table.items():
                         if band not in BANDS:
-                            errs.append(f"settings.yaml mood.valence_bands.{nid}: unknown band '{band}'")
+                            errs.append(f"settings.yaml mood.bands.{nid}: unknown band '{band}'")
                         if not _num(pts) or not -50 <= pts <= 50:
-                            errs.append(f"settings.yaml mood.valence_bands.{nid}.{band}: must be a number -50..50")
-            rules = md.get("arousal_rules")
-            if not isinstance(rules, list):
-                errs.append("settings.yaml mood.arousal_rules: must be a list")
-            else:
-                for i, r in enumerate(rules):
-                    w = f"settings.yaml mood.arousal_rules[{i}]"
-                    if not isinstance(r, dict) or not isinstance(r.get("when"), dict) or not r["when"]:
-                        errs.append(f"{w}: needs a non-empty `when` mapping of need id -> [bands]")
-                        continue
-                    if not _num(r.get("add")) or not -50 <= r["add"] <= 50:
-                        errs.append(f"{w}: add must be a number -50..50")
-                    for nid, allowed in r["when"].items():
-                        if needs and nid not in needs:
-                            errs.append(f"{w}: '{nid}' is not a need")
-                        if not isinstance(allowed, list) or not allowed or any(b not in BANDS for b in allowed):
-                            errs.append(f"{w}: {nid} must be a non-empty list of bands ({', '.join(BANDS)})")
-            for k in ("arousal_base", "arousal_energy_weight", "event_points"):
-                if not _num(md.get(k)):
-                    errs.append(f"settings.yaml mood.{k}: must be a number")
+                            errs.append(f"settings.yaml mood.bands.{nid}.{band}: must be a number -50..50")
+            if not _num(md.get("event_points")):
+                errs.append("settings.yaml mood.event_points: must be a number")
             if not _num(md.get("event_decay")) or not 0 <= md["event_decay"] <= 1:
                 errs.append("settings.yaml mood.event_decay: must be a number 0..1")
             if not _num(md.get("word_threshold")) or not 0 <= md["word_threshold"] <= 50:
                 errs.append("settings.yaml mood.word_threshold: must be a number 0..50")
-            if not _num(md.get("arousal_high")) or not -50 <= md["arousal_high"] <= 50:
-                errs.append("settings.yaml mood.arousal_high: must be a number -50..50")
             fv = md.get("feeling_values")
             if not isinstance(fv, dict) or not all(_num(v) and -50 <= v <= 50 for v in fv.values()):
                 errs.append("settings.yaml mood.feeling_values: must map feelings to numbers -50..50")
