@@ -322,7 +322,7 @@ def test_world_areas_objects_inventory(cfg):
     assert [o["id"] for o in w["inventory"]] == ["ball"] and "ball" not in {o["id"] for o in w["objects"]}
     sofa = next(o for o in w["objects"] if o["id"] == "sofa")
     assert sofa["area_name"] == "the living room" and "climbable" in sofa["tags"] and sofa["created_by"] == "world"
-    assert next(a for a in w["areas"] if a["id"] == "living_room")["objects"] == 3            # sofa, window, cushion
+    assert next(a for a in w["areas"] if a["id"] == "living_room")["objects"] == 4            # sofa, window, cushion, books
     assert next(a for a in w["areas"] if a["id"] == "living_room")["exits"] == ["the kitchen", "the hallway"]
 
 

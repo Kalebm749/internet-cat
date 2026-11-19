@@ -703,9 +703,11 @@ class Engine:
         self.cfg.settings.update(new.settings)             # same dict object: every component sees it
         self.cfg.prompts.clear()
         self.cfg.prompts.update(new.prompts)               # prompt text is live too
+        self.cfg.moves.clear()
+        self.cfg.moves.update(new.moves)                   # and so are the moves
         self.recent_action_vecs = deque(self.recent_action_vecs,
                                         maxlen=self.cfg.settings["repetition_penalty"]["window"])
-        self.dev.publish_config(("settings", "prompts"))
+        self.dev.publish_config(("settings", "prompts", "moves"))
         log.info("settings reloaded; changed: %s", changed, extra={"event": "settings_reloaded",
                                                                    "extra": {"changed": changed}})
         return changed

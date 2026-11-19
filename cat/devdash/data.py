@@ -1006,10 +1006,10 @@ def config_view(cfg: Config) -> dict:
         loaded = q.get_config()
         status = q.get_status()
     files = []
-    for name in ("settings", "character", "world", "prompts"):
+    for name in ("settings", "character", "world", "prompts", "moves"):
         path = Path(cfg.config_dir) / f"{name}.yaml"
         item: dict[str, Any] = {"name": name, "file": f"{name}.yaml", "loaded": None, "loaded_at": None, "disk": None,
-                                "diff": "", "state": "unknown", "error": None, "applies": "live (reload_settings)" if name in ("settings", "prompts") else "on restart"}
+                                "diff": "", "state": "unknown", "error": None, "applies": "live (reload_settings)" if name in ("settings", "prompts", "moves") else "on restart"}
         try:
             raw = path.read_bytes()
             item["disk_sha"] = hashlib.sha256(raw).hexdigest()

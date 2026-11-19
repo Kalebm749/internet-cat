@@ -214,10 +214,10 @@ def state_of(cfg):
 def test_config_matches_disk_right_after_start(cfg):
     started(cfg)
     v = data.config_view(cfg)
-    assert v["engine_known"] and v["changed"] == [] and state_of(cfg) == {"settings": "same", "character": "same", "world": "same", "prompts": "same"}
+    assert v["engine_known"] and v["changed"] == [] and state_of(cfg) == {"settings": "same", "character": "same", "world": "same", "prompts": "same", "moves": "same"}
     f = v["files"][0]
     assert yaml.safe_load(f["loaded"])["downtime_policy"] == "pause" and f["loaded_at"] and f["applies"].startswith("live")
-    assert [x["applies"] for x in v["files"][1:]] == ["on restart", "on restart", "live (reload_settings)"]
+    assert [x["applies"] for x in v["files"][1:]] == ["on restart", "on restart", "live (reload_settings)", "live (reload_settings)"]
 
 
 def test_config_shows_a_diff_when_files_change_on_disk(cfg):
@@ -273,7 +273,7 @@ def test_reload_settings_button_flow_clears_the_settings_diff(cfg):
     assert c.post("/api/dev/commands", json={"command": "reload_settings", "confirm": True}, headers=HDR).status_code == 202
     e.dev.process()                                                                      # the engine runs it
     assert e.cfg.settings["tick_interval_seconds"] == 12
-    assert state_of(cfg) == {"settings": "same", "character": "changed", "world": "same", "prompts": "same"}   # settings applied; character needs a restart
+    assert state_of(cfg) == {"settings": "same", "character": "changed", "world": "same", "prompts": "same", "moves": "same"}   # settings applied; character needs a restart
     assert "yaml.safe_load" not in c.get("/config").text and "tick_interval_seconds: 12" in c.get("/config").text
 
 

@@ -85,6 +85,12 @@ name_max_length: 40            # created object names / set_state keys
 consume_min_gain: "+"          # eating an edible guarantees at least this bucket on the sustenance need
 sustenance_need: sustenance    # the one need that only rises when an edible object is consumed this tick
 
+# --- moves: what the brain is offered each decision (config/moves.yaml defines the verbs) ---
+moves:
+  max_offered: 30              # the menu is cut to this many (earlier verbs first, then nearer targets)
+  novelty_hours: 24            # a place not visited for this many sim hours counts as new (go: novelty gains)
+  narrate: true                # a cheap prose call turns the result into a sentence; false = templated outcome
+
 # --- need bands: a level becomes a band; the brain sees words, never numbers ---
 need_bands: {empty_below: 15, low_below: 40, okay_below: 75}   # below empty_below => empty; ... ; else full
 max_pressing_needs: 2          # the brain's prompt shows the expressions of at most this many needs

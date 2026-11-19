@@ -23,6 +23,7 @@ class Config:
     character: dict[str, Any]
     world: dict[str, Any]
     prompts: dict[str, Any] = field(default_factory=dict)   # config/prompts.yaml: every fixed prompt text
+    moves: dict[str, Any] = field(default_factory=dict)     # config/moves.yaml: the verbs the world offers
     root: Path = ROOT
     config_dir: Path = CONFIG_DIR           # where the YAML was loaded from (for reload_settings)
     overrides: dict | None = None           # CLI overrides applied on top of settings.yaml
@@ -67,7 +68,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "dislike_drain", "projects", "director", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "projects", "director", "moves", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -309,6 +310,18 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             fv = md.get("feeling_values")
             if not isinstance(fv, dict) or not all(_num(v) and -50 <= v <= 50 for v in fv.values()):
                 errs.append("settings.yaml mood.feeling_values: must map feelings to numbers -50..50")
+        mv_ = st.get("moves")
+        if isinstance(mv_, dict):
+            for k, lo in (("max_offered", 1),):
+                v = mv_.get(k)
+                if isinstance(v, bool) or not isinstance(v, int) or v < lo:
+                    errs.append(f"settings.yaml moves.{k}: must be an integer >= {lo}")
+            if not _num(mv_.get("novelty_hours")) or mv_["novelty_hours"] < 0:
+                errs.append("settings.yaml moves.novelty_hours: must be a number >= 0")
+            if not isinstance(mv_.get("narrate"), bool):
+                errs.append("settings.yaml moves.narrate: must be true or false")
+        elif "moves" in st:
+            errs.append("settings.yaml moves: must be a mapping")
         dr_ = st.get("director")
         if isinstance(dr_, dict):
             if not isinstance(dr_.get("enabled"), bool):
@@ -414,9 +427,15 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
     return errs, warns
 
 
-def validate(settings: dict, character: dict, world: dict, prompts: dict | None = None) -> list[str]:
+def validate(settings: dict, character: dict, world: dict, prompts: dict | None = None,
+             moves: dict | None = None) -> list[str]:
     """Raise one ConfigError listing every problem; return the warnings."""
     errs, warns = check(settings, character, world)
+    if moves is not None:
+        from cat import moves as M
+        me, mw = M.check(moves, character, settings)
+        errs += me
+        warns += mw
     if prompts is not None:
         from cat import prompts as P
         pe, pw = P.check(prompts)
@@ -444,9 +463,10 @@ def load_config(config_dir: Path | str | None = None, overrides: dict | None = N
     character = _load_yaml(d / "character.yaml")
     world = _load_yaml(d / "world.yaml")
     prompts = _load_yaml(d / "prompts.yaml")
-    for w in validate(settings, character, world, prompts):
+    moves = _load_yaml(d / "moves.yaml")
+    for w in validate(settings, character, world, prompts, moves):
         logging.getLogger("cat.config").warning("%s", w)
     # YAML may parse bucket keys as strings already ("0"); normalise
     settings["gain_values"] = {str(k): v for k, v in settings["gain_values"].items()}
-    return Config(settings, character, world, prompts, root=d.resolve().parent, config_dir=d.resolve(),
+    return Config(settings, character, world, prompts, moves, root=d.resolve().parent, config_dir=d.resolve(),
                   overrides=dict(overrides) if overrides else None)

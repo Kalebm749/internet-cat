@@ -386,7 +386,7 @@ def test_status_is_published_for_the_dashboard(cfg):
     assert s["state"] == "stopped" and s["last_tick_id"] == 3 and s["last_tick_ms"] >= 0
     assert s["interval_seconds"] == cfg.settings["tick_interval_seconds"] and s["pid"] and s["downtime_policy"] == "pause"
     cfg_rows = q.get_config()
-    assert set(cfg_rows) == {"settings", "character", "world", "prompts"}
+    assert set(cfg_rows) == {"settings", "character", "world", "prompts", "moves"}
     assert yaml.safe_load(cfg_rows["settings"]["content"])["downtime_policy"] == "pause" and cfg_rows["settings"]["raw_sha"]
     b.online = False
     e.dev.publish(force=True)
