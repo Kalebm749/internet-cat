@@ -164,3 +164,16 @@ def test_nothing_appears_or_vanishes_without_an_effect(cfg):
     assert e.conn.execute("SELECT COUNT(*) FROM objects WHERE area='inventory'").fetchone()[0] \
         <= cfg.settings["inventory_max"]
     assert db.get_state(e.conn)["area"] in cfg.world["areas"]
+
+
+def test_event_spawn_consumed_same_tick_is_still_audited(cfg):
+    cfg.world["events"] = [{"text": "fish!", "chance": 1.0, "area": "kitchen",
+                            "spawn": {"name": "a fish", "tags": ["edible"], "area": "kitchen"}}]
+    e, b = make_engine(cfg)
+    e.state["area"] = "kitchen"
+    b.handlers["narrator"] = lambda m, s: {"outcome": "eats", "gains": {}, "effort": "low",
+                                           "duration": 10, "changes": [{"op": "consume", "object_id": "fish"}]}
+    info = e.tick()
+    ops = [(c["op"], c["object_id"]) for c in json.loads(
+        e.conn.execute("SELECT changes FROM ticks WHERE id=?", (info["id"],)).fetchone()[0])]
+    assert ops == [("create", "fish"), ("consume", "fish")]

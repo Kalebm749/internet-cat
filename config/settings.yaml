@@ -82,6 +82,8 @@ notable:                       # a tick is notable if any of these hold
   strong_feelings: [negative, positive]
   new_object: true
   rejected_changes: true
+  importance_base: 0.3         # short-term memory importance = base + per_trigger * triggers (max 1)
+  importance_per_trigger: 0.2
 long_term_cap: 500
 
 # --- brain prompt ---

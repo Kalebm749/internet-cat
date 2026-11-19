@@ -134,5 +134,7 @@ class WorldState:
                     o = self.add_object(sp["name"], sp["tags"], sp["area"], "event", now,
                                         sp.get("state"))
                     record["spawned"] = o["id"]
+                    record["spawn_info"] = {"op": "create", "source": "event", "object_id": o["id"],
+                                            "area": o["area"], "name": o["name"], "label": o["name"]}
             fired.append(record)
         return fired

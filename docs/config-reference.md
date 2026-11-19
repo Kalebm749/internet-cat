@@ -44,7 +44,7 @@ Every tuning number. Groups:
 - **Effects**: `gain_values`, `effort_energy_cost`, `repetition_penalty`, `create_limit_per_tick`, `allowed_tags`, `state_value_max_length`.
 - **Mood**: `mood.*` weights, `feeling_values`, word thresholds. `default_need_words` / `energy_words` map values to words. `events_max_per_tick`, `max_objects_per_area` cap events.
 - **Doze/sleep**: `doze.*`, `sleep.*` (thresholds, restore rate, `tendency_max_step`).
-- **Memory**: `recall`, `recency_half_life_sim_hours`, `short_term_shown`, `notable`, `long_term_cap`.
+- **Memory**: `notable.*` (what counts as a notable tick, importance of short-term memories), `recall`, `recency_half_life_sim_hours`, `short_term_shown`, `notable`, `long_term_cap`.
 - **Web**: `web_port`, `diary_page_size`, `keepsakes_first_page`.
 - `db_path`, `backup_keep`.
 
@@ -55,3 +55,9 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 - Caps: `max_changes_per_tick`, `inventory_max`, `max_objects_per_area`, `name_max_length`, `state_value_max_length`.
 - `consume` of an edible is the only thing that lets `requires_consume` needs rise; `consume_min_gain` is the minimum bucket granted if the narrator forgot to score it. Those needs are never repetition-penalised.
 - Objects spawned by world events are recorded in the tick's `changes` as `{"op": "create", "source": "event"}`, so every object appearance or disappearance is auditable.
+
+## Memory (`cat/memory.py`)
+- A tick is *notable* if a need moved by >= `notable.need_change`, the brain's `feeling` is in `strong_feelings`, a `create` happened, or changes were rejected. Notable ticks become short-term memories (text + embedding; importance = `importance_base` + `importance_per_trigger` x triggers).
+- Recall: `w_recency*recency + w_importance*importance + w_relevance*cosine(query, memory)`, recency = 0.5^(sim hours since created/last recalled / `recency_half_life_sim_hours`). Recalled memories get `last_recalled` updated.
+- If the embedding call fails, memories are still stored (no index) and recall falls back to recency + importance.
+- After changing `embed_model`, run `scripts/reembed.py`.

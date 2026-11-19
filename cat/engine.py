@@ -15,6 +15,7 @@ from cat import brain, character, clock, db, effects, narrator
 from cat.config import Config
 from cat.db import dumps
 from cat.llm import BackendError, LLMBackend, cosine
+from cat.memory import Memory, build_query, importance_for, notable_reasons
 from cat.world import WorldState
 
 log = logging.getLogger("cat.engine")
@@ -33,6 +34,7 @@ class Engine:
         db.init_db(self.conn)
         self.stop_requested = False
         self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])
+        self.memory = Memory(self.conn, cfg, backend)
         self._bootstrap()
         self._load()
 
@@ -65,7 +67,7 @@ class Engine:
         self.last_outcome = row["outcome"] if row else None
 
     # ---------- prompts ----------
-    def _brain_context(self, fired: list[dict]) -> brain.BrainContext:
+    def _brain_context(self, fired: list[dict], long_mems: list[dict] | None = None) -> brain.BrainContext:
         cfg, st, s = self.cfg, self.state, self.cfg.settings
         n = s["recent_actions_shown"]
         recent = [r["action"] for r in self.conn.execute(
@@ -81,7 +83,20 @@ class Engine:
             mood=st["mood"], tendencies=st["tendencies"], weather=self.world.weather,
             objects_here=self.world.here(st["area"]), inventory=self.world.inventory(),
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
-            recent_actions=recent, preferences=prefs)
+            recent_actions=recent, preferences=prefs,
+            long_memories=[m["text"] for m in (long_mems or [])],
+            short_memories=[m["text"] for m in self.memory.recent_short()])
+
+    def _recall(self, fired: list[dict]) -> list[dict]:
+        """Relevant long-term memories for this situation (empty if there are none yet)."""
+        st = self.state
+        if not self.conn.execute("SELECT 1 FROM memories WHERE kind='long' LIMIT 1").fetchone():
+            return []
+        q = build_query({"area": self.cfg.world["areas"][st["area"]]["name"],
+                         "objects": [o["name"] for o in self.world.here(st["area"])],
+                         "mood": st["mood"]["word"],
+                         "last_outcome": " ".join([e["text"] for e in fired] + [self.last_outcome or ""]).strip()})
+        return self.memory.recall(self.memory.embed_one(q), st["sim_time"])
 
     def _narrator_context(self) -> str:
         st = self.state
@@ -122,10 +137,12 @@ class Engine:
 
         # 2+3. brain and narrator (LLM calls, outside any transaction)
         result = None
+        recalled: list[dict] = []
         online = self.backend.is_online()
         if online:
             try:
-                b = brain.think(self.backend, cfg, self._brain_context(fired))
+                recalled = self._recall(fired)
+                b = brain.think(self.backend, cfg, self._brain_context(fired, recalled))
                 n = narrator.resolve(self.backend, cfg, b["action"], self._narrator_context())
                 result = (b, n)
             except BackendError as e:
@@ -159,15 +176,24 @@ class Engine:
                    "duration": minutes, "changes": [], "rejected": []}
 
         for e in fired:  # event-spawned objects are world changes too (audit trail)
-            if e["spawned"]:
-                o = self.world.objects[e["spawned"]]
-                row["changes"] = row["changes"] + [{"op": "create", "source": "event",
-                                                    "object_id": o["id"], "area": o["area"],
-                                                    "name": o["name"], "label": o["name"]}]
+            if e["spawned"]:   # recorded from spawn time: the narrator may consume it this tick
+                row["changes"] = [e["spawn_info"]] + row["changes"]
         mood = character.compute_mood(needs, before, nudge, feeling, cfg)
         new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes), "needs": needs,
                      "mood": mood, "energy": character.energy(needs, cfg),
                      "weather": self.world.weather, "brain_online": online}
+
+        # notable moment -> short-term memory (embedding is an HTTP call: do it before the txn)
+        short_mem = None
+        if result:
+            why = notable_reasons(cfg, before, needs, feeling, row["changes"], row["rejected"])
+            if why:
+                t = clock.time_label(dt)
+                text = (f"{t}, {cfg.world['areas'][st['area']]['name']}: {row['action']}. "
+                        f"{row['outcome']}")
+                if row["reaction"]:
+                    text += f' You felt: "{row["reaction"]}"'
+                short_mem = self.memory.prepare(text, importance_for(cfg, len(why)), now)
 
         # 5. record: one transaction; a crash leaves the previous state intact
         real = _now_real()
@@ -185,6 +211,10 @@ class Engine:
                 self.conn.execute("INSERT INTO events(tick_id,sim_time,area,text) VALUES(?,?,?,?)",
                                   (tick_id, now, e["area"] or st["area"], e["text"]))
             self.world.sync(self.conn)
+            if short_mem:
+                self.memory.save(short_mem, "short")
+            if recalled:
+                self.memory.mark_recalled([m["id"] for m in recalled], now)
             db.save_state(self.conn, new_state, real)
             if online:
                 db.set_meta(self.conn, "brain_last_seen", real)
