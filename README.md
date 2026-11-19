@@ -1,6 +1,6 @@
 # Internet Cat
 
-A framework for a conscious entity that lives in a simulated world. Plain code tracks time, needs and
+A framework for a conscious entity that lives in a simulated world. The brain picks from a menu of moves built from `config/moves.yaml`; code decides what they do; long moves run as activities without LLM calls; sleep forms self-image, projects and habits. Plain code tracks time, needs and
 rules; a local LLM (Ollama) writes what the entity thinks and what happens. Nothing assumes a species,
 body or appearance: the entity starts with no self-image and may learn one while it sleeps. Everything
 runs on **one Ubuntu laptop** with **Docker Compose**, and a read-only website shows its journal.
@@ -230,6 +230,7 @@ the engine's own calls wait while a replay runs.
 **Without Docker** (develop the dashboard on fake data):
 ```bash
 .venv/bin/python scripts/seed_db.py --db data/seed.db --force   # 120 mock ticks, a doze, sleep nights, a forced sleep, commands, logs
+.venv/bin/python scripts/simulate_balance.py --ticks 400 --seeds 3   # no LLM: time each need spends in each band under scripted play (tuning aid)
 .venv/bin/python -m cat.devdash --db data/seed.db               # http://127.0.0.1:8090
 .venv/bin/python -m cat.web --db data/seed.db                   # the public site, for comparison
 ```

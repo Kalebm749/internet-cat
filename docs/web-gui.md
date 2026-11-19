@@ -140,6 +140,9 @@ orange over the rooftops.
 - **What it thinks it is:** the entity's current self-image lines (learned during sleep; see `creature-architecture.md` §7), one per row in italics, oldest first. Hover shows how sure it is and the day it was formed. If there are none, the section says *still figuring that out*. The entity starts with no self-image; a line may also come from an optional `character.yaml` `self_image.seed` hint.
 - **Loves / dislikes:** two short lists, top 5 each by |valence|. Small heart / cross marks drawn as inline SVG (no emoji). Hover shows the reason ("keeps coming back here at dusk").
 
+### 4.7b Habits (right column, above Projects)
+A card listing the lines the sleeping mind wrote for patterns code found (`state.habits.rows`: `text`, `title`; `empty_text` when none). It is the `#habits` list with `<template id="tpl-habit">` for live updates.
+
 ### 4.7a Projects (right column, above Keepsakes)
 - **What it is working on:** one row per project (active first, then set-aside, then finished; at most 8): the title, a status and **stage in words** ("working on it · well along"), and the running note ("where it got to"). Hover shows why it started it. Never the progress number.
 - **Made so far:** the latest `projects.artifacts_shown` (6) artifacts, newest first, as small cards: title, kind, project and day, then the text. A made piece also adds a tag to its diary entry ("made “Roots”").
@@ -198,6 +201,8 @@ Polled every 10s. Everything except old diary pages.
   "keepsakes": [{"id": 77, "text": "...", "day_number": 11, "importance": 0.8}]
 }
 ```
+
+Tick entries also carry `why` / `why_text` ("because: …", the brain's own reason), `carried` / `carried_text` ("carried on for N more steps, no new decision") and `span` ("about N min" for a move longer than one step). `state.habits` is `{rows, empty, empty_text}`.
 
 ### Diary entry shape
 ```json

@@ -13,7 +13,7 @@ It describes the system as built. Numbers are the defaults in `config/*.yaml` at
 6. [Mood](#6-mood)
 7. [Memory and recall](#7-memory-and-recall)
 8. [Slow change: tendencies, preferences, self-image, projects](#8-slow-change-tendencies-preferences-self-image-projects)
-9. [The world: objects, events, and what the narrator may change](#9-the-world-objects-events-and-what-the-narrator-may-change)
+9. [The world: objects, events, and what changes the world](#9-the-world-objects-events-and-what-changes-the-world)
 10. [What each LLM sees](#10-what-each-llm-sees)
 11. [When things go wrong: brain offline, downtime, crashes](#11-when-things-go-wrong-brain-offline-downtime-crashes)
 12. [Master table: triggers and their impact](#12-master-table-triggers-and-their-impact)
@@ -29,16 +29,16 @@ One rule runs through the whole design: **plain code owns time, needs and rules;
 
 | Who | Owns | Never does |
 |---|---|---|
-| **Code (the engine)** | the clock, need levels and decay, energy, mood arithmetic, which memories are kept, validation of every world change, the saved state | invent story or judge what an action meant |
-| **The brain (LLM call #1)** | what the entity thinks, feels and chooses to do next, in free text | say what happened, change a need, or change the world |
-| **The narrator (LLM call #2)** | what actually happened, which needs the action *helped* (coarse buckets), effort, duration, and a list of proposed world changes | subtract from a need, or change anything the code does not validate |
+| **Code (the engine)** | the clock, need levels and decay, energy, mood arithmetic, **the menu of moves and what each move does** (gains, effort, duration, world change), which memories are kept, validation of every world change, the saved state | invent story |
+| **The brain (LLM call #1)** | what the entity thinks and feels, and which **move from the menu** it chooses and why | say what happened, change a need, or change the world |
+| **The narrator (LLM call #2)** | the prose: one or two sentences describing what the world decided happened | change any number or the world |
 
 A third LLM role, **the world director**, proposes the occasional small happening in the entity's area (§3, §9). A fourth, **the sleeping mind**, runs once per night and does the slow work: consolidating memories, nudging tendencies, forming preferences, and proposing at most one self-image line.
 
 Some consequences that explain almost every behavior you will see:
 
-- **Actions are open, effects are closed.** The entity can try anything ("climb the old tree", "sing to the rain"). But the saved world can only change through seven validated operations (§9). A story can say a fort was built; if the narrator did not also return a valid `create` change, no fort exists.
-- **The entity never grades itself, and the narrator never drains.** Good outcomes come from the narrator; losses come from the world (decay, events, repetition, dislikes).
+- **Moves are closed.** The entity chooses from a menu built by code from config/moves.yaml (go somewhere, eat, play with, rest on, climb, examine, take, drop, look out, wait, work on a project, sleep). Code decides each move's effect and the saved world changes only through validated operations (§9), so a story can never invent a fort that does not exist. The menu is never ranked or marked by need.
+- **The entity never grades itself.** Gains come from the move's configured effects; losses come from the world (decay, events, dislikes), and repetition shrinks gains.
 - **Need levels shape what the entity is *told*, never what it *does*.** Code does not pick, suggest or rank actions by need. A very hungry entity is told "you are running on nothing"; whether it then looks for food is its own choice.
 - **The entity does not know what it is.** There is no species or body in the config. Its self-image starts empty and is learned (§8).
 - **The database is the truth.** Every prompt is rebuilt from the saved state each tick, so a bad LLM answer can never put the world into an impossible state; it is just rejected and logged.
@@ -64,12 +64,12 @@ There are two clocks.
 
 | Tick kind | Sim minutes advanced | Who decides |
 |---|---|---|
-| Normal (awake, brain online) | the narrator's `duration`, clamped to `sim_minutes_min`..`sim_minutes_max` (5..90). If the narrator gives nothing usable: `sim_minutes_per_tick_default` (20) | narrator, then code |
+| Normal (awake, brain online) | the move's duration (drawn by code from the verb's `minutes`), clamped to `sim_minutes_min`..`sim_minutes_max` (5..90). A move longer than `activity.step_minutes` spreads over carry ticks of that length | code |
 | Doze (brain offline) | `doze.sim_minutes` (20) | code |
 | Asleep | `sleep.sim_minutes_per_tick` (60) | code |
 | Catch-up (after downtime, §11) | the gap converted at the default pace, capped | code |
 
-So the pace of the simulation is **not fixed**: roughly, with 20-minute actions and a 90-second interval, 40 ticks happen per real hour, which is about 13 sim hours per real hour (a sim day passes in a bit under two real hours). A narrator that picks longer durations makes the world move faster per tick; a sleeping night is only about 8-12 ticks (≈ 12-18 real minutes).
+So the pace of the simulation is **not fixed**: roughly, with 20-minute actions and a 90-second interval, 40 ticks happen per real hour, which is about 13 sim hours per real hour (a sim day passes in a bit under two real hours). Longer moves make the world move faster per decision, and carry ticks make no LLM calls; a sleeping night is only about 8-12 ticks (≈ 12-18 real minutes).
 
 **Phases** (`phases`, by sim hour): `dawn` 5, `day` 8, `dusk` 18, `night` 21 (night lasts until dawn). The phase matters for exactly two things: falling asleep (§5) and the website's colour palette. The clock also gives the entity a day number and "part of day" words in its prompt.
 
@@ -126,21 +126,22 @@ Events roll on *every* tick type, including sleeping and dozing, so a loud noise
 ### Step 3: is the brain reachable?
 A cheap check against Ollama (`/api/tags`, `health_timeout_seconds`), cached for the tick. With `health_require_models: true` the brain counts as online only if all configured models are pulled. If it is offline, or a call still fails after `llm_retries` (1) retry, the tick becomes a **doze** (§5, §11).
 
-### Step 4a: recall and the brain call
+### Step 4a: recall, the menu and the brain call
 1. **Recall** (only if there are long-term memories): the engine builds a short query from the current area, the objects here, the mood word and what just happened, embeds it, and scores every long-term memory (§7). The top `recall.k` (5) go into the prompt.
-2. **Prompt** (§10): self-image, tendencies, likes/dislikes, time and place, mood and energy words, **"What's pulling at you right now"** (the need expressions), objects around, what just happened, recent actions, memories.
-3. The brain returns JSON: `reaction, thought, action, intent, feeling (negative|neutral|positive), wants_sleep`. An answer with no `action` is invalid and counts as a failed call.
+2. **The menu**: code builds the list of moves that are possible right now from config/moves.yaml (go to each area, eat/play with/rest on/climb/examine/take each fitting object, drop a carried thing, look out, wait, work on each active project, and **sleep only when sleep is allowed**). The order is fixed by the file; it is **never ranked, filtered or marked by need**. At most `moves.max_offered` are shown.
+3. **Prompt** (§10): self-image, tendencies, habits ("you tend to…"), likes/dislikes, time and place, mood and energy words, **"What's pulling at you right now"**, objects around, what just happened, recent actions, memories, active projects, and the menu.
+4. The brain returns JSON: `reaction, thought, move (a menu id such as m3), why, feeling (negative|neutral|positive)`. A `move` that is not on the menu is invalid and counts as a failed call. `why` is shown on the website as "because: …".
 
-### Step 4b: the narrator call
-The narrator receives the action, the area and its objects (with ids, tags and state), the inventory, exits, time, weather, and each need's **meaning and current band as a word**. It returns `outcome, gains, effort, duration, changes[]`, and, only when the action really worked on one of its **projects** (§8), an optional `project` report (`id`, an advance bucket, a note, an optional artifact). Invalid buckets are dropped; effort defaults to `medium`; duration is clamped.
+### Step 4b: resolve the move (code) and narrate it (LLM)
+**Code decides what the move does** (`cat/moves.py`): the need gains (`effects` and `by_tag` buckets, `novelty` for a place not visited for `moves.novelty_hours`), the effort, a duration drawn from the verb's `minutes`, and the world change (go, take, drop, consume), validated by `cat/effects.py`. A project move reports validated progress. The **narrator only writes the sentence** describing what happened; it can no longer change any number. With `moves.narrate: false`, or if the call fails, the verb's `outcome` text is used. When a project milestone or the finish is reached, a separate call asks the brain, in its own voice, for the piece it made.
 
 ### Step 5: apply, in this exact order
 1. **Validate and apply world changes** (§9). Rejected changes are logged and do not happen.
 2. **Decay** every need by `decay_per_hour × duration/60`.
 3. **Event drains**: subtract the drains of the events that fired.
 4. **Dislike drains**: if something the entity dislikes is present, subtract from the configured needs (§4). (Awake and dozing ticks only; a sleeping entity is spared.)
-5. **Project work** (§8): if the narrator reported valid progress on an active project, advance it (a tapering step), keep the note, save any artifact, and **exempt this action from the repetition penalty**; finishing a project pays `projects.completion_gains`.
-6. **Gains**: convert the narrator's buckets (`+` = 15, `++` = 30) to points, **adding only**, with the two special rules: sustenance rises only if something edible was consumed; the gains of the repetition-penalised needs shrink if the action repeats.
+5. **Project work** (§8): if the move is `work_on` an active project, advance it (a tapering step), keep the note, save any artifact, and **exempt this action from the repetition penalty**; finishing a project pays `projects.completion_gains`.
+6. **Gains**: convert the move's buckets (`+` = 15, `++` = 30) to points, **adding only**, with the two special rules: sustenance rises only through a `consume` move; the gains of the repetition-penalised needs shrink if the same move repeats.
 7. **Spend energy**: the action's `effort` costs 2 / 6 / 12 energy.
 8. **Clamp**: needs to 0..100, energy to −50..50.
 9. **Mood** is recomputed from the new bands, the event nudge, the brain's `feeling` and the energy (§6).
@@ -149,7 +150,10 @@ The narrator receives the action, the area and its objects (with ids, tags and s
 One transaction writes the diary tick, the events that fired, object changes, a **short-term memory** if the tick was notable (§7), the new state, and (for stale tracking) how long the entity has been in this area. A full trace (prompts, responses, recall scores, need arithmetic, mood arithmetic, event rolls) is stored for the dashboard. Tracing never breaks the simulation: a failed trace write is only a warning.
 
 ### Step 7: maybe sleep
-If the brain said `wants_sleep: true` **and** (energy < `sleep.wants_sleep_energy_below` (10) **or** it is night), the entity falls asleep and the sleep cycle (§5) runs straight after the tick commits.
+If the move chosen was **sleep** (offered only when energy < `sleep.wants_sleep_energy_below` (10) **or** it is night), the entity falls asleep and the sleep cycle (§5) runs straight after the tick commits.
+
+### Activities: a long move is one decision
+A move longer than `activity.step_minutes` (20) becomes an **activity**. Its gains and effort are paid when it is chosen; the following **carry ticks** advance 20 sim minutes each, decay needs and apply drains, and make **no LLM calls**. An activity ends when its time is up, or is **interrupted** by any event (`interrupt_on_events`) or a need newly dropping into *empty* (`interrupt_on_empty_need`); falling asleep or exhaustion also ends it. After an interruption the next prompt says what interrupted it. Carry ticks wait `carry_interval_seconds` instead of a full tick interval. The diary shows one entry ("about N min", "because: …", "carried on for N more steps"). Turn it off with `activity.enabled: false`.
 
 ---
 
@@ -164,18 +168,18 @@ Five needs in the placeholder character, each 0..100: **sustenance, wonder, joy,
 | Cause | Direction | Details |
 |---|---|---|
 | **Decay** | down | `decay_per_hour` × sim hours. The baseline: needs always fall. Slower while asleep (`sleep.decay_multiplier` 0.5). |
-| **Narrator gains** | up | The narrator judges which needs the action helped and says `+` (+15) or `++` (+30). It can only add. |
+| **Move gains** | up | The move's configured buckets, `+` (+15) or `++` (+30), decided by code from moves.yaml. They only add. |
 | **Event drains** | down | `drains` on a world event, applied when it fires. |
 | **Dislike drains** | down | While something it dislikes is present (§8). |
 | **Repetition** | shrinks *gains* | A repeated action pays less (below). |
 
-The narrator never drains. Bad things that happen are story; the harm lands through decay, events or dislikes, and through mood (§6).
+The narrator never subtracts, and nothing a move does drains a need. Bad things that happen are story; the harm lands through decay, events or dislikes, and through mood (§6).
 
 ### The sustenance rule (hard rule)
-`sustenance_need` (default `sustenance`) rises **only** when an `edible` object was consumed this tick (a validated `consume` change). If the narrator scores sustenance but nothing was consumed, the gain is ignored (the dashboard shows "ignored"). If something was consumed and the narrator forgot to score it, the entity still gets at least `consume_min_gain` (`+`).
+`sustenance_need` (default `sustenance`) rises **only** through a `consume` move on an `edible` object (a validated `consume` change). It gets the move's gain, and at least `consume_min_gain` (`+`).
 
 ### Repetition pays less
-The action text is embedded and compared with the entity's last `repetition_penalty.window` (6) actions **taken in the same place**. If any is at least `similarity_threshold` (0.85) similar, the gains of the needs listed in `repetition_penalty.needs` (**wonder, curiosity**) are multiplied by `multiplier` (0.4). Other needs, and sustenance, are never shrunk. Effect: the same trick in the same room stops feeding wonder and curiosity, which nudges variety without ever forbidding anything. Moving to another place resets the comparison. If embedding fails, there is no penalty that tick. Three things to know: the penalty is **flat** (×0.4 on a repeat, not growing with the number of repeats); it only touches the listed needs, so a repeated action still feeds joy, peace and the rest in full; and the list of recent actions is **in memory**, so a restart forgets it. Work that advances a **project** is exempt (§8).
+Each move has a key (`verb` or `verb:target`). If the same key was chosen in the same place within the last `repetition_penalty.window` (6) decisions, the gains of the needs listed in `repetition_penalty.needs` (**wonder, curiosity**) are multiplied by `multiplier` (0.4). Other needs, and sustenance, are never shrunk. This is read from the `ticks` table, so it is deterministic and survives a restart; no embeddings are involved. Moving to another place resets it. The penalty is flat (not growing with repeats) and only touches the listed needs. `work_on` a project is exempt (§8). Carry ticks are not decisions and do not count.
 
 ### Stale places
 The engine counts consecutive action ticks in the current area. After `stale_after_ticks` (3), the prompt gains the `stale_here` sentence from `character.yaml` ("…everything about this place feels familiar and used up."). This is **only a sentence in the prompt**: it changes no need value. Moving resets the count; `0` turns the feature off. The count survives restarts.
@@ -194,7 +198,7 @@ Sim hours from the starting levels until each band is crossed:
 | peace | 70 | 2 | 15 h | 27.5 h |
 | curiosity | 50 | 5 | 2 h | 7 h |
 
-At ~13 sim hours per real hour, an entity that never eats and never has a good moment is empty on sustenance about 50 real minutes in. Gains (+15/+30) and the narrator's judgement are what push levels back up. To reach `full` (≥ 75) a need must be fed well above its start.
+At ~13 sim hours per real hour, an entity that never eats and never has a good moment is empty on sustenance about 50 real minutes in. Gains (+15/+30) from moves are what push levels back up. To reach `full` (≥ 75) a need must be fed well above its start.
 
 ---
 
@@ -205,7 +209,7 @@ At ~13 sim hours per real hour, an entity that never eats and never has a good m
 
 ### Falling asleep: three ways
 1. **Exhaustion at night:** night **and** energy < −25 → falls asleep immediately, with no brain call.
-2. **The brain's choice:** it sets `wants_sleep` and either energy < 10 *or* it is night.
+2. **The brain's choice:** the **sleep** move is on the menu only when energy < `sleep.wants_sleep_energy_below` (10) *or* it is night, and the brain picks it.
 3. **Forced:** the dev dashboard's *Force sleep cycle* runs the nightly work now (it does not by itself put the entity to bed).
 
 A rested entity by day, even if it asks to sleep, is ignored.
@@ -217,7 +221,7 @@ Each asleep tick is 60 sim minutes, skips the brain and narrator, restores `slee
 It wakes when **energy ≥ `wake_energy_at_least` (40)** *and* it is past `wake_not_before_hour` (6) *and* it is not night, or after `sleep.max_hours` (12 sim hours) regardless. Starting from −25 at 12 energy/hour, reaching 40 takes about 5½ hours, so the 06:00 floor usually decides the wake time for a normal night.
 
 ### The sleep cycle (the nightly work)
-When sleep begins, the sleeping mind makes **five LLM calls**. **Nothing is written unless all five succeed**; if the brain is offline the cycle stays *pending* and is retried on every sleeping tick (and it will run at the next onset otherwise). It uses the day's short-term memories and the log of ticks since the last completed sleep (the newest `day_log_max_ticks`, 40).
+When sleep begins, the sleeping mind makes **up to six LLM calls**. **Nothing is written unless all succeed**; if the brain is offline the cycle stays *pending* and is retried on every sleeping tick (and it will run at the next onset otherwise). It uses the day's short-term memories and the log of ticks since the last completed sleep (the newest `day_log_max_ticks`, 40).
 
 | Step | What the LLM says | What code does with it |
 |---|---|---|
@@ -226,6 +230,7 @@ When sleep begins, the sleeping mind makes **five LLM calls**. **Nothing is writ
 | 3. Preferences | up to `max_preferences_per_night` (3) things liked or disliked, with a strength | blended with any existing opinion (`preference_blend` 0.5). A new opinion starts weak and strengthens only if the experience repeats; opinions weaker than `preference_min_abs` (0.1) are forgotten; at most `max_preferences_total` (40) kept |
 | 4. Self-image | at most one first-person line with a confidence, optionally naming an existing line to revise or contradict | see §8 |
 | 5. Projects | at most one change: start a long-term project from an enjoyed activity it keeps returning to, or pause, resume or drop one | see §8 |
+| 6. Habits | one short second-person line per pattern **code** found (a move made at least `habits.min_count` times and at least `habits.min_share` of the decisions in one part of the day, over the last `habits.window_ticks` decisions). Skipped when nothing recurs or `habits.enabled: false` | the stored set is replaced: patterns that stopped recurring disappear, a failed or empty line falls back to the existing wording or the fallback template. The brain sees at most `habits.max_shown` lines |
 
 Every step's input, the LLM's raw proposal and what code actually applied are stored (the dashboard's **Sleep** page and a tick's *Sleep cycle* section).
 
@@ -325,21 +330,21 @@ The brain sees the lines (text only) and is told it must not assert a form, spec
 
 - **Forming.** During sleep (step 5 of the cycle) the sleeping mind looks at the day's log and its likes. If the entity returned again and again to one activity it seemed to enjoy (researching, drawing, writing, making music, building...), it may start **one** project from it. It may instead pause, resume or drop one existing project. At most one change a night. Code refuses a duplicate title, an empty title, or a start beyond `projects.max_active` (1). Every proposal and outcome is in the sleep trace.
 - **Being told.** While a project is active the brain's prompt gains **"What you're in the middle of"**: the title, why, its stage in words (`projects.stages`: just begun, underway, well along, nearly done), where it got to, and, if it has been left for `idle_hours_note` (24) sim hours, "You last worked on it about 2 days ago." The brain still chooses freely; the section is a reminder, never an instruction. The brain's output format is unchanged.
-- **Advancing.** The narrator sees the active projects (with ids and stage words). If, from what actually happened, the action worked on one, it adds an optional `project` report: `advance` (`+` or `++`), a short `note` of where it stands, and, only if the entity really made something, an `artifact` (kind, title, the text itself). Code validates it (the id must be an *active* project), sizes the step from `projects.progress_values` (8 / 16 points of 100) **tapering as it nears the end** (× 1 − `taper` × progress/100, so a 16-point step is 12 at the halfway mark), stores the note and artifact, and stamps when it was last worked on.
+- **Advancing.** Each active project appears on the menu as a **work on** move (the brain's `why` becomes the note of where it stands). Code sizes the step from `projects.work_bucket` and `projects.progress_values` (8 / 16 points of 100) **tapering as it nears the end** (× 1 − `taper` × progress/100, so a 16-point step is 12 at the halfway mark), stores the note and artifact, and stamps when it was last worked on.
 - **Instead of the repetition penalty.** An action that moves a project forward is **exempt** from the repetition penalty, so continuing is not punished. The returns taper through the shrinking steps instead. A report that moves nothing (`0`) does not exempt anything. Working on a project also does not make the place "stale" (§4).
-- **Milestones and finishing.** Crossing each `milestone_every` (25) points and finishing are notable moments (a short-term memory, consolidated at sleep). Reaching 100 marks the project **done** and code pays `projects.completion_gains` (joy +20, wonder +10); it is never the narrator that pays.
-- **Neglect.** Each night, an active project that was not worked that day counts an idle night; after `pause_after_idle_nights` (3) it is **paused** (a later night can resume it). A paused project is not shown to the brain or accepted by the narrator.
-- **What it leaves behind.** Artifacts are short saved pieces (up to `artifact_max_length`, 1200 characters). The website's **Projects** panel lists what it is working on (stage in words, never the number) and the latest `artifacts_shown` (6) pieces; a made piece also tags its diary entry. The dashboard's **Projects** page shows every number and artifact, and each tick page explains the narrator's report and what code did with it.
+- **Milestones and finishing.** Crossing each `milestone_every` (25) points and finishing are notable moments (a short-term memory, consolidated at sleep). Reaching 100 marks the project **done** and code pays `projects.completion_gains` (joy +20, wonder +10); it is always code that pays.
+- **Neglect.** Each night, an active project that was not worked that day counts an idle night; after `pause_after_idle_nights` (3) it is **paused** (a later night can resume it). A paused project is not shown to the brain or offered as a move.
+- **What it leaves behind.** Artifacts are short saved pieces (up to `artifact_max_length`, 1200 characters). The website's **Projects** panel lists what it is working on (stage in words, never the number) and the latest `artifacts_shown` (6) pieces; a made piece also tags its diary entry. The dashboard's **Projects** page shows every number and artifact, and each tick page explains the project step and what code did with it.
 
 Nothing here picks an action: code never chooses, suggests or ranks actions by project. It only remembers, reminds, and counts.
 
 ---
 
-## 9. The world: objects, events, and what the narrator may change
+## 9. The world: objects, events, and what changes the world
 
-**Areas** (`world.yaml`): a name, a description and exits; exits must be mirrored. (Happenings come from two sources: the hand-written `events` in `world.yaml` and the world director, §3. Objects it spawns are marked `created_by = director`.) **Objects**: an id, name, area (or `inventory`), **tags** and a small state. Tags decide what is possible: `edible` (can be consumed), `movable` (can be taken and moved). Other tags (`warm`, `climbable`, `soft`, `toy`, …) are information for the narrator and entity. Objects are **seeded once**, on the very first start.
+**Areas** (`world.yaml`): a name, a description and exits; exits must be mirrored. (Happenings come from two sources: the hand-written `events` in `world.yaml` and the world director, §3. Objects it spawns are marked `created_by = director`.) **Objects**: an id, name, area (or `inventory`), **tags** and a small state. Tags decide what is possible: `edible` (can be consumed), `movable` (can be taken and moved). Other tags (`warm`, `climbable`, `soft`, `toy`, …) steer which verbs apply (`any_tags`) and the extra gains (`by_tag`) in moves.yaml. Objects are **seeded once**, on the very first start.
 
-The narrator may only change the saved world through these operations (the same list is in the narrator's prompt). Changes are checked **in order**; a rejected one is logged and skipped, the rest still apply, and at most `max_changes_per_tick` (6) are accepted.
+Only code, through the chosen move, changes the saved world, and only through these operations (the narrator cannot). Changes are checked **in order**; a rejected one is logged and skipped, the rest still apply, and at most `max_changes_per_tick` (6) are accepted.
 
 | Operation | Allowed when | Effect |
 |---|---|---|
@@ -361,14 +366,15 @@ All fixed wording lives in `config/prompts.yaml` (see §13). The dynamic parts a
 
 **The brain's prompt (system + situation)**
 - *System:* who it is (name, backstory if any), the **Identity** statement (it has a name, a voice, core traits and tendencies, does not know what it is, must not assert a form that is not in its self-image), core traits, voice, and the JSON format.
-- *Situation, every tick:* **Who you are right now** (self-image or "empty", tendencies, likes and dislikes) → **Now** (time, weather, place, mood and energy words) → **What's pulling at you right now** (§4) → **What you're in the middle of** (active projects, if any; §8) → **Around you** (objects here, carried items, exits) → **What just happened** (events, last outcome, recent actions) → **Memories** → "What do you do next?".
-- It never contains need numbers, ids of objects, or a list of options.
+- *Situation, every tick:* **Who you are right now** (self-image or "empty", tendencies, likes and dislikes) → **Now** (time, weather, place, mood and energy words) → **What's pulling at you right now** (§4) → **What you're in the middle of** (active projects, if any; §8) → **Around you** (objects here, carried items, exits) → **What just happened** (events, last outcome, recent actions, or what interrupted an activity) → **Memories** → **the menu of moves** → "What do you do next?".
+- *Who you are* also carries the habits line ("Things you have found yourself doing again and again: …"), a description of the past only.
+- It never contains need numbers. The menu ids (m1, m2…) are the only options, in a fixed order that is never ranked or marked by need.
 
-**The narrator's prompt:** a neutral system prompt (no personality; it must respect the world as given, do not invent objects or exits; it only adds to needs, never subtracts; the exact JSON and the seven operations) plus the world description, each need's meaning and band word, the active projects with their ids and stage words (if any), and "The creature does: <action>".
+**The narrator's prompt:** a neutral system prompt (no personality; it writes one or two sentences of prose and must not invent objects or exits) plus the world description, the move and what the world decided happened. It returns only `outcome`; it cannot change a number or the world. Project pieces come from a separate call in the brain's own voice.
 
 **The world director's prompt:** the place, time, weather, objects, recent happenings and its last few actions, with the rules above in its system prompt. No needs, no mood.
 
-**The sleeping mind's prompts:** the day's summary material for each of the five steps (§5).
+**The sleeping mind's prompts:** the day's summary material for each of the six steps (§5): consolidate, tendencies, preferences, self-image, projects, and **habits** (code lists the recurring patterns it counted; the model only words them).
 
 ---
 
@@ -399,13 +405,17 @@ All fixed wording lives in `config/prompts.yaml` (see §13). The dynamic parts a
 | **Repeated action in the same place** | similar to one of the last 6 actions there | wonder/curiosity gains × 0.4 | pressure toward variety |
 | **Ticks in one area ≥ `stale_after_ticks`** | after 3 action ticks without moving | `stale_here` sentence in the prompt | nothing mechanical; only wording |
 | **Disliked thing present** | a stored dislike matches area, object, weather or action | peace and joy drained per hour × strength | learned aversions have real cost |
-| **Project advanced** | the narrator's valid `project` report with `+`/`++` | progress steps up (tapering); note and artifact saved; this action skips the repetition penalty; no stale tick | the brain is reminded where it got to; pieces accumulate on the site |
+| **Project advanced** | the brain picks the project's **work on** move | progress steps up (tapering); note and artifact saved; this action skips the repetition penalty; no stale tick | the brain is reminded where it got to; pieces accumulate on the site |
 | **Project milestone / finished** | progress crosses a multiple of 25 / reaches 100 | a short-term memory; finishing pays joy +20, wonder +10 | consolidated at sleep; finished projects stay listed |
 | **Project untouched for 3 nights** | each sleep | the project is paused | the brain stops being reminded; a later night may resume it |
 | **Director due** | every 6 action ticks, or 2 when the place is stale | one LLM call proposes at most one happening; code validates and applies it as an event | novelty: new sounds, light, visitors and objects; its mood nudges and capped drains colour the next ticks |
 | **Notable tick** | need jump ≥ 20, strong feeling, creation, rejected change | a short-term memory | consolidated into long-term at sleep |
 | **Energy low (< −25) at night** | each night tick | falls asleep without a brain call | the nightly cycle runs |
-| **Brain says `wants_sleep`** | energy < 10 or night | falls asleep | the nightly cycle runs |
+| **Brain picks the sleep move** | offered only when energy < 10 or night | falls asleep | the nightly cycle runs |
+| **Long move chosen** | its length > `activity.step_minutes` | carry ticks without LLM calls until it ends or is interrupted | one diary entry; fewer calls |
+| **Event or a need hits empty during an activity** | any event; a need newly empty | the activity ends; the next prompt says why | the brain chooses again |
+| **Same move, same place, within the window** | `repetition_penalty.window` | wonder and curiosity gains ×0.4 | variety, never a ban |
+| **Sleep cycle: habits** | each sleep | code mines recurring (move, part of day) pairs; the model words them | "you tend to…" in the prompt, site and dashboard |
 | **Asleep** | each asleep tick | +12 energy/h, needs decay at half speed | wakes at energy ≥ 40 after 06:00 (or 12 h) |
 | **Director call fails** | the model is unreachable or returns junk | no happening this time; the tick carries on normally | none; the hand-written events still roll |
 | **Sleep cycle succeeds** | at sleep onset, brain online | memories consolidated; tendencies drift ≤ 0.05; preferences updated; ≤ 1 self-image line; ≤ 1 project change | personality, tastes and self-image evolve slowly; diary "Last night…" card |
@@ -428,15 +438,15 @@ All fixed wording lives in `config/prompts.yaml` (see §13). The dynamic parts a
 
 Paths and models (`db_path`, `ollama_host`, model names) are best changed with a restart. If a file is invalid the reload changes nothing and the dashboard shows the error; a restart refuses to start and prints every problem. Edit, then watch the dashboard's **Config** page (loaded vs on-disk diff) and the **Needs & mood** page to see the effect.
 
-Tuning principle: change **one thing at a time**, let it run for a few sim days, and read the **Needs & mood** charts and the tick pages before changing more. Most behavior comes from the *balance* between decay (always falling) and gains (the narrator's judgement), so the same number can feel different after the narrator model changes.
+Tuning principle: change **one thing at a time**, let it run for a few sim days, and read the **Needs & mood** charts and the tick pages before changing more. Most behavior comes from the *balance* between decay (always falling) and the move gains in moves.yaml. Run `scripts/simulate_balance.py` (no LLM) to see how long each need sits in each band under scripted play before and after a change.
 
 ### Pace
 
 | Parameter | Effect | Guidance |
 |---|---|---|
 | `tick_interval_seconds` | real seconds per tick | lower = faster life and more LLM load. Keep it above the time a tick takes (see the tick time on the dashboard's Overview), or ticks queue up |
-| `sim_minutes_per_tick_default` | sim minutes when the narrator gives no duration; also the catch-up pace | |
-| `sim_minutes_min` / `max` | clamp on the narrator's duration | raising `max` lets single actions pass more world time (and more decay) |
+| `sim_minutes_per_tick_default` | fallback sim minutes per tick; also the catch-up pace | |
+| `sim_minutes_min` / `max` | clamp on a move's duration | raising `max` lets single actions pass more world time (and more decay) |
 | `phases` | when night starts | moving `night` earlier/later changes when exhaustion forces sleep |
 | `sim_start` | the clock's start | only used on the first start (a reset to change it) |
 
@@ -451,7 +461,7 @@ Tuning principle: change **one thing at a time**, let it run for a few sim days,
 | `gain_values` | points per `+` / `++` | actions refill needs faster (needs stay full) | refilling is slow; needs stay pulled |
 | `consume_min_gain` | minimum sustenance for eating | | |
 | `repetition_penalty.multiplier` | how hard repeats are penalised | closer to 1 = barely any penalty | closer to 0 = repeated actions give nothing |
-| `repetition_penalty.window` / `similarity_threshold` | how many past actions, how alike counts as the same | lower threshold = more things count as repeats | |
+| `repetition_penalty.window` | how many past decisions are looked at for the same move in the same place | longer = repeats stay penalised for longer | shorter = forgiven sooner |
 | `repetition_penalty.needs` | which needs get penalised | add needs to make them depend on novelty | |
 | `stale_after_ticks` | how soon "this place is used up" appears | | `0` disables |
 | `dislike_drain.points_per_hour` / `max_matches` / `needs` | how costly dislikes are | stronger aversion | `0` makes dislikes cosmetic |
@@ -466,7 +476,7 @@ Reading the numbers: a need that decays 5/hour needs about +15 every 3 sim hours
 | `energy_start` | starting energy (−50..50) |
 | `effort_energy_cost` | what low/medium/high effort costs. Raising it makes the entity tire sooner and sleep more |
 | `sleep.fall_asleep_energy_below` | night exhaustion threshold. Raise it (e.g. −10) to make sleep come earlier; lower (−40) to let it stay up |
-| `sleep.wants_sleep_energy_below` | how tired before the brain's request is honoured by day. Set to −50 to allow sleep only at night |
+| `sleep.wants_sleep_energy_below` | how tired before the sleep move is offered by day. Set to −50 to offer it only at night |
 | `sleep.restore_per_sim_hour` | how fast sleep restores energy (and so how long the night is, together with `wake_*`) |
 | `sleep.wake_energy_at_least` / `wake_not_before_hour` / `max_hours` | when it wakes |
 | `sleep.decay_multiplier` | how much needs fall while asleep (1 = same as awake; 0 = frozen) |
@@ -493,6 +503,23 @@ Reading the numbers: a need that decays 5/hour needs about +15 every 3 sim hours
 | `sleep.max_self_image_lines`, `self_image_min_confidence`, `max_self_image_length` | how much self-image it can hold and how sure it must be |
 | `recent_actions_shown`, `preferences_shown`, `short_term_shown` | how much context the brain gets (more = longer prompts; mind `llm_num_ctx`) |
 
+### Moves, activities and habits
+
+| Parameter | Effect |
+|---|---|
+| config/moves.yaml verbs: `effects`, `by_tag`, `novelty` | what each move feeds. This is where "how restoring is resting" is decided; check it with `scripts/simulate_balance.py` |
+| verb `minutes`, `effort` | how long a move takes and what it costs in energy |
+| `moves.max_offered` | menu length cap (earlier verbs, nearer targets win) |
+| `moves.novelty_hours` | how long before a place counts as new again (feeds the `go` novelty gains) |
+| `moves.narrate` | `false` = templated outcome text, one fewer LLM call per decision |
+| `activity.enabled`, `step_minutes` | carry long moves in slices with no LLM calls. `false` = one decision per tick |
+| `activity.carry_interval_seconds` | real seconds between carry ticks |
+| `activity.interrupt_on_events`, `interrupt_on_empty_need` | what breaks an activity |
+| `habits.enabled`, `window_ticks`, `min_count`, `min_share` | how easily a recurring move becomes a habit (lower = more habits) |
+| `habits.max_stored`, `max_shown` | how many are kept and how many reach the prompt |
+
+Wording is in prompts.yaml: the `fallback` entry of its `habits` section, the two `habits` entries of the `sleep` section (one under its `jobs`), and the `habits` line of the brain's situation.
+
 ### The world director
 
 | Parameter (`director.*`) | Effect |
@@ -512,7 +539,7 @@ The wording is in the `director` section of `prompts.yaml`. To make the world ge
 
 | Parameter (`projects.*`) | Effect |
 |---|---|
-| `max_active` | how many projects it can work on at once. Raising it lets several run, but the narrator reports on one per tick |
+| `max_active` | how many projects it can work on at once. Raising it lets several run; each appears as its own work-on move |
 | `progress_values` | points per `+` / `++` (of 100). Smaller = projects take many more ticks; larger = they finish fast. The buckets must exist in `gain_values` |
 | `taper` | 0 = every step is the same size; 0.5 (default) = a step is half-size near the end; 1 = steps shrink to nothing at 100 (a project may then never quite finish, so keep it below 1) |
 | `milestone_every` | spacing of notable moments (a memory each time) |
@@ -522,10 +549,10 @@ The wording is in the `director` section of `prompts.yaml`. To make the world ge
 | `stages` | the stage words and where they flip |
 | `title/why/note/artifact_max_length`, `artifacts_shown` | text limits and how many pieces the site shows |
 
-The wording that forms and advances projects is in `prompts.yaml`: the `projects` entry under `sleep` (when to start one: raise or lower the bar by editing "returning again and again"), `narrator.system` (the `project` field), and `brain.situation.project*` (how the brain is reminded). Project work being exempt from repetition is intentional. To keep some pressure on a project that drags on, raise `taper` (for example 0.8) so its steps shrink faster toward the end.
+The wording that forms and advances projects is in `prompts.yaml`: the `projects` entry under `sleep` (when to start one: raise or lower the bar by editing "returning again and again"), `brain.create*` (the piece it makes), and `brain.situation.project*` (how the brain is reminded). Project work being exempt from repetition is intentional. To keep some pressure on a project that drags on, raise `taper` (for example 0.8) so its steps shrink faster toward the end.
 
 ### The LLMs
-`brain_model`, `narrator_model`, `sleep_model`, `embed_model`, `llm_temperature` (brain 0.9 = adventurous, narrator 0.5 = steady), `llm_num_ctx` (4096; raise if prompts get truncated), `llm_retries`, `llm_timeout_seconds`. Changing `embed_model` requires re-embedding stored memories: `scripts/reembed.py`.
+`brain_model`, `narrator_model`, `sleep_model`, `embed_model`, `llm_temperature` (brain 0.9 = adventurous, narrator 0.5 = steady; the default models are `qwen3:14b`, with `llm_timeout_seconds` 600), `llm_num_ctx` (4096; raise if prompts get truncated), `llm_retries`, `llm_timeout_seconds`. Changing `embed_model` requires re-embedding stored memories: `scripts/reembed.py`.
 
 ### The words (prompts)
 All of the following are in `config/prompts.yaml`; each entry's comment lists its `{placeholders}`:
@@ -536,7 +563,7 @@ All of the following are in `config/prompts.yaml`; each entry's comment lists it
 
 The validator refuses an empty or missing entry or an unknown `{placeholder}` and reports every problem. Keep the JSON-format instructions intact (the models are also given a JSON schema, but the text helps). Never put need numbers or a list of options in a prompt: that breaks the design rule that needs shape what is *said*, not what is *chosen*.
 
-For the character's voice and wording of needs, edit `character.yaml`: `meaning` (what a need is; shown to the narrator and on the website), `expressions` (the four band texts the brain reads), `stale_here`, `voice`, `backstory`, `core_traits`.
+For the character's voice and wording of needs, edit `character.yaml`: `meaning` (what a need is; shown on the website and in prompts), `expressions` (the four band texts the brain reads), `stale_here`, `voice`, `backstory`, `core_traits`.
 
 ### Recipes
 
@@ -614,6 +641,7 @@ Use these to wipe one aspect while keeping the rest. Stop the engine first and t
 | Reset energy | `UPDATE state SET energy = 30;` | back to `energy_start` |
 | Reset tendencies to config | `UPDATE state SET tendencies = json_object('boldness',0.5,'sociability',0.5,'tidiness',0.5);` | |
 | Send it home | `UPDATE state SET area = 'living_room';` | |
+| Forget its habits | `DELETE FROM habits;` | no "you tend to…" line until the next sleep finds one |
 | Forget all projects and what they made | `DELETE FROM projects;` and `DELETE FROM artifacts;` | no projects or pieces; the sleeping mind may form new ones |
 | Wake it / clear a stuck sleep | `UPDATE state SET is_asleep = 0;` | |
 | Clear the pending sleep cycle | `UPDATE meta SET value='0' WHERE key='sleep_pending';` | skips an unfinished night |
@@ -640,6 +668,9 @@ The **dev dashboard** (`http://127.0.0.1:8090`, see the README) explains every n
 | Is it running well? | **Overview** (tick time, doze count, errors, service health); **LLM calls** (latency, invalid JSON) |
 | How are needs and mood trending? | **Needs & mood** (charts over 24 h / 7 d / all, sleep and doze shaded, critical time per need) |
 | What is it working on, and what has it made? | **Projects** (progress numbers, idle nights, every artifact); a tick page's **Project work** section |
+| How many decisions vs carried-on ticks, tokens per call and per day? | **Overview** (model decisions vs carried on, tokens) |
+| Which habits does it have and what would the next sleep see? | **Projects** page, Habits section |
+| Are the needs balanced? | run `scripts/simulate_balance.py` (no LLM; random / first / cycle policies, time in each band) |
 | Why did something just happen in the room? | tick detail → **World director** (why it ran, the proposal, what code kept or ignored) |
 | What did last night do? | **Sleep** (each step's input, proposal and what code applied; tendency history) |
 | What does it remember? | **Memory** (short/long-term, recall stats, embedding map, search) |

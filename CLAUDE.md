@@ -19,10 +19,10 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 
 Decided (revised): **closed moves**. The brain picks from a menu built by code (`config/moves.yaml`, `cat/moves.py`);
 code resolves the effects; the narrator only writes prose. The menu is never ranked or marked by need
-(server-architecture §9 still describes the older "open actions" design and is out of date).
+(server-architecture §9 documents this; the earlier "open actions" design is gone).
 A move longer than `activity.step_minutes` runs as one activity with hidden carry ticks (no LLM calls);
 any event or a newly empty need interrupts it. Habits (`cat/habits.py`) are found by code, worded in sleep,
-and shown as "you tend to...". Docs for these are still to be written (see README/TODO). Need levels shape the brain's prompt
+and shown as "you tend to...". Need levels shape the brain's prompt
 (band words for the most pressing needs), never its choices: code never picks, suggests or ranks actions
 by need. Energy is a **separate resource** (-50..50: effort spends it, sleep restores it), never a need.
 Mood is one number, a slider from -50 (negative) to 50 (positive), computed from need bands.
@@ -32,6 +32,7 @@ Mood is one number, a slider from -50 (negative) to 50 (positive), computed from
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/pytest                                   # all tests (use MockBackend, no network)
 .venv/bin/python -m cat.main --mock --ticks 100    # run the engine with the mock brain
+.venv/bin/python scripts/simulate_balance.py       # no LLM: time each need spends in each band (tuning aid)
 ```
 Real brain outside Docker (needs Ollama reachable):
 ```
