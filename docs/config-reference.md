@@ -104,3 +104,16 @@ Every tick is fully traceable. The engine records, in `cat.db`:
 **Tracing never breaks the creature**: a failed trace write is logged as a warning and the tick carries on. `trace_level: summary` keeps numbers (timings, tokens, rejections, math) but stores no prompt, response or input text. During every sleep cycle `llm_calls`, `embed_calls` and `recall_logs` older than `trace_retention_days` are pruned; the small tables are kept.
 
 All services log JSON lines (`ts, level, service, tick_id, event, message, extra`) to stdout (`docker logs`) and to `data/logs/<service>.jsonl`, rotated by size. This is switched on by `CAT_STRUCTURED_LOGS=1` (set in `compose.yaml`); plain console logging is used otherwise.
+
+## Dev commands (`cat/devqueue.py`, `cat/devcontrol.py`)
+The dev dashboard never writes game state. It inserts rows into `dev_commands` in **`data/dev.db`** (a separate file, so `cat.db` stays strictly single-writer). The engine polls the queue at the start of every loop iteration, and every `dev_poll_seconds` while waiting between ticks or paused, runs each command and records `status` (`pending → running → done | failed | rejected`) and a `result`. `dev.db` also holds `playground_runs`, `engine_status` (what the engine publishes: state, tick id/duration, interval, pid, heartbeat) and `engine_config` (the config exactly as the engine loaded it).
+
+| Command | Args | Effect |
+|---|---|---|
+| `pause` / `resume` | | Stop / continue the tick loop. While paused the engine idles (and keeps its last-alive time fresh, so a pause is never counted as downtime). Not remembered across a restart. |
+| `step` | | Run exactly one tick (only while paused). |
+| `set_interval` | `seconds` (null = reset), `ticks` (optional) | Change the tick interval temporarily: until reset/restart, or for `ticks` waits. Applies to a wait already in progress. |
+| `force_sleep` | | Run the sleep cycle now (consolidate, drift tendencies, learn preferences) on the current day; attaches to the latest tick. Needs the brain online. The creature itself stays awake. |
+| `reload_settings` | | Re-read the YAML (all three files are validated; invalid files change nothing) and apply `settings.yaml` live. Reports which keys changed. `character.yaml` / `world.yaml` changes need a restart. |
+| `inject_event` | `text`, optional `area`, optional `spawn: {name, tags, area}` | A one-shot world event on the next tick: the brain sees it, it is stored in `events`, a spawned object is recorded as `create` with `source: event`. |
+| `snapshot` | | Online backup to `data/backups/cat-<date>-<time>-snapshot.db`. |

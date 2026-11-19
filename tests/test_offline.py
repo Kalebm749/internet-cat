@@ -185,6 +185,7 @@ def test_run_loop_survives_outage_and_random_flapping(cfg):
 
 
 def test_error_backoff_sleeps_longer_after_unexpected_failure(cfg, monkeypatch):
+    cfg.settings["dev_commands_enabled"] = False             # plain single-sleep waits
     b = MockBackend()
     e = Engine(cfg, b, rng=random.Random(1))
     orig, calls = e._tick, {"n": 0}

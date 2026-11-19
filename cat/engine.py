@@ -2,17 +2,22 @@
 transaction for the last two; LLM calls happen outside it)."""
 from __future__ import annotations
 
+import json
 import logging
 import random
 import signal
+import sqlite3
 import time
+from pathlib import Path
 from datetime import datetime
 from typing import Callable
 
 from collections import deque
 
 from cat import brain, character, clock, db, downtime, effects, logs, narrator, sleep
-from cat.config import Config
+from cat.config import Config, load_config
+from cat.devcontrol import DevControl
+from cat.devqueue import CommandError
 from cat.db import dumps
 from cat.healthcheck import write_heartbeat
 from cat.llm import BackendError, LLMBackend, cosine
@@ -38,12 +43,24 @@ class Engine:
         self.stop_requested = False
         self._online_cache: bool | None = None
         self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])
+        # dev-dashboard state (see cat/devcontrol.py)
+        self.paused = False
+        self.step_pending = False
+        self.step_cmd_id: int | None = None
+        self.interval_override: float | None = None
+        self.interval_override_ticks: int | None = None
+        self.injected: list[dict] = []
+        self.last_tick_id: int | None = None
+        self.last_tick_ms: float | None = None
+        self.started_at = time.time()
         self.tracer = Tracer(cfg)
         backend.recorder = self.tracer.record_llm        # every LLM attempt is traced
         self.memory = Memory(self.conn, cfg, backend, self.tracer)
         self._bootstrap()
         self._reconcile_config()
         self._load()
+        self.dev = DevControl(self)
+        self.dev.publish_config()
 
     # ---------- state ----------
     def _bootstrap(self) -> None:
@@ -183,6 +200,7 @@ class Engine:
         finally:
             ms = (time.perf_counter() - t0) * 1000
             logs.set_tick_id(None)            # log lines between ticks must not carry this tick's id
+        self.last_tick_id, self.last_tick_ms = info["id"], round(ms, 1)
         self.tracer.flush(self.conn, info["id"], "doze" if info["kind"] == "doze" else "ok")
         if self.cfg.settings["log_tick_events"]:
             logging.getLogger("cat.tick").info(
@@ -202,6 +220,7 @@ class Engine:
         rolls: list[dict] = []
         with self.tracer.stage("world"):
             fired = self.world.roll_events(self.rng, dt, st["area"], now, trace=rolls)
+        fired += self._take_injected(now, rolls)
         self.tracer.set_event_rolls(rolls)
         nudge = st["mood"].get("event_nudge", 0.0) * s["mood"]["event_decay"] \
             + sum(e["mood"] for e in fired)
@@ -478,33 +497,181 @@ class Engine:
         return info
 
     # ---------- the loop ----------
+    def effective_interval(self, base: float | None = None) -> float:
+        """Seconds between ticks: a dev `set_interval` override, else the argument, else settings."""
+        if self.interval_override is not None:
+            return float(self.interval_override)
+        return float(self.cfg.settings["tick_interval_seconds"] if base is None else base)
+
+    def _count_interval_override(self) -> None:
+        if self.interval_override_ticks:
+            self.interval_override_ticks -= 1
+            if self.interval_override_ticks <= 0:
+                self.interval_override = self.interval_override_ticks = None
+
+    def _wait(self, interval: float | None, sleep: Callable[[float], None], floor: float = 0.0) -> None:
+        """Wait between ticks. With the dev queue enabled the wait is sliced so pause / step /
+        set_interval commands take effect within `dev_poll_seconds`."""
+        poll = self.cfg.settings["dev_poll_seconds"]
+        if not self.dev.enabled or poll <= 0:
+            sleep(max(self.effective_interval(interval), floor))
+            return
+        elapsed = 0.0
+        while not self.stop_requested:
+            target = max(self.effective_interval(interval), floor)
+            if elapsed >= target:
+                break
+            chunk = min(poll, target - elapsed)
+            sleep(chunk)
+            elapsed += chunk
+            self.dev.process()
+            if self.paused or self.step_pending:
+                break
+
+    def _refresh_alive(self) -> None:
+        """Say 'I am alive' in the DB (used while paused, so a pause is never counted as downtime)."""
+        try:
+            with db.transaction(self.conn):
+                db.set_meta(self.conn, "last_alive_epoch", f"{self.time():.0f}")
+                db.set_meta(self.conn, "clean_stop", 0)
+        except Exception:
+            log.warning("could not refresh last-alive", exc_info=True)
+
     def run(self, ticks: int | None = None, interval: float | None = None,
             on_tick: Callable[[dict], None] | None = None,
             sleep: Callable[[float], None] = time.sleep) -> int:
-        """Run until `ticks` is reached or stop() is called. Never raises on a bad tick:
-        errors are logged and the loop carries on."""
-        interval = self.cfg.settings["tick_interval_seconds"] if interval is None else interval
+        """Run until `ticks` is reached or stop() is called. Never raises on a bad tick: errors
+        are logged and the loop carries on. While paused (dev dashboard) the loop idles, polling
+        for commands; paused iterations do not count as ticks."""
         done = 0
         try:
             self.startup_downtime()
         except Exception:
             log.exception("downtime handling failed; continuing without it")
         write_heartbeat(self.cfg.heartbeat_path)
+        self.dev.publish(force=True)
+        last_alive = self.time()
         while not self.stop_requested and (ticks is None or done < ticks):
-            failed = False
             write_heartbeat(self.cfg.heartbeat_path)
+            self.dev.process()
+            if self.paused and not self.step_pending:
+                if self.time() - last_alive >= self.cfg.settings["paused_alive_seconds"]:
+                    self._refresh_alive()
+                    last_alive = self.time()
+                self.dev.publish()
+                sleep(self.cfg.settings["dev_poll_seconds"])
+                continue
+            step_cmd, self.step_pending, self.step_cmd_id = self.step_cmd_id, False, None
+            failed, info = False, None
             try:
                 info = self.tick()
                 if on_tick:
                     on_tick(info)
-            except Exception:
+            except Exception as ex:
                 failed = True
                 log.exception("tick failed; state reloaded, continuing")
+                self.dev.finish_step(step_cmd, None, f"{type(ex).__name__}: {ex}")
+            else:
+                self.dev.finish_step(step_cmd, info)
             done += 1
-            if interval and not self.stop_requested and (ticks is None or done < ticks):
-                sleep(max(interval, self.cfg.settings["error_backoff_seconds"]) if failed else interval)
+            self.dev.publish(force=True)
+            if (self.effective_interval(interval) and not self.stop_requested and not self.paused
+                    and not self.step_pending and (ticks is None or done < ticks)):
+                self._wait(interval, sleep,
+                           floor=self.cfg.settings["error_backoff_seconds"] if failed else 0.0)
+            self._count_interval_override()          # a "for N ticks" override covers N waits
         self.mark_clean_stop()
+        self.dev.publish(force=True, state="stopped")
         return done
+
+    # ---------- dev commands that need engine internals ----------
+    def force_sleep_cycle(self) -> str:
+        """Run the sleep cycle now (consolidate, drift tendencies, learn preferences) without
+        waiting for the creature to be tired. Needs the brain online; attaches to the latest tick."""
+        last = self.conn.execute("SELECT MAX(id) FROM ticks").fetchone()[0]
+        if not last:
+            raise RuntimeError("no ticks yet: nothing to consolidate")
+        self._online_cache = None
+        if not self._online():
+            raise RuntimeError("brain is offline: a sleep cycle needs it")
+        self.tracer.begin()
+        with db.transaction(self.conn):
+            db.set_meta(self.conn, "sleep_pending", 1)
+            db.set_meta(self.conn, "sleep_tick_id", last)
+            if not db.get_meta(self.conn, "sleep_started"):
+                db.set_meta(self.conn, "sleep_started", self.state["sim_time"])
+        self._try_sleep_cycle()
+        done = db.get_meta(self.conn, "sleep_pending") == "0"
+        self.tracer.flush(self.conn, last, "ok")
+        if not done:
+            raise RuntimeError("postponed: the brain call failed (see the LLM calls page); it stays pending")
+        row = self.conn.execute("SELECT id, summary, new_memories, tendency_changes FROM sleep_log "
+                                "ORDER BY id DESC LIMIT 1").fetchone()
+        return (f"sleep cycle done (night #{row['id']}): {len(json.loads(row['new_memories']))} new memories, "
+                f"{len(json.loads(row['tendency_changes']))} tendency changes")
+
+    def reload_settings(self) -> list[str]:
+        """Re-read the YAML (all three files are validated). Only settings are applied live; a
+        change to character.yaml / world.yaml needs a restart. Invalid YAML raises and changes nothing."""
+        new = load_config(self.cfg.config_dir, self.cfg.overrides)
+        old = dict(self.cfg.settings)
+        changed = sorted(k for k in set(old) | set(new.settings) if old.get(k) != new.settings.get(k))
+        self.cfg.settings.clear()
+        self.cfg.settings.update(new.settings)             # same dict object: every component sees it
+        self.recent_action_vecs = deque(self.recent_action_vecs,
+                                        maxlen=self.cfg.settings["repetition_penalty"]["window"])
+        self.dev.publish_config()
+        log.info("settings reloaded; changed: %s", changed, extra={"event": "settings_reloaded",
+                                                                   "extra": {"changed": changed}})
+        return changed
+
+    def snapshot_db(self) -> Path:
+        """Back up the database now (SQLite online backup API, safe while running)."""
+        dest_dir = Path(self.cfg.db_path).parent / "backups"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / f"cat-{datetime.now():%Y-%m-%d-%H%M%S}-snapshot.db"
+        out = sqlite3.connect(dest)
+        try:
+            self.conn.backup(out)
+            if out.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise RuntimeError("snapshot failed its integrity check")
+        finally:
+            out.close()
+        return dest
+
+    def queue_injected_event(self, args: dict) -> None:
+        """Add a custom world event to the next tick (text, optional object to spawn)."""
+        areas = self.cfg.world["areas"]
+        if args.get("area") and args["area"] not in areas:
+            raise CommandError(f"unknown area '{args['area']}' (areas: {', '.join(areas)})")
+        sp = args.get("spawn")
+        if sp:
+            sp = {**sp, "area": sp.get("area") or args.get("area") or self.state["area"]}
+            if sp["area"] not in areas:
+                raise CommandError(f"unknown spawn area '{sp['area']}'")
+            allowed = self.cfg.settings["allowed_tags"]
+            sp["tags"] = [t for t in sp["tags"] if t in allowed]
+            if len(sp["name"]) > self.cfg.settings["name_max_length"]:
+                raise CommandError("spawn name too long")
+        self.injected.append({"text": args["text"], "area": args.get("area"), "spawn": sp})
+
+    def _take_injected(self, now: str, rolls: list[dict]) -> list[dict]:
+        """Turn queued dev events into fired events (same shape roll_events returns)."""
+        out = []
+        while self.injected:
+            ev = self.injected.pop(0)
+            rec = {"text": ev["text"], "area": ev["area"], "mood": 0.0, "spawned": None, "injected": True}
+            sp = ev["spawn"]
+            if sp and len(self.world.here(sp["area"])) < self.cfg.settings["max_objects_per_area"]:
+                o = self.world.add_object(sp["name"], sp["tags"], sp["area"], "event", now)
+                rec["spawned"] = o["id"]
+                rec["spawn_info"] = {"op": "create", "source": "event", "object_id": o["id"],
+                                     "area": o["area"], "name": o["name"], "label": o["name"]}
+            rolls.append({"event_text": ev["text"], "chance": None, "roll": None, "fired": 1,
+                          "filtered_reason": "injected from the dev dashboard"
+                          + ("" if not sp or rec["spawned"] else " (spawn skipped: area full)")})
+            out.append(rec)
+        return out
 
     def install_signal_handlers(self) -> None:
         def _stop(signum, frame):

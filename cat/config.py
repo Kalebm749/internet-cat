@@ -22,6 +22,8 @@ class Config:
     character: dict[str, Any]
     world: dict[str, Any]
     root: Path = ROOT
+    config_dir: Path = CONFIG_DIR           # where the YAML was loaded from (for reload_settings)
+    overrides: dict | None = None           # CLI overrides applied on top of settings.yaml
 
     def path(self, key: str) -> Path:
         p = Path(self.settings[key])
@@ -168,4 +170,5 @@ def load_config(config_dir: Path | str | None = None, overrides: dict | None = N
     validate(settings, character, world)
     # YAML may parse bucket keys as strings already ("0"); normalise
     settings["gain_values"] = {str(k): v for k, v in settings["gain_values"].items()}
-    return Config(settings, character, world, root=d.resolve().parent)
+    return Config(settings, character, world, root=d.resolve().parent, config_dir=d.resolve(),
+                  overrides=dict(overrides) if overrides else None)
