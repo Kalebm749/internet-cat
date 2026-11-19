@@ -9,7 +9,7 @@ embed_model: nomic-embed-text
 ollama_think: false            # qwen3: disable thinking so JSON `format` output stays clean
 llm_timeout_seconds: 120
 health_timeout_seconds: 3
-llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5}
+llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5, director: 0.8}
 llm_num_ctx: 4096
 error_backoff_seconds: 30      # extra wait after a tick that raised an unexpected error
 llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
@@ -115,7 +115,17 @@ projects:
 
 # --- energy: a separate resource, -50..50. Effort spends it, sleep restores it ---
 energy_start: 30
-events_max_per_tick: 2
+events_max_per_tick: 2         # the director's happening counts toward this
+director:                      # the world proposes occasional small happenings (LLM); code validates them
+  enabled: true                # false: only the hand-written events in world.yaml
+  every_ticks: 6               # runs after this many action ticks since it last ran ...
+  stale_every_ticks: 2         # ... or after this many when the entity has stayed in one place (stale)
+  text_max_length: 200
+  max_mood: 0.5                # a happening's mood nudge is clamped to -x..x (events say -1..1)
+  max_drain_points: 6          # most points a happening may drain from one need
+  max_drain_needs: 2           # most needs one happening may drain
+  avoid_repeat: 10             # recent happenings shown to it, and rejected if repeated
+  recent_actions_shown: 3      # the entity's latest actions it can see
 max_objects_per_area: 12       # event spawns are skipped when the area is this full
 allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet]
 state_value_max_length: 40

@@ -67,7 +67,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "dislike_drain", "projects", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "projects", "director", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -309,6 +309,24 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             fv = md.get("feeling_values")
             if not isinstance(fv, dict) or not all(_num(v) and -50 <= v <= 50 for v in fv.values()):
                 errs.append("settings.yaml mood.feeling_values: must map feelings to numbers -50..50")
+        dr_ = st.get("director")
+        if isinstance(dr_, dict):
+            if not isinstance(dr_.get("enabled"), bool):
+                errs.append("settings.yaml director.enabled: must be true or false")
+            for k, lo in (("every_ticks", 1), ("stale_every_ticks", 1), ("text_max_length", 1),
+                          ("max_drain_needs", 1), ("avoid_repeat", 0), ("recent_actions_shown", 0)):
+                v = dr_.get(k)
+                if isinstance(v, bool) or not isinstance(v, int) or v < lo:
+                    errs.append(f"settings.yaml director.{k}: must be an integer >= {lo}")
+            if not _num(dr_.get("max_mood")) or not 0 <= dr_["max_mood"] <= 1:
+                errs.append("settings.yaml director.max_mood: must be a number 0..1")
+            if not _num(dr_.get("max_drain_points")) or dr_["max_drain_points"] < 0:
+                errs.append("settings.yaml director.max_drain_points: must be a number >= 0")
+            if isinstance(dr_.get("every_ticks"), int) and isinstance(dr_.get("stale_every_ticks"), int) \
+                    and dr_["stale_every_ticks"] > dr_["every_ticks"]:
+                errs.append("settings.yaml director.stale_every_ticks: must not exceed every_ticks")
+        elif "director" in st:
+            errs.append("settings.yaml director: must be a mapping")
         pj = st.get("projects")
         if isinstance(pj, dict):
             for k, lo in (("max_active", 1), ("milestone_every", 1), ("title_max_length", 1), ("why_max_length", 1),

@@ -210,7 +210,7 @@ def _world_change_text(cfg: Config, c: dict) -> str | None:
     label = c.get("label") or c.get("name") or c.get("object_id") or "something"
     op = c.get("op")
     if op == "create":
-        return f"+ {label} ({'appeared' if c.get('source') == 'event' else 'created'})"
+        return f"+ {label} ({'appeared' if c.get('source') in ('event', 'director') else 'created'})"
     if op == "consume":
         return f"− {label} (eaten)"
     if op == "take":

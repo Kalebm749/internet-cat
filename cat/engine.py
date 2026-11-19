@@ -15,6 +15,7 @@ from typing import Callable
 from collections import deque
 
 from cat import brain, character, clock, db, downtime, effects, logs, narrator, sleep
+from cat import director as DR
 from cat import projects as PJ
 from cat.config import Config, load_config
 from cat.devcontrol import DevControl
@@ -257,6 +258,7 @@ class Engine:
         with self.tracer.stage("world"):
             fired = self.world.roll_events(self.rng, dt, st["area"], now, trace=rolls)
         fired += self._take_injected(now, rolls)
+        fired += self._director_happening(fired, st, now, dt)
         self.tracer.set_event_rolls(rolls)
         nudge = st["mood"].get("event_nudge", 0.0) * s["mood"]["event_decay"] \
             + sum(e["mood"] for e in fired)
@@ -496,6 +498,7 @@ class Engine:
                     project_adv["artifact_id"] = aid
             if row["kind"] == "tick":      # time spent in this place (a move resets it)
                 stayed = new_state["area"] == area
+                db.set_meta(self.conn, "director_gap", int(db.get_meta(self.conn, "director_gap", "0") or 0) + 1)
                 working = bool(project_adv and project_adv.get("ok") and project_adv["advanced"])
                 if not stayed:
                     db.set_meta(self.conn, "ticks_in_area", 0)
@@ -736,6 +739,57 @@ class Engine:
             if len(sp["name"]) > self.cfg.settings["name_max_length"]:
                 raise CommandError("spawn name too long")
         self.injected.append({"text": args["text"], "area": args.get("area"), "spawn": sp})
+
+    def _director_happening(self, fired: list[dict], st: dict, now: str, dt) -> list[dict]:
+        """The world director: now and then an LLM proposes one small happening in this area. It runs
+        every `director.every_ticks` action ticks, or `stale_every_ticks` when the place has gone stale;
+        never while asleep or exhausted, never with the brain offline, and it counts toward
+        `events_max_per_tick`. A failed call is only a missed happening: the tick carries on.
+        It never sees the entity's needs or mood. Code validates the proposal and applies it as an event."""
+        cfg, s = self.cfg, self.cfg.settings
+        d = s["director"]
+        if not d["enabled"] or len(fired) >= s["events_max_per_tick"]:
+            return []
+        if st["is_asleep"] or (clock.is_night(dt, s["phases"]) and st["energy"] < s["sleep"]["fall_asleep_energy_below"]):
+            return []
+        gap = int(db.get_meta(self.conn, "director_gap", "0") or 0)
+        due, why = DR.due(cfg, gap, self._stale_here())
+        if not due or not self._online():
+            return []
+        area = st["area"]
+        rec: dict = {"trigger": why, "gap": gap}
+        out: dict = {"action": "failed"}
+        with self.tracer.stage("director"):
+            recent = [r["text"] for r in self.conn.execute(
+                "SELECT text FROM events ORDER BY id DESC LIMIT ?", (d["avoid_repeat"],))][::-1] \
+                if d["avoid_repeat"] else []
+            acts = [r["action"] for r in self.conn.execute(
+                "SELECT action FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT ?",
+                (d["recent_actions_shown"],))][::-1] if d["recent_actions_shown"] else []
+            msgs = DR.messages(cfg, area_id=area, sim_time=now, weather=self.world.weather,
+                               objects=[o["name"] for o in self.world.here(area)],
+                               recent_events=recent, recent_actions=acts, stale=self._stale_here())
+            try:
+                raw = DR.propose(self.backend, cfg, msgs)
+                out = DR.validate(cfg, raw, recent, len(self.world.here(area)))
+                rec["raw"] = raw
+            except BackendError as e:
+                log.warning("world director unavailable (%s): no happening this time", e)
+                out = {"action": "failed", "reason": str(e)}
+        db.set_meta(self.conn, "director_gap", 0)
+        self.tracer.set_director({**rec, **out})
+        if out["action"] != "happened":
+            return []
+        record = {"text": out["text"], "area": area, "mood": out["mood"], "spawned": None,
+                  "drains": out["drains"], "director": True}
+        if out["weather"] and out["weather"] != self.world.weather:
+            self.world.weather = out["weather"]
+        if out["spawn"]:
+            o = self.world.add_object(out["spawn"]["name"], out["spawn"]["tags"], area, "director", now)
+            record["spawned"] = o["id"]
+            record["spawn_info"] = {"op": "create", "source": "director", "object_id": o["id"],
+                                    "area": o["area"], "name": o["name"], "label": o["name"]}
+        return [record]
 
     def _take_injected(self, now: str, rolls: list[dict]) -> list[dict]:
         """Turn queued dev events into fired events (same shape roll_events returns)."""

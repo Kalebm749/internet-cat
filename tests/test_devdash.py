@@ -417,6 +417,7 @@ def test_tick_detail_for_doze_asleep_and_error_ticks(cfg, seeded, monkeypatch):
     def down(m, s):
         raise BackendError("injected failure")
     seeded.backend.handlers["brain"] = down                                      # both brain attempts fail
+    seeded.state["is_asleep"], seeded.state["energy"] = False, 20.0               # awake, whatever the seed run ended on
     failed = seeded.tick()
     assert failed["kind"] == "doze"
     page = c.get(f"/ticks/{failed['id']}").text
