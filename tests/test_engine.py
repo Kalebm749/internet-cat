@@ -178,3 +178,41 @@ def test_event_spawn_consumed_same_tick_is_still_audited(cfg):
     ops = [(c["op"], c["object_id"]) for c in json.loads(
         e.conn.execute("SELECT changes FROM ticks WHERE id=?", (info["id"],)).fetchone()[0])]
     assert ops == [("create", "fish"), ("consume", "fish")]
+
+
+# ---------- config edited while a database exists ----------
+def test_config_changes_are_reconciled_with_saved_state(cfg, caplog):
+    e, b = make_engine(cfg)
+    e.run(ticks=5, interval=0)
+    before = db.get_state(e.conn)
+    cfg.character["needs"]["thirst"] = {"start": 42, "decay": 3}
+    cfg.character["tendencies"]["curiosity"] = 0.7
+    del cfg.character["needs"]["cleanliness"]
+    b.need_ids = list(cfg.character["needs"])
+    with caplog.at_level("WARNING", logger="cat.engine"):
+        e2 = Engine(cfg, b, conn=e.conn, rng=random.Random(2))
+    st = db.get_state(e2.conn)
+    assert st["needs"]["thirst"] == 42 and "cleanliness" not in st["needs"]
+    assert st["needs"]["fun"] == before["needs"]["fun"]                 # untouched needs keep their value
+    assert st["tendencies"]["curiosity"] == 0.7
+    assert st["tendencies"]["boldness"] == before["tendencies"]["boldness"]
+    assert "new need 'thirst'" in caplog.text and "dropped need 'cleanliness'" in caplog.text
+    assert e2.run(ticks=20, interval=0) == 20                           # and the loop works
+    assert e2.conn.execute("SELECT COUNT(*) FROM ticks").fetchone()[0] == 25
+
+
+def test_creature_in_a_removed_area_goes_home(cfg):
+    e, b = make_engine(cfg)
+    e.tick()
+    e.conn.execute("UPDATE state SET area='the_moon'")
+    e2 = Engine(cfg, b, conn=e.conn, rng=random.Random(2))
+    assert db.get_state(e2.conn)["area"] == cfg.character["start_area"]
+    assert e2.tick()["kind"] in ("tick", "asleep")
+
+
+def test_unchanged_config_leaves_state_alone(cfg):
+    e, b = make_engine(cfg)
+    e.run(ticks=3, interval=0)
+    st, ts = db.get_state(e.conn), e.conn.execute("SELECT updated_at FROM state").fetchone()[0]
+    Engine(cfg, b, conn=e.conn, rng=random.Random(2))
+    assert db.get_state(e.conn) == st

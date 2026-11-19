@@ -33,7 +33,7 @@ Three files in `config/`. Loaded and validated by `cat/config.py`; errors name t
 | Field | Meaning |
 |---|---|
 | `areas` ✔ | `{id: {name, description, exits: [area ids]}}`. Exits must be mirrored. |
-| `objects` ✔ | List of `{id, name, area, tags, state}`. `area` may be `inventory`. Tags are free strings; `movable` and `edible` have rules (pi-architecture §9). |
+| `objects` ✔ | List of `{id, name, area, tags, state}`. `area` may be `inventory`. Tags are free strings; `movable` and `edible` have rules (server-architecture §9). |
 | `weather` | List of weather names; the first is the starting weather. Default `[clear]`. |
 | `events` | List of `{text, chance (0..1 per tick), area?, hours? [from, to), only_weather?, set_weather?, mood? (float nudge to mood, decays), spawn?: {name, tags, area}}`. An event with `area` only fires while the creature is in that area (it must perceive it); `spawn.area` is where the object appears. Spawns are skipped when the area holds `max_objects_per_area` objects. |
 

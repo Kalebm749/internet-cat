@@ -39,6 +39,7 @@ class Engine:
         self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])
         self.memory = Memory(self.conn, cfg, backend)
         self._bootstrap()
+        self._reconcile_config()
         self._load()
 
     # ---------- state ----------
@@ -59,6 +60,39 @@ class Engine:
             db.save_state(self.conn, state, _now_real())
             db.set_meta(self.conn, "first_sim_time", start)
             db.set_meta(self.conn, "brain_model", cfg.settings["brain_model"])
+
+    def _reconcile_config(self) -> None:
+        """The YAML can be edited while a database already exists (it is mounted, not baked in).
+        Bring the saved state in line with it so a changed config never makes every tick fail:
+        new needs/tendencies start at their configured value, removed ones are dropped, and a
+        creature standing in an area that no longer exists goes back to the start area.
+        (World objects are seeded once, on first start; a reset is needed to re-seed them.)"""
+        st = db.get_state(self.conn)
+        cfg, notes = self.cfg, []
+        needs = {k: v for k, v in st["needs"].items() if k in cfg.character["needs"]}
+        for k, spec in cfg.character["needs"].items():
+            if k not in needs:
+                needs[k] = float(spec["start"])
+                notes.append(f"new need '{k}' starts at {spec['start']}")
+        notes += [f"dropped need '{k}'" for k in st["needs"] if k not in needs]
+        tend = {k: v for k, v in st["tendencies"].items() if k in cfg.character["tendencies"]}
+        for k, v in cfg.character["tendencies"].items():
+            if k not in tend:
+                tend[k] = float(v)
+                notes.append(f"new tendency '{k}' starts at {v}")
+        notes += [f"dropped tendency '{k}'" for k in st["tendencies"] if k not in tend]
+        area = st["area"]
+        if area not in cfg.world["areas"]:
+            area = cfg.character["start_area"]
+            notes.append(f"area '{st['area']}' no longer exists: moved to '{area}'")
+        if not notes:
+            return
+        log.warning("config changed since the last run; adjusting saved state: %s", "; ".join(notes))
+        st = {**st, "needs": needs, "tendencies": tend, "area": area,
+              "energy": character.energy(needs, cfg), "is_asleep": bool(st["is_asleep"]),
+              "brain_online": bool(st["brain_online"])}
+        with db.transaction(self.conn):
+            db.save_state(self.conn, st, _now_real())
 
     def _load(self) -> None:
         self.state = db.get_state(self.conn)
