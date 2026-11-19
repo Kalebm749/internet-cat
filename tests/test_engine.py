@@ -102,3 +102,59 @@ def test_run_survives_a_failing_tick(cfg, monkeypatch):
     monkeypatch.setattr(e, "_tick", flaky)
     assert e.run(ticks=4, interval=0) == 4
     assert e.conn.execute("SELECT COUNT(*) FROM ticks").fetchone()[0] == 3
+
+
+def test_effects_wired_in_engine(cfg):
+    e, b = make_engine(cfg)
+    b.handlers["narrator"] = lambda m, s: {
+        "outcome": "She eats and wanders.", "gains": {"fun": "+"}, "effort": "low", "duration": 20,
+        "changes": [{"op": "consume", "object_id": "ghost"},
+                    {"op": "move_self", "area": "kitchen"}, {"op": "consume", "object_id": "bowl"}]}
+    e.state["area"] = "kitchen"
+    e.state["needs"]["food"] = 10.0
+    info = e.tick()
+    row = e.conn.execute("SELECT * FROM ticks WHERE id=?", (info["id"],)).fetchone()
+    assert [c["op"] for c in json.loads(row["changes"])] == ["consume"]
+    assert json.loads(row["rejected_changes"])[0]["reason"].startswith("no such object")
+    assert db.get_state(e.conn)["needs"]["food"] > 10
+    assert e.conn.execute("SELECT COUNT(*) FROM objects WHERE id='bowl'").fetchone()[0] == 0
+
+
+def test_repeated_action_pays_less(cfg):
+    e, b = make_engine(cfg)
+    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "bat the red ball",
+                                        "intent": "", "feeling": "neutral", "wants_sleep": False}
+    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {"fun": "++"}, "effort": "low",
+                                           "duration": 5, "changes": []}
+    e.state["needs"]["fun"] = 10.0
+    e.tick()
+    f1 = db.get_state(e.conn)["needs"]["fun"]
+    e.tick()
+    f2 = db.get_state(e.conn)["needs"]["fun"]
+    assert f1 - 10 > 25 and (f2 - f1) < 20        # first ~+30, repeat ~+12 (x0.4)
+
+
+def test_nothing_appears_or_vanishes_without_an_effect(cfg):
+    """Audit: replay every tick's recorded changes; the result must equal the real objects table."""
+    e, _ = make_engine(cfg, seed=11)
+    start = {o["id"] for o in cfg.world["objects"]}
+    e.run(ticks=1000, interval=0)
+    ids = set(start)
+    rejected_total = applied_total = 0
+    for r in e.conn.execute("SELECT changes, rejected_changes FROM ticks ORDER BY id"):
+        for c in json.loads(r["changes"]):
+            applied_total += 1
+            if c["op"] == "create":
+                assert c["object_id"] not in ids
+                ids.add(c["object_id"])
+            elif c["op"] == "consume":
+                ids.remove(c["object_id"])
+        rejected_total += len(json.loads(r["rejected_changes"]))
+    assert ids == {r[0] for r in e.conn.execute("SELECT id FROM objects")}
+    assert applied_total > 100 and rejected_total > 20       # the mock exercised both paths
+    valid_areas = set(cfg.world["areas"]) | {"inventory"}
+    for o in e.conn.execute("SELECT area FROM objects"):
+        assert o["area"] in valid_areas
+    assert e.conn.execute("SELECT COUNT(*) FROM objects WHERE area='inventory'").fetchone()[0] \
+        <= cfg.settings["inventory_max"]
+    assert db.get_state(e.conn)["area"] in cfg.world["areas"]

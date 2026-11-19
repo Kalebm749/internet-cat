@@ -63,9 +63,17 @@ def apply_gains(needs: dict[str, float], gains: dict[str, str], effort: str, cfg
         spec = cfg.character["needs"].get(nid)
         if spec is None or str(bucket) not in values:
             continue
-        if spec.get("requires_consume") and not consumed:
-            continue
-        out[nid] = clamp(out[nid] + values[str(bucket)] * multiplier)
+        if spec.get("requires_consume"):
+            if not consumed:
+                continue
+            out[nid] = clamp(out[nid] + values[str(bucket)])   # physical: never repetition-penalised
+        else:
+            out[nid] = clamp(out[nid] + values[str(bucket)] * multiplier)
+    if consumed:  # eating guarantees a minimum gain even if the narrator forgot to score it
+        floor = values[str(cfg.settings["consume_min_gain"])]
+        for nid, spec in cfg.character["needs"].items():
+            if spec.get("requires_consume") and (gains or {}).get(nid) is None:
+                out[nid] = clamp(out[nid] + floor)
     drain = need_with_flag(cfg, "effort_drain")
     out[drain] = clamp(out[drain] - cfg.settings["effort_energy_cost"].get(effort, 0))
     return out

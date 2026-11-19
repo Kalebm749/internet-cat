@@ -9,10 +9,12 @@ import time
 from datetime import datetime
 from typing import Callable
 
-from cat import brain, character, clock, db, narrator
+from collections import deque
+
+from cat import brain, character, clock, db, effects, narrator
 from cat.config import Config
 from cat.db import dumps
-from cat.llm import BackendError, LLMBackend
+from cat.llm import BackendError, LLMBackend, cosine
 from cat.world import WorldState
 
 log = logging.getLogger("cat.engine")
@@ -30,6 +32,7 @@ class Engine:
         self.conn = conn or db.connect(cfg.db_path)
         db.init_db(self.conn)
         self.stop_requested = False
+        self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])
         self._bootstrap()
         self._load()
 
@@ -80,13 +83,32 @@ class Engine:
         return "\n".join(lines)
 
     def _narrator_context(self) -> str:
-        st = self.state
+        st, cfg = self.state, self.cfg
         dt = clock.parse(st["sim_time"])
-        objs = [f"{o['id']}: {o['name']} tags={o['tags']} state={o['state']}"
-                for o in self.world.in_reach(st["area"])]
-        return (f"Location: {self.cfg.world['areas'][st['area']]['name']}. "
-                f"Time: {clock.time_label(dt)}. Weather: {self.world.weather}.\nObjects:\n"
-                + "\n".join(objs))
+        areas = cfg.world["areas"]
+
+        def fmt(o):
+            state = ", ".join(f"{k}={v}" for k, v in o["state"].items()) or "none"
+            return f"- {o['id']}: {o['name']} | tags: {', '.join(o['tags']) or 'none'} | state: {state}"
+
+        here = [fmt(o) for o in self.world.here(st["area"])] or ["(nothing)"]
+        inv = [fmt(o) for o in self.world.inventory()] or ["(empty)"]
+        exits = "; ".join(f"{a} ({areas[a]['name']})" for a in areas[st["area"]]["exits"])
+        return (f"Location: {st['area']} ({areas[st['area']]['name']}). Time: "
+                f"{clock.time_label(dt)}. Weather: {self.world.weather}.\n"
+                f"Exits: {exits}\nObjects here:\n" + "\n".join(here)
+                + "\nInventory:\n" + "\n".join(inv))
+
+    def _repetition_multiplier(self, action: str) -> float:
+        """Embed the action; shrink gains if it resembles a recent one. Embedding trouble just
+        means no penalty this tick."""
+        try:
+            vec = self.backend.embed(self.cfg.settings["embed_model"], [action])[0]
+        except BackendError:
+            return 1.0
+        mult = effects.repetition_multiplier(vec, list(self.recent_action_vecs), self.cfg, cosine)
+        self.recent_action_vecs.append(vec)
+        return mult
 
     # ---------- the tick ----------
     def tick(self) -> dict:
@@ -126,24 +148,35 @@ class Engine:
         if result:
             b, n = result
             minutes = n["duration"]
+            fx = effects.apply_changes(n["changes"], self.world, st["area"], cfg, now)
+            mult = self._repetition_multiplier(b["action"])
             needs = character.decay(before, minutes, cfg)
-            needs = character.apply_gains(needs, n["gains"], n["effort"], cfg)
+            needs = character.apply_gains(needs, n["gains"], n["effort"], cfg,
+                                          consumed=fx.consumed, multiplier=mult)
             feeling = b["feeling"]
+            new_area = fx.area
             row = {"kind": "tick", "reaction": b["reaction"], "thought": b["thought"],
                    "action": b["action"], "intent": b["intent"], "outcome": n["outcome"],
                    "gains": n["gains"], "effort": n["effort"], "duration": minutes,
-                   "changes": [], "rejected": []}  # effects (M3) fill these in
+                   "changes": fx.applied, "rejected": fx.rejected}
         else:
             minutes = s["doze"]["sim_minutes"]
             needs = character.decay(before, minutes, cfg)
             needs = character.restore(needs, s["doze"]["energy_restore"], cfg)
             feeling = None
+            new_area = st["area"]
             row = {"kind": "doze", "reaction": None, "thought": None, "action": None,
                    "intent": None, "outcome": "dozing", "gains": {}, "effort": None,
                    "duration": minutes, "changes": [], "rejected": []}
 
+        for e in fired:  # event-spawned objects are world changes too (audit trail)
+            if e["spawned"]:
+                o = self.world.objects[e["spawned"]]
+                row["changes"] = row["changes"] + [{"op": "create", "source": "event",
+                                                    "object_id": o["id"], "area": o["area"],
+                                                    "name": o["name"], "label": o["name"]}]
         mood = character.compute_mood(needs, before, nudge, feeling, cfg)
-        new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs,
+        new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes), "needs": needs,
                      "mood": mood, "energy": character.energy(needs, cfg),
                      "weather": self.world.weather, "brain_online": online}
 

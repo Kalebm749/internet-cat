@@ -80,14 +80,44 @@ class MockBackend(LLMBackend):
         self.calls.append((task, model))
         if task in self.handlers:
             return self.handlers[task](messages, schema)
-        return self._default(task)
+        return self._default(task, messages)
 
     def embed(self, model: str, texts: list[str]) -> list[list[float]]:
         self._check()
         self.calls.append(("embed", model))
         return [hash_embed(t) for t in texts]
 
-    def _default(self, task: str) -> dict[str, Any]:
+    def _mock_changes(self, messages: list[dict]) -> list[dict]:
+        """Random, mostly-valid world changes (plus some deliberately bad ones) so the effects
+        validator gets exercised by mock runs."""
+        r = self.rng
+        ctx = _parse_narrator_context(messages)
+        if "area" not in ctx or r.random() > 0.6:
+            return []
+        movable = [o for o in ctx["here"] if "movable" in o["tags"]]
+        edible = [o for o in ctx["here"] + ctx["inv"] if "edible" in o["tags"]]
+        choices: list[dict] = []
+        if ctx["exits"]:
+            choices.append({"op": "move_self", "area": r.choice(ctx["exits"])})
+        if movable:
+            choices.append({"op": "take", "object_id": r.choice(movable)["id"]})
+        if ctx["inv"]:
+            choices.append({"op": "drop", "object_id": r.choice(ctx["inv"])["id"]})
+        if edible:
+            choices.append({"op": "consume", "object_id": r.choice(edible)["id"]})
+        if ctx["here"]:
+            choices.append({"op": "set_state", "object_id": r.choice(ctx["here"])["id"],
+                            "key": "touched", "value": "true"})
+        choices.append({"op": "create", "name": r.choice(["a cushion fort", "a paper boat"]),
+                        "tags": ["movable", "soft", "bogus_tag"]})
+        out = [r.choice(choices)]
+        if r.random() < 0.2:  # bad ones: nonexistent object / non-adjacent area / unknown op
+            out.append(r.choice([{"op": "consume", "object_id": "ghost_fish"},
+                                 {"op": "move_self", "area": "the_moon"},
+                                 {"op": "teleport", "area": "garden"}]))
+        return out
+
+    def _default(self, task: str, messages: list[dict]) -> dict[str, Any]:
         r = self.rng
         if task == "brain":
             act = r.choice(["looks out of the window", "bats at the red ball", "naps on the sofa",
@@ -100,7 +130,8 @@ class MockBackend(LLMBackend):
                 self.need_ids, min(2, len(self.need_ids)))}
             return {"outcome": "Nothing much happens.",
                     "gains": gains, "effort": r.choice(["low", "medium"]),
-                    "duration": r.choice([10, 20, 30]), "changes": []}
+                    "duration": r.choice([10, 20, 30]),
+                    "changes": self._mock_changes(messages)}
         if task == "consolidate":
             return {"memories": [{"text": "A quiet day at home.", "importance": 0.4}],
                     "summary": "An uneventful day."}
@@ -109,6 +140,28 @@ class MockBackend(LLMBackend):
         if task == "preferences":
             return {"preferences": []}
         raise BackendError(f"mock: unknown task '{task}'")
+
+
+def _parse_narrator_context(messages: list[dict]) -> dict:
+    """Read the engine's narrator context (see Engine._narrator_context)."""
+    text = messages[-1]["content"] if messages else ""
+    ctx: dict[str, Any] = {"exits": [], "here": [], "inv": []}
+    section = None
+    for line in text.splitlines():
+        if line.startswith("Location:"):
+            ctx["area"] = line.split()[1]
+        elif line.startswith("Exits:"):
+            ctx["exits"] = [e.split(" (")[0].strip() for e in line[6:].split(";") if e.strip()]
+        elif line.startswith("Objects here"):
+            section = "here"
+        elif line.startswith("Inventory"):
+            section = "inv"
+        elif line.startswith("- ") and section:
+            m = re.match(r"- (\S+): .*\| tags: ([^|]*)\|", line)
+            if m:
+                tags = [t.strip() for t in m.group(2).split(",") if t.strip() != "none"]
+                ctx[section].append({"id": m.group(1), "tags": tags})
+    return ctx
 
 
 def cosine(a: list[float], b: list[float]) -> float:

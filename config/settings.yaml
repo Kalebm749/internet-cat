@@ -31,6 +31,10 @@ gain_values: {"0": 0, "+": 15, "++": 30}
 effort_energy_cost: {low: 2, medium: 6, high: 12}   # applied to the need flagged effort_drain
 repetition_penalty: {window: 6, similarity_threshold: 0.85, multiplier: 0.4}
 create_limit_per_tick: 1
+max_changes_per_tick: 6        # extra narrator changes beyond this are rejected
+inventory_max: 3
+name_max_length: 40            # created object names / set_state keys
+consume_min_gain: "+"          # eating an edible guarantees at least this bucket on requires_consume needs
 events_max_per_tick: 2
 max_objects_per_area: 12       # event spawns are skipped when the area is this full
 allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet]

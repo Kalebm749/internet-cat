@@ -52,7 +52,8 @@ REQUIRED_SETTINGS = [
     "sim_minutes_min", "sim_minutes_max", "phases", "gain_values", "effort_energy_cost",
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "default_need_words", "energy_words",
-    "events_max_per_tick", "max_objects_per_area",
+    "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
+    "consume_min_gain", "max_objects_per_area",
 ]
 
 

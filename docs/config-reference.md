@@ -47,3 +47,11 @@ Every tuning number. Groups:
 - **Memory**: `recall`, `recency_half_life_sim_hours`, `short_term_shown`, `notable`, `long_term_cap`.
 - **Web**: `web_port`, `diary_page_size`, `keepsakes_first_page`.
 - `db_path`, `backup_keep`.
+
+## Effects: how narrator changes are validated (`cat/effects.py`)
+Changes are checked **in order** against the real world; invalid ones are dropped, stored in `ticks.rejected_changes` with a reason, and logged.
+- Objects are referenced by `object_id`; a unique exact name is accepted as a fallback.
+- `create`: tags not in `allowed_tags` are stripped (recorded as `dropped_tags`); at most `create_limit_per_tick` per tick; area must be the current one.
+- Caps: `max_changes_per_tick`, `inventory_max`, `max_objects_per_area`, `name_max_length`, `state_value_max_length`.
+- `consume` of an edible is the only thing that lets `requires_consume` needs rise; `consume_min_gain` is the minimum bucket granted if the narrator forgot to score it. Those needs are never repetition-penalised.
+- Objects spawned by world events are recorded in the tick's `changes` as `{"op": "create", "source": "event"}`, so every object appearance or disappearance is auditable.

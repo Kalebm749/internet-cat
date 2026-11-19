@@ -58,3 +58,11 @@ def test_mood_reaction_blended_lightly(cfg):
     pos = ch.compute_mood(n, n, 0, "positive", cfg)["valence"]
     neg = ch.compute_mood(n, n, 0, "negative", cfg)["valence"]
     assert 0 < pos < 0.5 and -0.5 < neg < 0
+
+
+def test_consume_gives_floor_and_penalty_spares_physical(cfg):
+    n = {k: 50.0 for k in cfg.character["needs"]}
+    out = ch.apply_gains(n, {}, "low", cfg, consumed=True)
+    assert out["food"] == 65                               # consume_min_gain "+"
+    out = ch.apply_gains(n, {"food": "++", "fun": "++"}, "low", cfg, consumed=True, multiplier=0.4)
+    assert out["food"] == 80 and out["fun"] == 62          # food unpenalised, fun x0.4

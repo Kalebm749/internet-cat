@@ -22,7 +22,19 @@ def schema(cfg: Config) -> dict:
                                      for n in cfg.character["needs"]}},
             "effort": {"type": "string", "enum": EFFORTS},
             "duration": {"type": "integer"},
-            "changes": {"type": "array", "items": {"type": "object"}},
+            "changes": {"type": "array", "items": {
+                "type": "object",
+                "properties": {
+                    "op": {"type": "string", "enum": OPS},
+                    "object_id": {"type": "string"},
+                    "area": {"type": "string"},
+                    "key": {"type": "string"},
+                    "value": {"type": "string"},
+                    "name": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["op"],
+            }},
         },
         "required": ["outcome", "gains", "effort", "duration", "changes"],
     }
