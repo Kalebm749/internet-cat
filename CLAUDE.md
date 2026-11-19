@@ -71,12 +71,12 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 ## Conventions
 - Python 3.11+ (image: 3.12-slim); keep dependencies light and pure-Python.
 - All tuning numbers live in `config/settings.yaml`, never hard-coded.
-- Only `cat/effects.py` changes the world on the narrator's behalf; rejected changes are logged.
+- Only `cat/effects.py` changes the world (on behalf of the chosen move); rejected changes are logged. The narrator proposes nothing.
 - Each tick's apply+record step is one DB transaction (`db.transaction`); LLM calls happen outside it.
 - The engine is the only writer of game state; `cat/web` is read-only and never calls the LLM.
 - Everything must run and be tested with `MockBackend`; never require Ollama in tests.
-- Tick order: events roll at tick start; the action's duration then advances the clock and decays needs in the apply step (event and dislike drains, then the narrator's gains, which only add).
-- Projects (`cat/projects.py`, tables `projects` and `artifacts`) are formed only by the sleep cycle and advanced only by the narrator's validated `project` report; code owns the numbers (a tapering step, milestones, completion gains), and project work is exempt from the repetition penalty. Nothing in a project picks or ranks actions.
+- Tick order: events roll at tick start; the move's duration then advances the clock and decays needs in the apply step (event and dislike drains, then the move's gains, which only add).
+- Projects (`cat/projects.py`, tables `projects` and `artifacts`) are formed only by the sleep cycle and advanced only by the brain choosing a project's work-on move; code owns the numbers (a tapering step, milestones, completion gains), and project work is exempt from the repetition penalty. Nothing in a project picks or ranks actions.
 - The world director (`cat/director.py`) proposes at most one happening every few ticks; it must never be shown needs or mood, and code validates and applies its proposal as an event (`events_max_per_tick`, area cap, known weather, capped drains). Hand-written events in `world.yaml` stay as seeds and fallback.
 - Fixed prompt text lives in `config/prompts.yaml`, never in code; entries and their `{placeholders}` are declared in `cat/prompts.py` and validated at startup.
 - Placeholder content in `config/character.yaml` / `world.yaml` — the engine must work with any valid config.

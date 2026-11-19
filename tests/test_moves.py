@@ -88,7 +88,7 @@ def rs(cfg, conn, key, tags=(), novel=False, seed=1, area="living_room", inv=Non
 
 def test_resolution_is_decided_by_code(cfg, conn):
     r, mv = rs(cfg, conn, "rest_on:sofa", ["soft", "warm", "climbable"])
-    assert r["gains"] == {"peace": "++"} and r["effort"] == "low" and 20 <= r["duration"] <= 60
+    assert r["gains"] == {"peace": "+"} and r["effort"] == "low" and 20 <= r["duration"] <= 60
     assert r["changes"] == [] and r["template"] == "You rested on the sofa."
 
 

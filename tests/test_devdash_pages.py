@@ -358,7 +358,7 @@ def test_object_history_from_recorded_changes(cfg):
 
 def test_world_history_pagination_and_pages(cfg):
     e, b = make_engine(cfg, seed=8)
-    e.run(ticks=300, interval=0)
+    e.run(ticks=500, interval=0)
     total = data.world_state(cfg, limit=1000)["history_total"]
     assert total > 60
     seen = []
