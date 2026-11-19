@@ -51,6 +51,8 @@ SPEC: dict[str, set[str]] = {
     "brain.situation.project_note": {"note"},
     "brain.situation.project_idle": {"ago"},
     "brain.situation.project_new": set(),
+    "brain.situation.interrupted_event": {"label"},
+    "brain.situation.interrupted_need": {"label"},
     "brain.situation.heading_moves": set(),
     "brain.situation.move_line": {"id", "label"},
     "brain.situation.closing": set(),

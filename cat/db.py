@@ -144,6 +144,9 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) ->
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     _add_column(conn, "mood_math", "value", "REAL")        # the one mood number (valence/arousal are legacy)
+    _add_column(conn, "state", "activity", "JSON")          # what it is in the middle of (see the engine)
+    _add_column(conn, "ticks", "activity_minutes", "INT")   # a move's full length when it spans several ticks
+    _add_column(conn, "tick_traces", "activity", "JSON")    # an activity started, carried on, interrupted or finished
     _add_column(conn, "ticks", "move_key", "TEXT")          # the move chosen: "verb" or "verb:target"
     _add_column(conn, "tick_traces", "director", "JSON")   # the world director's proposal and what code did
     _add_column(conn, "tick_traces", "project", "JSON")    # the narrator's project report and what code did
@@ -188,19 +191,19 @@ def get_state(conn: sqlite3.Connection) -> dict | None:
     if row is None:
         return None
     d = dict(row)
-    for k in ("needs", "mood", "tendencies"):
-        d[k] = json.loads(d[k]) if d[k] else None
+    for k in ("needs", "mood", "tendencies", "activity"):
+        d[k] = json.loads(d[k]) if d.get(k) else None
     return d
 
 
 def save_state(conn: sqlite3.Connection, s: dict, updated_at: str) -> None:
     conn.execute(
         "INSERT INTO state(id,sim_time,area,needs,mood,energy,weather,tendencies,is_asleep,"
-        "brain_online,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?,?) "
+        "brain_online,activity,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(id) DO UPDATE SET sim_time=excluded.sim_time, area=excluded.area, "
         "needs=excluded.needs, mood=excluded.mood, energy=excluded.energy, "
         "weather=excluded.weather, tendencies=excluded.tendencies, is_asleep=excluded.is_asleep, "
-        "brain_online=excluded.brain_online, updated_at=excluded.updated_at",
+        "brain_online=excluded.brain_online, activity=excluded.activity, updated_at=excluded.updated_at",
         (s["sim_time"], s["area"], dumps(s["needs"]), dumps(s["mood"]), s["energy"],
          s["weather"], dumps(s["tendencies"]), int(s["is_asleep"]), int(s["brain_online"]),
-         updated_at))
+         dumps(s.get("activity")) if s.get("activity") else None, updated_at))

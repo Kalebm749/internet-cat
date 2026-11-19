@@ -246,7 +246,9 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
         wc.append({"op": "make", "label": a["title"], "text": f"made “{a['title']}”"})
     events = [e["text"] for e in conn.execute("SELECT text FROM events WHERE tick_id=? ORDER BY id",
                                               (r["id"],))]
-    return {"type": "tick", "key": f"t{r['id']}", "id": r["id"],
+    am = r["activity_minutes"] if "activity_minutes" in r.keys() else None
+    span = f"about {am} min" if am and am > (r["duration"] or 0) else ""          # a longer move, carried on
+    return {"type": "tick", "key": f"t{r['id']}", "id": r["id"], "span": span,
             "day_number": clock.day_number(first, dt), "day_label": clock.day_label(first, dt),
             "time_label": clock.time_label(dt), "area": _area_name(cfg, r["area"]),
             "action": r["action"] or "", "outcome": r["outcome"] or "", "reaction": r["reaction"] or "",

@@ -62,6 +62,8 @@ brain:
     project_note: " Where you got to: {note}"                 # {note}; added once it has a running note
     project_idle: " You last worked on it {ago}."             # {ago}; added when it has been left for a while
     project_new: " You have not started on it yet."           # added until its first piece of work
+    interrupted_event: "You were partway through: {label}, when something happened."     # {label}; the world broke in
+    interrupted_need: "You were partway through: {label}, when you realised something was badly lacking."   # {label}
     heading_moves: "## What you can do right now"
     move_line: "- [{id}] {label}"                             # {id} {label}
     closing: "What do you do next? Choose one move and reply with JSON."

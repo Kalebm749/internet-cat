@@ -68,7 +68,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "dislike_drain", "projects", "director", "moves", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "projects", "director", "moves", "activity", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -310,6 +310,18 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             fv = md.get("feeling_values")
             if not isinstance(fv, dict) or not all(_num(v) and -50 <= v <= 50 for v in fv.values()):
                 errs.append("settings.yaml mood.feeling_values: must map feelings to numbers -50..50")
+        ac_ = st.get("activity")
+        if isinstance(ac_, dict):
+            for k in ("enabled", "interrupt_on_events", "interrupt_on_empty_need"):
+                if not isinstance(ac_.get(k), bool):
+                    errs.append(f"settings.yaml activity.{k}: must be true or false")
+            if isinstance(ac_.get("step_minutes"), bool) or not isinstance(ac_.get("step_minutes"), int) \
+                    or ac_["step_minutes"] < 1:
+                errs.append("settings.yaml activity.step_minutes: must be an integer >= 1")
+            if not _num(ac_.get("carry_interval_seconds")) or ac_["carry_interval_seconds"] < 0:
+                errs.append("settings.yaml activity.carry_interval_seconds: must be a number >= 0")
+        elif "activity" in st:
+            errs.append("settings.yaml activity: must be a mapping")
         mv_ = st.get("moves")
         if isinstance(mv_, dict):
             for k, lo in (("max_offered", 1),):

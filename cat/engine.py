@@ -17,6 +17,7 @@ from cat import brain, character, clock, db, downtime, effects, logs, narrator, 
 from cat import moves as MV
 from cat import director as DR
 from cat import projects as PJ
+from cat import prompts as P
 from cat.config import Config, load_config
 from cat.devcontrol import DevControl
 from cat.devqueue import CommandError
@@ -300,6 +301,22 @@ class Engine:
         with self.tracer.stage("world"):
             fired = self.world.roll_events(self.rng, dt, st["area"], now, trace=rolls)
         fired += self._take_injected(now, rolls)
+
+        # in the middle of a longer move: carry on without a brain call, unless something breaks in
+        act = st.get("activity") if s["activity"]["enabled"] else None
+        rest_now = st["is_asleep"] or (clock.is_night(dt, s["phases"])
+                                       and st["energy"] < s["sleep"]["fall_asleep_energy_below"])
+        if act and rest_now:                              # sleep ends whatever it was doing
+            self.state["activity"] = st["activity"] = act = None
+        reason = self._interrupt_reason(act, fired, st) if act else None
+        if act and not reason:
+            self.tracer.set_event_rolls(rolls)
+            nudge = st["mood"].get("event_nudge", 0.0) * s["mood"]["event_decay"] \
+                + sum(e["mood"] for e in fired)
+            return self._carry_tick(fired, nudge, act)
+        if act and reason:
+            self._end_activity(act, reason)
+
         fired += self._director_happening(fired, st, now, dt)
         self.tracer.set_event_rolls(rolls)
         nudge = st["mood"].get("event_nudge", 0.0) * s["mood"]["event_decay"] \
@@ -342,9 +359,13 @@ class Engine:
         # 4. apply
         t_apply = time.perf_counter()
         before = dict(st["needs"])
+        new_activity = None
         if result:
             b, n = result
-            minutes = n["duration"]
+            total = n["duration"]
+            step = s["activity"]["step_minutes"]
+            sliced = s["activity"]["enabled"] and n["does"] != "sleep" and total > step
+            minutes = step if sliced else total                  # a longer move continues in carry-on ticks
             fx = effects.apply_changes(n["changes"], self.world, st["area"], cfg, now)
             mult = self._repetition_multiplier(b["move"].key, st["area"])
             # project work is exempt from the repetition penalty: its progress (tapering) replaces it
@@ -378,7 +399,14 @@ class Engine:
             row = {"kind": "tick", "reaction": b["reaction"], "thought": b["thought"],
                    "action": b["move"].label, "intent": b["why"], "move_key": b["move"].key, "outcome": n["outcome"],
                    "gains": n["gains"], "effort": n["effort"], "duration": minutes,
-                   "changes": fx.applied, "rejected": fx.rejected}
+                   "changes": fx.applied, "rejected": fx.rejected,
+                   "activity_minutes": total if sliced else None}
+            if sliced:
+                new_activity = {"label": b["move"].label, "key": b["move"].key, "why": b["why"], "total": total,
+                                "remaining": total - step, "started_at": now,
+                                "empty_at_start": [k for k, v in needs.items() if character.need_band(v, cfg) == "empty"]}
+                self.tracer.set_activity({"state": "started", "label": new_activity["label"], "total": total,
+                                          "step": step, "remaining": new_activity["remaining"]})
         else:
             adv = None
             minutes = s["doze"]["sim_minutes"]
@@ -401,7 +429,7 @@ class Engine:
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes),
                      "needs": needs, "mood": mood, "energy": energy,
-                     "weather": self.world.weather, "brain_online": online}
+                     "weather": self.world.weather, "brain_online": online, "activity": new_activity}
         self.tracer.add_stage("apply", t_apply)
 
         # the creature chose to sleep (honoured when tired enough, or at night)
@@ -438,6 +466,52 @@ class Engine:
         return info
 
     # ---------- sleeping ----------
+    def _interrupt_reason(self, act: dict, fired: list[dict], st: dict) -> str | None:
+        """What breaks into a move that is still running: an event, or a need newly in the empty band."""
+        a = self.cfg.settings["activity"]
+        if a["interrupt_on_events"] and fired:
+            return "event"
+        if a["interrupt_on_empty_need"]:
+            empty = {k for k, v in st["needs"].items() if character.need_band(v, self.cfg) == "empty"}
+            if empty - set(act.get("empty_at_start", [])):
+                return "need"
+        return None
+
+    def _end_activity(self, act: dict, reason: str) -> None:
+        """It was interrupted: drop the rest of the move and tell the brain, in words, what was broken off."""
+        self.state["activity"] = None
+        self.last_outcome = P.render(self.cfg, f"brain.situation.interrupted_{reason}", label=act["label"])
+        self.tracer.set_activity({"state": "interrupted", "reason": reason, "label": act["label"],
+                                  "remaining": act["remaining"]})
+
+    def _carry_tick(self, fired: list[dict], nudge: float, act: dict) -> dict:
+        """A tick inside a longer move: no recall, brain, narrator or director call. Time passes and needs
+        decay (plus any drains); the move's gains and effort were already paid when it began."""
+        cfg, st, s = self.cfg, self.state, self.cfg.settings
+        now = st["sim_time"]
+        before = dict(st["needs"])
+        minutes = min(s["activity"]["step_minutes"], act["remaining"])
+        needs = character.decay(before, minutes, cfg)
+        drains = character.event_drains(fired)
+        needs = character.apply_drains(needs, drains)
+        dis, _ = self._dislike_drains(minutes, act["label"])
+        needs = character.apply_drains(needs, dis)
+        self.tracer.set_need_math(character.explain_needs(before, minutes, None, cfg, needs,
+                                                          drains=drains, dislike_drains=dis))
+        mood_inputs: dict = {}
+        mood = character.compute_mood(needs, nudge, None, st["energy"], cfg, trace=mood_inputs)
+        self.tracer.set_mood(mood_inputs, mood)
+        remaining = act["remaining"] - minutes
+        new_act = None if remaining <= 0 else {**act, "remaining": remaining}
+        new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs, "mood": mood,
+                     "weather": self.world.weather, "activity": new_act}
+        self.tracer.set_activity({"state": "finished" if new_act is None else "carried", "label": act["label"],
+                                  "minutes": minutes, "remaining": max(0, remaining)})
+        row = {"kind": "carry", "reaction": None, "thought": None, "action": act["label"], "intent": act["why"],
+               "move_key": act["key"], "outcome": "carrying on" if new_act else "finished",
+               "gains": {}, "effort": None, "duration": minutes, "changes": [], "rejected": []}
+        return self._commit(row, fired, now, st["area"], new_state, None, [], online=False)
+
     def _rest_tick(self, fired: list[dict], nudge: float, onset: bool) -> dict:
         """One tick of sleep: no brain or narrator. Restores rest, advances the clock, wakes
         when rested (and it is morning), retries the sleep cycle if it is still pending."""
@@ -468,7 +542,7 @@ class Engine:
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": new_time, "needs": needs, "mood": mood,
                      "energy": energy, "weather": self.world.weather,
-                     "brain_online": online, "is_asleep": not wake}
+                     "brain_online": online, "is_asleep": not wake, "activity": None}
         outcome = ("settles down to sleep." if onset else
                    "wakes up, rested." if wake else "sleeping.")
         row = {"kind": "asleep", "reaction": None, "thought": None, "action": None,
@@ -524,11 +598,11 @@ class Engine:
             cur = self.conn.execute(
                 "INSERT INTO ticks(kind,sim_time,real_time,area,reaction,thought,action,intent,"
                 "outcome,gains,effort,duration,changes,rejected_changes,needs_after,mood_after,"
-                "energy_after,move_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "energy_after,move_key,activity_minutes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (row["kind"], now, real, area, row["reaction"], row["thought"],
                  row["action"], row["intent"], row["outcome"], dumps(row["gains"]), row["effort"],
                  row["duration"], dumps(row["changes"]), dumps(row["rejected"]), dumps(needs),
-                 dumps(mood), new_state["energy"], row.get("move_key")))
+                 dumps(mood), new_state["energy"], row.get("move_key"), row.get("activity_minutes")))
             tick_id = cur.lastrowid
             for e in fired:
                 self.conn.execute("INSERT INTO events(tick_id,sim_time,area,text) VALUES(?,?,?,?)",
@@ -621,7 +695,7 @@ class Engine:
         mood = character.compute_mood(needs, 0.0, None, energy, cfg, trace=mood_inputs)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs, "mood": mood,
-                     "energy": energy}
+                     "energy": energy, "activity": None}
         row = {"kind": "catchup", "reaction": None, "thought": None, "action": None, "intent": None,
                "outcome": downtime.description(now, minutes, s["phases"]), "gains": {},
                "effort": None, "duration": minutes, "changes": [], "rejected": []}
@@ -708,9 +782,14 @@ class Engine:
                 self.dev.finish_step(step_cmd, info)
             done += 1
             self.dev.publish(force=True)
-            if (self.effective_interval(interval) and not self.stop_requested and not self.paused
+            wait_for = interval
+            if self.state.get("activity") and self.cfg.settings["activity"]["enabled"]:
+                # a move is still running: the next tick needs no brain call, so it comes sooner
+                base = self.cfg.settings["tick_interval_seconds"] if interval is None else interval
+                wait_for = min(base, self.cfg.settings["activity"]["carry_interval_seconds"])
+            if (self.effective_interval(wait_for) and not self.stop_requested and not self.paused
                     and not self.step_pending and (ticks is None or done < ticks)):
-                self._wait(interval, sleep,
+                self._wait(wait_for, sleep,
                            floor=self.cfg.settings["error_backoff_seconds"] if failed else 0.0)
             self._count_interval_override()          # a "for N ticks" override covers N waits
         self.mark_clean_stop()

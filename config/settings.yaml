@@ -90,6 +90,14 @@ moves:
   novelty_hours: 24            # a place not visited for this many sim hours counts as new (go: novelty gains)
   narrate: true                # a cheap prose call turns the result into a sentence; false = templated outcome
 
+# --- activities: a move takes time. It runs without LLM calls until it ends or something interrupts it ---
+activity:
+  enabled: true                # false: one decision per tick, the move's whole length in one tick
+  step_minutes: 20             # sim minutes per tick while a longer move runs (no brain call, no narrator)
+  carry_interval_seconds: 10   # real seconds between those ticks (a decision still waits tick_interval_seconds)
+  interrupt_on_events: true    # any event (hand-written, injected or the director's) ends it
+  interrupt_on_empty_need: true   # a need newly dropping into the empty band ends it
+
 # --- need bands: a level becomes a band; the brain sees words, never numbers ---
 need_bands: {empty_below: 15, low_below: 40, okay_below: 75}   # below empty_below => empty; ... ; else full
 max_pressing_needs: 2          # the brain's prompt shows the expressions of at most this many needs
