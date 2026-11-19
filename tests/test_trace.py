@@ -343,9 +343,9 @@ def test_ollama_backend_captures_exact_call_details(cfg):
     calls = []
     b.recorder = lambda *a: calls.append(a)
     msgs = [{"role": "system", "content": "SYS"}, {"role": "user", "content": "USER"}]
-    call_json(b, "brain", "qwen3:8b", msgs, {"type": "object"}, lambda r: r, retries=0)
+    call_json(b, "brain", "qwen3:14b", msgs, {"type": "object"}, lambda r: r, retries=0)
     task, model, attempt, info, parsed, err = calls[0]
-    assert (task, model, attempt, err) == ("brain", "qwen3:8b", 1, None) and parsed == {"action": "nap"}
+    assert (task, model, attempt, err) == ("brain", "qwen3:14b", 1, None) and parsed == {"action": "nap"}
     assert info["system_prompt"] == "SYS" and info["user_prompt"] == "USER" and info["schema"] == {"type": "object"}
     assert info["raw_response"].startswith("<think>")                       # raw, before any cleaning
     assert (info["prompt_tokens"], info["completion_tokens"]) == (120, 30)

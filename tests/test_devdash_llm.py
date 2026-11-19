@@ -51,7 +51,7 @@ def client(cfg):
 def ollama_handler(seen=None, content='{"action": "nap"}', fail=None):
     def h(req):
         if req.url.path == "/api/tags":
-            return httpx.Response(200, json={"models": [{"name": "qwen3:8b"}, {"name": "llama3.1:8b"}, {"name": "gemma3:4b"}]})
+            return httpx.Response(200, json={"models": [{"name": "qwen3:14b"}, {"name": "llama3.1:8b"}, {"name": "gemma3:4b"}]})
         if req.url.path == "/api/ps":
             return httpx.Response(200, json={"models": []})
         body = json.loads(req.content)
@@ -94,7 +94,7 @@ def test_llm_list_filters_and_statuses(cfg):
     L = lambda **f: data.llm_list(cfg, f, 1, 500)
     allc = L()
     assert allc["total"] == conn.execute("SELECT COUNT(*) FROM llm_calls").fetchone()[0]
-    assert set(allc["kinds"]) >= {"brain", "narrator"} and allc["models"] == ["qwen3:8b"]
+    assert set(allc["kinds"]) >= {"brain", "narrator"} and allc["models"] == ["qwen3:14b"]
     assert [c["id"] for c in allc["items"]] == sorted((c["id"] for c in allc["items"]), reverse=True)
     bad = L(valid="invalid")["items"]
     assert [(c["kind"], c["attempt"], c["status"]) for c in bad] == [("brain", 1, "error")]
@@ -102,7 +102,7 @@ def test_llm_list_filters_and_statuses(cfg):
     assert all(c["status"] == "ok" for c in L(valid="valid")["items"])
     assert L(errors=1)["total"] == 1
     assert all(c["kind"] == "narrator" for c in L(kind="narrator")["items"]) and L(kind="nope")["total"] == 0
-    assert L(model="qwen3:8b")["total"] == allc["total"] and L(model="other")["total"] == 0
+    assert L(model="qwen3:14b")["total"] == allc["total"] and L(model="other")["total"] == 0
     assert [c["id"] for c in L(slow_ms=8000)["items"]] == [3]
     assert all(c["tick_id"] == 2 for c in L(tick_id=2)["items"]) and L(tick_id=2)["total"] >= 2
 
@@ -217,9 +217,9 @@ def test_validate_cleans_a_good_request():
 def test_call_ollama_sends_exactly_what_it_is_given(cfg, monkeypatch):
     seen = []
     patch_ollama(monkeypatch, ollama_handler(seen))
-    r = playground.call_ollama(cfg, "qwen3:8b", "SYS", "USER", {"type": "object"}, {"temperature": 0.1, "num_ctx": 2048}, False)
+    r = playground.call_ollama(cfg, "qwen3:14b", "SYS", "USER", {"type": "object"}, {"temperature": 0.1, "num_ctx": 2048}, False)
     body = seen[0]
-    assert body == {"model": "qwen3:8b", "messages": [{"role": "system", "content": "SYS"}, {"role": "user", "content": "USER"}],
+    assert body == {"model": "qwen3:14b", "messages": [{"role": "system", "content": "SYS"}, {"role": "user", "content": "USER"}],
                     "stream": False, "format": {"type": "object"}, "options": {"temperature": 0.1, "num_ctx": 2048}, "think": False}
     assert r["parsed"] == {"action": "nap"} and r["valid_json"] == 1 and r["error"] is None
     assert (r["prompt_tokens"], r["completion_tokens"], r["load_ms"], r["prompt_eval_ms"], r["eval_ms"], r["total_ms"]) == (100, 20, 3, 40, 80, 125)
@@ -257,10 +257,10 @@ def test_run_saves_results_and_never_touches_the_game_db(cfg, eng, monkeypatch):
     seen = []
     patch_ollama(monkeypatch, ollama_handler(seen))
     before = counts(cfg.db_path)
-    req = playground.validate({"models": ["qwen3:8b", "llama3.1:8b"], "system_prompt": "S", "user_prompt": "U", "schema": {"type": "object"},
+    req = playground.validate({"models": ["qwen3:14b", "llama3.1:8b"], "system_prompt": "S", "user_prompt": "U", "schema": {"type": "object"},
                                "options": {"temperature": 0.3}, "source_call_id": 5, "label": "try"})
     out = playground.run(cfg, req)
-    assert [r["model"] for r in out["runs"]] == ["qwen3:8b", "llama3.1:8b"] and [b["model"] for b in seen] == ["qwen3:8b", "llama3.1:8b"]
+    assert [r["model"] for r in out["runs"]] == ["qwen3:14b", "llama3.1:8b"] and [b["model"] for b in seen] == ["qwen3:14b", "llama3.1:8b"]
     assert counts(cfg.db_path) == before                                      # not one game row, object or state value changed
     saved = playground.group_runs(cfg, out["group_id"])
     assert len(saved) == 2 and {r["group_id"] for r in saved} == {out["group_id"]}
@@ -290,7 +290,7 @@ def test_diff_keys():
 def test_run_endpoint_rules(cfg, eng, monkeypatch):
     patch_ollama(monkeypatch, ollama_handler())
     c = client(cfg)
-    ok = {"models": ["qwen3:8b"], "user_prompt": "hello", "system_prompt": "hi"}
+    ok = {"models": ["qwen3:14b"], "user_prompt": "hello", "system_prompt": "hi"}
     assert c.post("/api/dev/playground/run", json=ok).status_code == 403                    # no CSRF header
     assert c.post("/api/dev/playground/run", json={**ok, "models": []}, headers=HDR).status_code == 422
     r = c.post("/api/dev/playground/run", json=ok, headers=HDR)
@@ -300,7 +300,7 @@ def test_run_endpoint_rules(cfg, eng, monkeypatch):
         assert c.post("/api/dev/playground/run", json=ok, headers=HDR).status_code == 409
     finally:
         playground.LOCK.release()
-    assert c.get("/api/dev/playground/runs").json()["items"][0]["model"] == "qwen3:8b"
+    assert c.get("/api/dev/playground/runs").json()["items"][0]["model"] == "qwen3:14b"
     rid = c.get("/api/dev/playground/runs").json()["items"][0]["id"]
     assert c.get(f"/api/dev/playground/runs/{rid}").json()["user_prompt"] == "hello"
     assert c.get("/api/dev/playground/runs/9999").status_code == 404
@@ -316,10 +316,10 @@ def test_replay_a_stored_brain_call_exactly_and_compare_three_models(cfg, eng, m
     from markupsafe import escape
     assert str(escape(call["system_prompt"])) in page and str(escape(call["user_prompt"])) in page
     assert str(escape(call["raw_response"])) in page                                       # the original answer, side by side
-    assert "qwen3:8b" in page and "llama3.1:8b" in page                                    # model dropdown from /api/tags
+    assert "qwen3:14b" in page and "llama3.1:8b" in page                                    # model dropdown from /api/tags
     seen = []
     patch_ollama(monkeypatch, ollama_handler(seen, content=call["raw_response"]))
-    body = {"models": ["qwen3:8b", "llama3.1:8b", "gemma3:4b"], "system_prompt": call["system_prompt"],
+    body = {"models": ["qwen3:14b", "llama3.1:8b", "gemma3:4b"], "system_prompt": call["system_prompt"],
             "user_prompt": call["user_prompt"], "schema": call["schema"], "source_call_id": call["id"],
             "options": {"temperature": json.loads(call["options"])["temperature"] if "temperature" in json.loads(call["options"]) else 0.9}}
     before = counts(cfg.db_path)
@@ -353,7 +353,7 @@ def test_playground_pages_render(cfg, eng):
 def test_models_endpoint(cfg, monkeypatch):
     patch_ollama(monkeypatch, ollama_handler())
     j = client(cfg).get("/api/dev/playground/models").json()
-    assert j["reachable"] and j["models"] == ["qwen3:8b", "llama3.1:8b", "gemma3:4b"]
+    assert j["reachable"] and j["models"] == ["qwen3:14b", "llama3.1:8b", "gemma3:4b"]
 
 
 # ---------- static assets ----------

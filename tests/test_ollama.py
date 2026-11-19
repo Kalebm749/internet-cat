@@ -22,10 +22,10 @@ def test_chat_json_payload_and_parse(cfg):
         seen["body"] = json.loads(req.content)
         return chat_reply('{"action": "nap"}')
     b = backend(cfg, h)
-    out = b.chat_json("brain", "qwen3:8b", [{"role": "user", "content": "hi"}], {"type": "object"})
+    out = b.chat_json("brain", "qwen3:14b", [{"role": "user", "content": "hi"}], {"type": "object"})
     body = seen["body"]
     assert out == {"action": "nap"} and seen["url"].endswith("/api/chat")
-    assert body["model"] == "qwen3:8b" and body["stream"] is False
+    assert body["model"] == "qwen3:14b" and body["stream"] is False
     assert body["format"] == {"type": "object"} and body["think"] is False
     assert body["options"]["temperature"] == cfg.settings["llm_temperature"]["brain"]
     assert body["options"]["num_ctx"] == cfg.settings["llm_num_ctx"]
@@ -65,7 +65,7 @@ def tags(*names):
 
 
 def test_is_online(cfg):
-    assert backend(cfg, tags("qwen3:8b", "nomic-embed-text:latest")).is_online()
+    assert backend(cfg, tags("qwen3:14b", "nomic-embed-text:latest")).is_online()
     assert not backend(cfg, lambda r: httpx.Response(503)).is_online()
 
     def refused(req):
@@ -109,14 +109,14 @@ def test_call_json_retries_on_unparseable_content():
 
 
 def test_online_requires_configured_models(cfg):
-    b = backend(cfg, tags("qwen3:8b"))                       # embedding model not pulled
+    b = backend(cfg, tags("qwen3:14b"))                       # embedding model not pulled
     assert b.missing_models() == ["nomic-embed-text"] and not b.is_online()
     cfg.settings["health_require_models"] = False
     assert b.is_online()                                     # reachable is enough when disabled
 
 
 def test_bare_model_name_matches_latest_tag(cfg):
-    assert backend(cfg, tags("qwen3:8b", "nomic-embed-text:latest")).missing_models() == []
+    assert backend(cfg, tags("qwen3:14b", "nomic-embed-text:latest")).missing_models() == []
     cfg.settings["brain_model"] = cfg.settings["narrator_model"] = cfg.settings["sleep_model"] = "llama3.1"
     assert backend(cfg, tags("llama3.1:latest", "nomic-embed-text")).missing_models() == []
     assert backend(cfg, tags("llama3.1:8b", "nomic-embed-text")).missing_models() == ["llama3.1"]

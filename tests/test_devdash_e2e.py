@@ -80,7 +80,7 @@ PAGES = [
     ("/logs", ["engine", "web", "devdash", "slow request"]),
     ("/config", ["matches disk", "settings.yaml", "character.yaml", "world.yaml"]),
     ("/playground", ["Prompt playground", "seed sample"]),
-    ("/playground/runs", ["seed sample", "qwen3:8b"]),
+    ("/playground/runs", ["seed sample", "qwen3:14b"]),
     ("/playground/groups/seedsample01", ["Compare: 2 runs", "gemma3:4b", "Original"]),
 ]
 

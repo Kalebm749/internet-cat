@@ -125,7 +125,7 @@ def seed(db_path: Path | str, ticks: int = 120, seed_value: int = 1, force: bool
         "SELECT * FROM llm_calls WHERE kind='brain' ORDER BY id DESC LIMIT 1").fetchone()
     if call:
         gid = "seedsample01"
-        for model, ms in (("qwen3:8b", 1840), ("gemma3:4b", 920)):
+        for model, ms in (("qwen3:14b", 1840), ("gemma3:4b", 920)):
             q.conn.execute(
                 "INSERT INTO playground_runs(created_at,group_id,source_call_id,label,model,options,system_prompt,user_prompt,schema,"
                 "raw_response,parsed,valid_json,prompt_tokens,completion_tokens,load_ms,prompt_eval_ms,eval_ms,total_ms) "

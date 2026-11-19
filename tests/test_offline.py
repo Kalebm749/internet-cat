@@ -14,7 +14,7 @@ from tests.helpers import pick
 # ---------- a fake Ollama we can take down and bring back ----------
 class FakeOllama:
     def __init__(self):
-        self.models = ["qwen3:8b", "nomic-embed-text:latest"]
+        self.models = ["qwen3:14b", "nomic-embed-text:latest"]
         self.mode = "up"            # up | down | hang (tags answer, chat times out)
         self.prompts = []
         self.requests = 0
@@ -204,5 +204,5 @@ def test_models_not_pulled_yet_is_a_clean_doze_then_recovers(rig, cfg):
     fake.models = []                                       # fresh install, before deploy/pull-models.sh
     assert [e.tick()["kind"] for _ in range(3)] == ["doze"] * 3
     assert fake.prompts == []                              # no brain calls were even attempted
-    fake.models = ["qwen3:8b", "nomic-embed-text"]         # bare name == :latest
+    fake.models = ["qwen3:14b", "nomic-embed-text"]         # bare name == :latest
     assert e.tick()["kind"] == "tick"

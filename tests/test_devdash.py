@@ -227,9 +227,9 @@ def test_percentile_and_mean():
     assert data.percentile([1, 2, 3, 4, 5], 50) == 3 and data.percentile(list(range(1, 101)), 95) == pytest.approx(95.05)
 
 
-OLLAMA_TAGS = {"models": [{"name": "qwen3:8b", "digest": "abcdef0123456789", "size": 5_200_000_000, "modified_at": "2026-11-01",
+OLLAMA_TAGS = {"models": [{"name": "qwen3:14b", "digest": "abcdef0123456789", "size": 5_200_000_000, "modified_at": "2026-11-01",
                            "details": {"family": "qwen3", "parameter_size": "8.2B", "quantization_level": "Q4_K_M"}}]}
-OLLAMA_PS = {"models": [{"name": "qwen3:8b", "size": 6_000_000_000, "size_vram": 5_400_000_000, "expires_at": "2099-01-01T00:00:00Z"}]}
+OLLAMA_PS = {"models": [{"name": "qwen3:14b", "size": 6_000_000_000, "size_vram": 5_400_000_000, "expires_at": "2099-01-01T00:00:00Z"}]}
 
 
 def patch_ollama(monkeypatch, handler):

@@ -2,12 +2,12 @@
 
 # --- LLM host: the `ollama` service in compose.yaml (use http://127.0.0.1:11434 outside Docker) ---
 ollama_host: http://ollama:11434
-brain_model: qwen3:8b
-narrator_model: qwen3:8b
-sleep_model: qwen3:8b
+brain_model: qwen3:14b
+narrator_model: qwen3:14b
+sleep_model: qwen3:14b
 embed_model: nomic-embed-text
 ollama_think: false            # qwen3: disable thinking so JSON `format` output stays clean
-llm_timeout_seconds: 120
+llm_timeout_seconds: 600   # a 14B model split between GPU and RAM can take minutes
 health_timeout_seconds: 3
 llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5, director: 0.8, create: 0.9}
 llm_num_ctx: 4096

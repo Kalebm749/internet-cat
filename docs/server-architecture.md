@@ -39,7 +39,7 @@ Everything runs on **one machine**: an Ubuntu laptop (HP Omen 15, GTX 1060 6GB, 
 | Deployment | Docker Compose: `ollama`, `engine`, `web`, `devdash` |
 | Tests | `pytest`, with a `MockBackend` so everything runs without Ollama |
 
-**Models.** A 4–8B instruct model at ~Q4 (e.g. `qwen3:8b`, `llama3.1:8b`, `gemma3:4b` as the lighter fallback), plus `nomic-embed-text`. Use **one chat model for brain, narrator and sleep** so only one big model is resident. Check the Ollama library for newer small models before pulling. To choose, compare candidates on saved prompts: JSON validity (should be 100% with `format`), seconds per call, the narrator's rejected-change rate, and read the diary text for voice and variety.
+**Models.** A 4–8B instruct model at ~Q4 (e.g. `qwen3:8b`, `llama3.1:8b`, `gemma3:4b` as the lighter fallback), plus `nomic-embed-text`. Use **one chat model for brain, narrator and sleep** so only one big model is resident (switching models on 6GB of VRAM reloads them each call). The default is now `qwen3:14b` (~9GB at Q4: part on the GPU, the rest in system RAM, so a call can take minutes; `llm_timeout_seconds` is 600). On a 16GB machine that is workable; `qwen3:8b` is the faster fallback: change the three `*_model` settings and run `deploy/pull-models.sh`. Check the Ollama library for newer small models before pulling. To choose, compare candidates on saved prompts: JSON validity (should be 100% with `format`), seconds per call, the narrator's rejected-change rate, and read the diary text for voice and variety.
 
 ---
 
