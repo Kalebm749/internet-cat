@@ -18,6 +18,7 @@ runs on **one Ubuntu laptop** with **Docker Compose**, and a read-only website s
 
 ## Docs
 - [`docs/creature-architecture.md`](docs/creature-architecture.md): the concepts (brain, narrator, needs, mood, memory, sleep)
+- [`docs/behavior-guide.md`](docs/behavior-guide.md): how it all comes together: triggers and impacts, how to tune every parameter, how to reset the simulation
 - [`docs/server-architecture.md`](docs/server-architecture.md): how it is built and deployed, and the host setup
 - [`docs/web-gui.md`](docs/web-gui.md): the website
 - [`docs/config-reference.md`](docs/config-reference.md): every config field (`character.yaml`, `world.yaml`, `settings.yaml`)
