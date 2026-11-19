@@ -37,6 +37,13 @@ phases:                        # sim hour at which each phase starts
   dusk: 18
   night: 21
 
+# --- downtime: what happens to sim time while the engine/host was off ---
+downtime_policy: pause          # pause: sim time resumes exactly where it stopped, nothing decays
+                                # catch_up: apply decay for the gap, log one "dozed through ..." entry
+max_catch_up_hours: 8           # catch_up only: cap, in SIMULATED hours
+catch_up_min_gap_ticks: 3       # catch_up only: gaps shorter than this many tick intervals are normal restarts
+catch_up_decay_multiplier: 1.0  # catch_up only: need decay during the gap (1.0 = normal speed)
+
 # --- needs, effects ---
 gain_values: {"0": 0, "+": 15, "++": 30}
 effort_energy_cost: {low: 2, medium: 6, high: 12}   # applied to the need flagged effort_drain

@@ -43,6 +43,7 @@ Every tuning number. Groups:
 - **Pacing**: `tick_interval_seconds` (real), `sim_start`, `sim_minutes_per_tick_default`, `sim_minutes_min/max` (narrator duration clamp), `phases` (start hour of dawn/day/dusk/night).
 - **Effects**: `gain_values`, `effort_energy_cost`, `repetition_penalty`, `create_limit_per_tick`, `allowed_tags`, `state_value_max_length`.
 - **Mood**: `mood.*` weights, `feeling_values`, word thresholds. `default_need_words` / `energy_words` map values to words. `events_max_per_tick`, `max_objects_per_area` cap events.
+- **Downtime**: `downtime_policy` (`pause` | `catch_up`), `max_catch_up_hours`, `catch_up_min_gap_ticks`, `catch_up_decay_multiplier`.
 - **Doze/sleep**: `doze.*`, `sleep.*` (thresholds, restore rate, `tendency_max_step`).
 - **Memory**: `notable.*` (what counts as a notable tick, importance of short-term memories), `recall`, `recency_half_life_sim_hours`, `short_term_shown`, `notable`, `long_term_cap`.
 - **Web**: `web_port`, `diary_page_size`, `keepsakes_first_page`, and `web_ui.*` (poll interval, when a need counts as low/critical, trend and chip thresholds, keepsake dot thresholds, page-size limits).
@@ -82,3 +83,10 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 - `GET /` is a complete server-rendered snapshot (works without JS; "read older pages" and "more keepsakes" are plain links). `journal.js` polls `GET /api/state` every `web_ui.poll_seconds` and adds only new entries. `GET /api/diary?before=<tick id>&limit=` and `GET /api/keepsakes?offset=&limit=` page through history.
 - Diary entries are keyed (`t<tick id>`, `d<first doze tick id>`, `s<sleep_log id>`). Consecutive dozing ticks collapse into one entry; asleep ticks are hidden (the "Last night…" card stands for them). `sleep_log.tick_id` is the tick where the sleep began, which is where the card sits.
 - With an empty or missing database the page shows the empty states, built from the config.
+
+## Downtime (`cat/downtime.py`, settings `downtime_policy` ...)
+What happens to the creature while the engine (or the whole host) was off:
+- `pause` (default): sim time resumes exactly where it stopped; nothing decays during the gap.
+- `catch_up`: at startup the real gap is converted to sim time at the normal pace (`sim_minutes_per_tick_default` per `tick_interval_seconds`), **capped at `max_catch_up_hours` simulated hours**. Needs decay for that time (`catch_up_decay_multiplier`; if the creature was asleep when it stopped, the gap counts as sleep and restores rest). One tick row of kind `catchup` is written ("dozed through the night" / "...afternoon"), shown on the website as a collapsed doze line. Then the loop resumes, and the first prompt says the creature just came round from a doze.
+- Gaps shorter than `catch_up_min_gap_ticks` tick intervals are treated as ordinary restarts. After a crash the last sign of life may be up to one tick interval older than the real stop, so one interval is subtracted; after a clean stop (SIGTERM / `docker compose stop`) the gap is exact. With `tick_interval_seconds: 0` (mock runs) there is no pace to convert with, so nothing is caught up.
+- The engine records `meta.last_alive_epoch` and `meta.clean_stop` on every tick commit and at stop.

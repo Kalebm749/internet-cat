@@ -194,6 +194,16 @@ def _doze_entry(cfg: Config, first: datetime, group: list[sqlite3.Row]) -> dict:
             "text": f"dozed from {clock.time_label(start)} to {clock.time_label(end)} (brain offline)"}
 
 
+def _catchup_entry(cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
+    """The engine/host was off and `downtime_policy: catch_up` applied the gap. Shown as a doze line."""
+    start = clock.parse(r["sim_time"])
+    end = clock.parse(clock.advance(r["sim_time"], r["duration"] or 0))
+    return {"type": "doze", "key": f"c{r['id']}", "id": r["id"],
+            "day_number": clock.day_number(first, start), "day_label": clock.day_label(first, start),
+            "from_label": clock.time_label(start), "to_label": clock.time_label(end),
+            "text": f"{r['outcome']}, from {clock.time_label(start)} to {clock.time_label(end)}"}
+
+
 def _sleep_entry(cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
     labels = cfg.character.get("tendency_labels", {})
     d = clock.parse(r["sim_date"] + "T00:00")
@@ -248,8 +258,10 @@ def diary_view(conn, cfg: Config, before: int | None = None,
                     group = []
                 if r["kind"] == "tick":
                     entries.append(_tick_entry(conn, cfg, first, r))
+                elif r["kind"] == "catchup":
+                    entries.append(_catchup_entry(cfg, first, r))
                 if len(entries) >= limit:
-                    more = conn.execute("SELECT 1 FROM ticks WHERE id<? AND kind IN ('tick','doze') "
+                    more = conn.execute("SELECT 1 FROM ticks WHERE id<? AND kind IN ('tick','doze','catchup') "
                                         "LIMIT 1", (r["id"],)).fetchone()
                     return entries, (r["id"] if more else None)
     except sqlite3.OperationalError:

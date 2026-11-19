@@ -11,7 +11,7 @@ from typing import Callable
 
 from collections import deque
 
-from cat import brain, character, clock, db, effects, narrator, sleep
+from cat import brain, character, clock, db, downtime, effects, narrator, sleep
 from cat.config import Config
 from cat.db import dumps
 from cat.healthcheck import write_heartbeat
@@ -33,6 +33,7 @@ class Engine:
         self.rng = rng or random.Random()
         self.conn = conn or db.connect(cfg.db_path)
         db.init_db(self.conn)
+        self.time = time.time          # injectable for tests
         self.stop_requested = False
         self._online_cache: bool | None = None
         self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])
@@ -89,7 +90,7 @@ class Engine:
             mood=st["mood"], tendencies=st["tendencies"], weather=self.world.weather,
             objects_here=self.world.here(st["area"]), inventory=self.world.inventory(),
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
-            recent_actions=recent, preferences=prefs, just_woke_from_doze=self.last_kind == "doze",
+            recent_actions=recent, preferences=prefs, just_woke_from_doze=self.last_kind in ("doze", "catchup"),
             long_memories=[m["text"] for m in (long_mems or [])],
             short_memories=[m["text"] for m in self.memory.recent_short()])
 
@@ -323,12 +324,65 @@ class Engine:
             db.save_state(self.conn, new_state, real)
             if online:
                 db.set_meta(self.conn, "brain_last_seen", real)
+            db.set_meta(self.conn, "last_alive_epoch", f"{self.time():.0f}")   # for downtime detection
+            db.set_meta(self.conn, "clean_stop", 0)
         self.state = new_state
         self.last_kind = row["kind"]
         return {"id": tick_id, "kind": row["kind"], "sim_time": now, "area": area,
                 "action": row["action"], "outcome": row["outcome"], "mood": mood["word"],
                 "energy": new_state["energy"], "fired": [e["text"] for e in fired],
                 "brain_online": online}
+
+    # ---------- downtime ----------
+    def mark_clean_stop(self) -> None:
+        """Remember that we stopped on purpose, and when (so the next start measures the gap
+        exactly). Never raises."""
+        try:
+            with db.transaction(self.conn):
+                db.set_meta(self.conn, "last_alive_epoch", f"{self.time():.0f}")
+                db.set_meta(self.conn, "clean_stop", 1)
+        except Exception:
+            log.exception("could not record clean stop")
+
+    def startup_downtime(self) -> dict | None:
+        """Apply `downtime_policy` for the time the engine was off. Call once, before the loop.
+        Returns the diary tick info if a catch-up entry was written."""
+        last = db.get_meta(self.conn, "last_alive_epoch")
+        if last is None:                       # first ever start
+            return None
+        s = self.cfg.settings
+        clean = db.get_meta(self.conn, "clean_stop") == "1"
+        now = self.time()
+        gap = now - float(last)
+        if s["downtime_policy"] == "pause":
+            if gap > 2 * s["tick_interval_seconds"]:
+                log.info("was down for %.0f min; policy 'pause': sim time resumes where it stopped",
+                         gap / 60)
+            return None
+        cu = downtime.plan(self.cfg, now, float(last), clean)
+        if cu is None:
+            return None
+        log.info("was down for %.0f min; policy 'catch_up': applying %d sim minutes%s",
+                 cu.gap_seconds / 60, cu.sim_minutes, " (capped)" if cu.capped else "")
+        return self._apply_catch_up(cu)
+
+    def _apply_catch_up(self, cu: "downtime.CatchUp") -> dict:
+        cfg, st, s = self.cfg, self.state, self.cfg.settings
+        now, minutes = st["sim_time"], cu.sim_minutes
+        before = dict(st["needs"])
+        if st["is_asleep"]:        # it was asleep when we went down: treat the gap as sleep
+            sl = s["sleep"]
+            needs = character.decay(before, minutes * sl["decay_multiplier"], cfg)
+            needs = character.restore(needs, sl["restore_per_sim_hour"] * minutes / 60, cfg)
+        else:
+            needs = character.decay(before, minutes * s["catch_up_decay_multiplier"], cfg)
+        mood = character.compute_mood(needs, before, 0.0, None, cfg)
+        new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs, "mood": mood,
+                     "energy": character.energy(needs, cfg)}
+        row = {"kind": "catchup", "reaction": None, "thought": None, "action": None, "intent": None,
+               "outcome": downtime.description(now, minutes, s["phases"]), "gains": {},
+               "effort": None, "duration": minutes, "changes": [], "rejected": []}
+        return self._commit(row, [], now, st["area"], new_state, None, [], online=False)
 
     # ---------- the loop ----------
     def run(self, ticks: int | None = None, interval: float | None = None,
@@ -338,6 +392,10 @@ class Engine:
         errors are logged and the loop carries on."""
         interval = self.cfg.settings["tick_interval_seconds"] if interval is None else interval
         done = 0
+        try:
+            self.startup_downtime()
+        except Exception:
+            log.exception("downtime handling failed; continuing without it")
         write_heartbeat(self.cfg.heartbeat_path)
         while not self.stop_requested and (ticks is None or done < ticks):
             failed = False
@@ -352,6 +410,7 @@ class Engine:
             done += 1
             if interval and not self.stop_requested and (ticks is None or done < ticks):
                 sleep(max(interval, self.cfg.settings["error_backoff_seconds"]) if failed else interval)
+        self.mark_clean_stop()
         return done
 
     def install_signal_handlers(self) -> None:

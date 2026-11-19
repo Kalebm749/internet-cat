@@ -24,8 +24,10 @@ def main() -> int:
         dt = clock.parse(r["sim_time"])
         area = cfg.world["areas"].get(r["area"], {}).get("name", r["area"])
         print(f"\n#{r['id']} {clock.day_label(first, dt)} {clock.time_label(dt)} - {area}")
-        if r["kind"] == "doze":
-            print("  (dozing: brain offline)")
+        if r["kind"] != "tick":
+            what = {"doze": "dozing: brain offline", "asleep": r["outcome"],
+                    "catchup": r["outcome"] + f" ({r['duration']} min while the engine was off)"}
+            print(f"  ({what.get(r['kind'], r['kind'])})")
             continue
         print(f"  reaction: {r['reaction']}\n  thought:  {r['thought']}")
         print(f"  action:   {r['action']}  ({r['intent']})\n  outcome:  {r['outcome']}")

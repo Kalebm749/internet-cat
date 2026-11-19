@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS objects(
   created_at TEXT);
 
 CREATE TABLE IF NOT EXISTS ticks(
-  id INTEGER PRIMARY KEY, kind TEXT DEFAULT 'tick',    -- 'tick' | 'doze' | 'asleep'
+  id INTEGER PRIMARY KEY, kind TEXT DEFAULT 'tick',    -- 'tick' | 'doze' | 'asleep' | 'catchup'
   sim_time TEXT, real_time TEXT, area TEXT,
   reaction TEXT, thought TEXT, action TEXT, intent TEXT,
   outcome TEXT, gains JSON, effort TEXT, duration INT,

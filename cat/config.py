@@ -62,7 +62,8 @@ REQUIRED_SETTINGS = [
     "sleep", "recall", "notable", "default_need_words", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
     "consume_min_gain", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
-    "pull_timeout_seconds", "backup_keep", "tendency_words", "max_objects_per_area",
+    "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
+    "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "tendency_words", "max_objects_per_area",
 ]
 
 
@@ -132,6 +133,11 @@ def validate(settings: dict, character: dict, world: dict) -> None:
         if t not in character["tendencies"]:
             raise ConfigError(f"character.yaml tendency_labels: unknown tendency '{t}'")
 
+    if settings["downtime_policy"] not in ("pause", "catch_up"):
+        raise ConfigError(f"settings.yaml: downtime_policy must be 'pause' or 'catch_up', "
+                          f"got {settings['downtime_policy']!r}")
+    if settings["max_catch_up_hours"] <= 0:
+        raise ConfigError("settings.yaml: max_catch_up_hours must be > 0")
     if settings["sim_minutes_min"] > settings["sim_minutes_max"]:
         raise ConfigError("settings.yaml: sim_minutes_min > sim_minutes_max")
     for b in ("0", "+", "++"):
