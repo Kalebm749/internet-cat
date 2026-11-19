@@ -46,7 +46,7 @@ def system_prompt(cfg: Config) -> str:
     s = cfg.settings
     needs = []
     for k, n in cfg.character["needs"].items():
-        note = P.render(cfg, "narrator.need_consume_note") if n.get("requires_consume") else ""
+        note = P.render(cfg, "narrator.need_consume_note") if k == s["sustenance_need"] else ""
         needs.append(f"  - {k}{note}")
     return P.render(cfg, "narrator.system", needs_list="\n".join(needs),
                     sim_minutes_min=s["sim_minutes_min"], sim_minutes_max=s["sim_minutes_max"],

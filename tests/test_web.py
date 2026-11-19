@@ -174,12 +174,11 @@ def test_keepsakes_paging(cfg, seeded):
 
 # ---------- words, trends, status ----------
 def test_need_words_labels_and_trend(cfg, seeded):
-    cfg.character["needs"]["food"].update(label="tummy", words={15: "starving", 101: "fed"})
     conn = db.connect(cfg.db_path)
     st = db.get_state(conn)
     needs = views.needs_view(conn, cfg, st)
-    food = next(n for n in needs if n["id"] == "food")
-    assert food["label"] == "tummy" and food["word"] in ("starving", "fed")
+    sust = next(n for n in needs if n["id"] == "sustenance")
+    assert sust["word"] in ("empty", "low", "okay", "full")
     for n in needs:
         assert n["low"] == (n["value"] < 35) and n["critical"] == (n["value"] < 15)
         assert (n["trend"] == "flat") == (abs(n["delta"]) <= cfg.settings["web_ui"]["trend_min_delta"])

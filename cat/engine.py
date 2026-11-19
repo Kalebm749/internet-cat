@@ -72,13 +72,14 @@ class Engine:
         world = WorldState.seed(self.conn, cfg, start)
         state = {"sim_time": start, "area": cfg.character["start_area"], "needs": needs,
                  "mood": character.initial_mood(needs, cfg),
-                 "energy": character.energy(needs, cfg), "weather": world.weather,
+                 "energy": float(cfg.settings["energy_start"]), "weather": world.weather,
                  "tendencies": dict(cfg.character["tendencies"]), "is_asleep": False,
                  "brain_online": True}
         with db.transaction(self.conn):
             world.sync(self.conn)
             db.save_state(self.conn, state, _now_real())
             db.set_meta(self.conn, "first_sim_time", start)
+            db.set_meta(self.conn, "energy_scale", "v2")          # energy is -50..50
             db.set_meta(self.conn, "brain_model", cfg.settings["brain_model"])
 
     def _reconcile_config(self) -> None:
@@ -101,6 +102,11 @@ class Engine:
                 tend[k] = float(v)
                 notes.append(f"new tendency '{k}' starts at {v}")
         notes += [f"dropped tendency '{k}'" for k in st["tendencies"] if k not in tend]
+        energy = float(st["energy"])
+        if db.get_meta(self.conn, "energy_scale") != "v2":    # older databases kept energy as 0..100
+            energy = character.clamp_energy(energy - 50)
+            db.set_meta(self.conn, "energy_scale", "v2")
+            notes.append("energy moved from the 0..100 scale to -50..50")
         area = st["area"]
         if area not in cfg.world["areas"]:
             area = cfg.character["start_area"]
@@ -109,7 +115,7 @@ class Engine:
             return
         log.warning("config changed since the last run; adjusting saved state: %s", "; ".join(notes))
         st = {**st, "needs": needs, "tendencies": tend, "area": area,
-              "energy": character.energy(needs, cfg), "is_asleep": bool(st["is_asleep"]),
+              "energy": energy, "is_asleep": bool(st["is_asleep"]),
               "brain_online": bool(st["brain_online"])}
         with db.transaction(self.conn):
             db.save_state(self.conn, st, _now_real())
@@ -264,11 +270,12 @@ class Engine:
             fx = effects.apply_changes(n["changes"], self.world, st["area"], cfg, now)
             mult = self._repetition_multiplier(b["action"])
             needs = character.decay(before, minutes, cfg)
-            needs = character.apply_gains(needs, n["gains"], n["effort"], cfg,
+            needs = character.apply_gains(needs, n["gains"], cfg,
                                           consumed=fx.consumed, multiplier=mult)
+            energy = character.spend_energy(st["energy"], n["effort"], cfg)
             self.tracer.set_effects(fx.log)
             self.tracer.set_need_math(character.explain_needs(
-                before, minutes, n["gains"], n["effort"], cfg, needs, consumed=fx.consumed, multiplier=mult))
+                before, minutes, n["gains"], cfg, needs, consumed=fx.consumed, multiplier=mult))
             feeling = b["feeling"]
             new_area = fx.area
             row = {"kind": "tick", "reaction": b["reaction"], "thought": b["thought"],
@@ -278,9 +285,8 @@ class Engine:
         else:
             minutes = s["doze"]["sim_minutes"]
             needs = character.decay(before, minutes, cfg)
-            needs = character.restore(needs, s["doze"]["energy_restore"], cfg)
-            self.tracer.set_need_math(character.explain_needs(
-                before, minutes, None, None, cfg, needs, restore_amount=s["doze"]["energy_restore"]))
+            energy = character.restore_energy(st["energy"], s["doze"]["energy_restore"])
+            self.tracer.set_need_math(character.explain_needs(before, minutes, None, cfg, needs))
             feeling = None
             new_area = st["area"]
             row = {"kind": "doze", "reaction": None, "thought": None, "action": None,
@@ -288,10 +294,10 @@ class Engine:
                    "duration": minutes, "changes": [], "rejected": []}
 
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, before, nudge, feeling, cfg, trace=mood_inputs)
+        mood = character.compute_mood(needs, before, nudge, feeling, energy, cfg, trace=mood_inputs)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes),
-                     "needs": needs, "mood": mood, "energy": character.energy(needs, cfg),
+                     "needs": needs, "mood": mood, "energy": energy,
                      "weather": self.world.weather, "brain_online": online}
         self.tracer.add_stage("apply", t_apply)
 
@@ -334,25 +340,24 @@ class Engine:
         before = dict(st["needs"])
         minutes = sl["sim_minutes_per_tick"]
         needs = character.decay(before, minutes * sl["decay_multiplier"], cfg)
-        needs = character.restore(needs, sl["restore_per_sim_hour"] * minutes / 60, cfg)
+        energy = character.restore_energy(st["energy"], sl["restore_per_sim_hour"] * minutes / 60)
         self.tracer.set_need_math(character.explain_needs(
-            before, minutes, None, None, cfg, needs, decay_multiplier=sl["decay_multiplier"],
-            restore_amount=sl["restore_per_sim_hour"] * minutes / 60))
+            before, minutes, None, cfg, needs, decay_multiplier=sl["decay_multiplier"]))
         new_time = clock.advance(now, minutes)
         new_dt = clock.parse(new_time)
         wake = False
         if not onset:
             started = db.get_meta(self.conn, "sleep_started", now)
             slept_h = (new_dt - clock.parse(started)).total_seconds() / 3600
-            rested = needs[character.need_with_flag(cfg, "sleep_restore")] >= sl["wake_rest_at_least"]
+            rested = energy >= sl["wake_energy_at_least"]
             morning = (new_dt.hour >= sl["wake_not_before_hour"]
                        and not clock.is_night(new_dt, s["phases"]))
             wake = (rested and morning) or slept_h >= sl["max_hours"]
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, before, nudge, None, cfg, trace=mood_inputs)
+        mood = character.compute_mood(needs, before, nudge, None, energy, cfg, trace=mood_inputs)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": new_time, "needs": needs, "mood": mood,
-                     "energy": character.energy(needs, cfg), "weather": self.world.weather,
+                     "energy": energy, "weather": self.world.weather,
                      "brain_online": online, "is_asleep": not wake}
         outcome = ("settles down to sleep." if onset else
                    "wakes up, rested." if wake else "sleeping.")
@@ -408,12 +413,12 @@ class Engine:
         with db.transaction(self.conn):
             cur = self.conn.execute(
                 "INSERT INTO ticks(kind,sim_time,real_time,area,reaction,thought,action,intent,"
-                "outcome,gains,effort,duration,changes,rejected_changes,needs_after,mood_after) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "outcome,gains,effort,duration,changes,rejected_changes,needs_after,mood_after,"
+                "energy_after) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (row["kind"], now, real, area, row["reaction"], row["thought"],
                  row["action"], row["intent"], row["outcome"], dumps(row["gains"]), row["effort"],
                  row["duration"], dumps(row["changes"]), dumps(row["rejected"]), dumps(needs),
-                 dumps(mood)))
+                 dumps(mood), new_state["energy"]))
             tick_id = cur.lastrowid
             for e in fired:
                 self.conn.execute("INSERT INTO events(tick_id,sim_time,area,text) VALUES(?,?,?,?)",
@@ -482,19 +487,19 @@ class Engine:
         if st["is_asleep"]:        # it was asleep when we went down: treat the gap as sleep
             sl = s["sleep"]
             needs = character.decay(before, minutes * sl["decay_multiplier"], cfg)
-            needs = character.restore(needs, sl["restore_per_sim_hour"] * minutes / 60, cfg)
+            energy = character.restore_energy(st["energy"], sl["restore_per_sim_hour"] * minutes / 60)
         else:
             needs = character.decay(before, minutes * s["catch_up_decay_multiplier"], cfg)
+            energy = st["energy"]
         self.tracer.begin()
         self.tracer.set_need_math(character.explain_needs(
-            before, minutes, None, None, cfg, needs,
-            decay_multiplier=(s["sleep"]["decay_multiplier"] if st["is_asleep"] else s["catch_up_decay_multiplier"]),
-            restore_amount=(s["sleep"]["restore_per_sim_hour"] * minutes / 60 if st["is_asleep"] else 0.0)))
+            before, minutes, None, cfg, needs,
+            decay_multiplier=(s["sleep"]["decay_multiplier"] if st["is_asleep"] else s["catch_up_decay_multiplier"])))
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, before, 0.0, None, cfg, trace=mood_inputs)
+        mood = character.compute_mood(needs, before, 0.0, None, energy, cfg, trace=mood_inputs)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs, "mood": mood,
-                     "energy": character.energy(needs, cfg)}
+                     "energy": energy}
         row = {"kind": "catchup", "reaction": None, "thought": None, "action": None, "intent": None,
                "outcome": downtime.description(now, minutes, s["phases"]), "gains": {},
                "effort": None, "duration": minutes, "changes": [], "rejected": []}

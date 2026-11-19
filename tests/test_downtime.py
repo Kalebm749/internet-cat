@@ -116,7 +116,7 @@ def test_catch_up_decays_advances_clock_and_writes_one_entry(cfg):
     st = db.get_state(e2.conn)
     assert st["sim_time"] == clock.advance(st0["sim_time"], 480)       # 4h = 160 ticks x 20min, capped to 480
     for nid, spec in cfg.character["needs"].items():
-        assert st["needs"][nid] == pytest.approx(max(0, st0["needs"][nid] - spec["decay"] * 8))
+        assert st["needs"][nid] == pytest.approx(max(0, st0["needs"][nid] - spec["decay_per_hour"] * 8))
     assert kinds(e2)[n0:] == ["catchup"]                               # exactly one entry
     row = e2.conn.execute("SELECT * FROM ticks WHERE kind='catchup'").fetchone()
     assert row["duration"] == 480 and row["sim_time"] == st0["sim_time"] and row["action"] is None
@@ -154,19 +154,18 @@ def test_first_start_has_nothing_to_catch_up(cfg):
     assert e.startup_downtime() is None
 
 
-def test_asleep_through_downtime_restores_rest(cfg):
+def test_asleep_through_downtime_restores_energy(cfg):
     e, b = make(cfg)
     e.run(ticks=2, interval=0)
     e.state["is_asleep"] = True
-    e.state["needs"]["rest"] = 10.0
+    e.state["energy"] = -40.0
     with db.transaction(e.conn):
         db.save_state(e.conn, e.state, "now")
     e2 = restart(cfg, e, b, later=2 * HOUR)
     e2.startup_downtime()
     st = db.get_state(e2.conn)
-    assert st["is_asleep"] == 1 and st["needs"]["rest"] > 10         # slept through it
-    decayed = max(0, 10 - cfg.character["needs"]["rest"]["decay"] * 8 * cfg.settings["sleep"]["decay_multiplier"])
-    assert st["needs"]["rest"] == pytest.approx(min(100, decayed + cfg.settings["sleep"]["restore_per_sim_hour"] * 8))
+    assert st["is_asleep"] == 1 and st["energy"] > -40               # slept through it
+    assert st["energy"] == pytest.approx(min(50, -40 + cfg.settings["sleep"]["restore_per_sim_hour"] * 8))
 
 
 def test_catch_up_decay_multiplier_setting(cfg):
@@ -176,7 +175,7 @@ def test_catch_up_decay_multiplier_setting(cfg):
     st0 = db.get_state(e.conn)
     restart(cfg, e, b, later=4 * HOUR).startup_downtime()
     st = db.get_state(e.conn)
-    assert st["needs"]["fun"] == pytest.approx(max(0, st0["needs"]["fun"] - cfg.character["needs"]["fun"]["decay"] * 4))
+    assert st["needs"]["joy"] == pytest.approx(max(0, st0["needs"]["joy"] - cfg.character["needs"]["joy"]["decay_per_hour"] * 4))
 
 
 def test_run_applies_catch_up_before_the_first_tick(cfg):

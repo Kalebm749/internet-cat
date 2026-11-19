@@ -81,7 +81,7 @@
     var dot = $("#pad-dot"); dot.style.left = s.mood.pad_x + "%"; dot.style.top = s.mood.pad_y + "%";
     var eb = $("#energy-bar");
     eb.setAttribute("aria-valuenow", s.energy.value); eb.setAttribute("aria-label", s.energy.aria);
-    eb.firstElementChild.style.width = s.energy.value + "%";
+    eb.firstElementChild.style.width = s.energy.pct + "%";
 
     if (changed("needs", s.needs)) setList($("#needs"), "tpl-need", s.needs);
     if (changed("tendencies", s.tendencies)) setList($("#tendencies"), "tpl-tendency", s.tendencies);

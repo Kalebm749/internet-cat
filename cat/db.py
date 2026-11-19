@@ -131,6 +131,7 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) ->
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _add_column(conn, "ticks", "energy_after", "REAL")  # energy is a separate resource, -50..50
     _add_column(conn, "memories", "tick_id", "INT")      # which tick wrote this memory (for tracing)
     if get_meta(conn, "schema_version") is None:
         set_meta(conn, "schema_version", SCHEMA_VERSION)

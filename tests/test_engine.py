@@ -114,16 +114,16 @@ def test_run_survives_a_failing_tick(cfg, monkeypatch):
 def test_effects_wired_in_engine(cfg):
     e, b = make_engine(cfg)
     b.handlers["narrator"] = lambda m, s: {
-        "outcome": "She eats and wanders.", "gains": {"fun": "+"}, "effort": "low", "duration": 20,
+        "outcome": "She eats and wanders.", "gains": {"joy": "+"}, "effort": "low", "duration": 20,
         "changes": [{"op": "consume", "object_id": "ghost"},
                     {"op": "move_self", "area": "kitchen"}, {"op": "consume", "object_id": "bowl"}]}
     e.state["area"] = "kitchen"
-    e.state["needs"]["food"] = 10.0
+    e.state["needs"]["sustenance"] = 10.0
     info = e.tick()
     row = e.conn.execute("SELECT * FROM ticks WHERE id=?", (info["id"],)).fetchone()
     assert [c["op"] for c in json.loads(row["changes"])] == ["consume"]
     assert json.loads(row["rejected_changes"])[0]["reason"].startswith("no such object")
-    assert db.get_state(e.conn)["needs"]["food"] > 10
+    assert db.get_state(e.conn)["needs"]["sustenance"] > 10
     assert e.conn.execute("SELECT COUNT(*) FROM objects WHERE id='bowl'").fetchone()[0] == 0
 
 
@@ -131,13 +131,13 @@ def test_repeated_action_pays_less(cfg):
     e, b = make_engine(cfg)
     b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "bat the red ball",
                                         "intent": "", "feeling": "neutral", "wants_sleep": False}
-    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {"fun": "++"}, "effort": "low",
+    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {"wonder": "++"}, "effort": "low",
                                            "duration": 5, "changes": []}
-    e.state["needs"]["fun"] = 10.0
+    e.state["needs"]["wonder"] = 10.0
     e.tick()
-    f1 = db.get_state(e.conn)["needs"]["fun"]
+    f1 = db.get_state(e.conn)["needs"]["wonder"]
     e.tick()
-    f2 = db.get_state(e.conn)["needs"]["fun"]
+    f2 = db.get_state(e.conn)["needs"]["wonder"]
     assert f1 - 10 > 25 and (f2 - f1) < 20        # first ~+30, repeat ~+12 (x0.4)
 
 
@@ -185,18 +185,19 @@ def test_config_changes_are_reconciled_with_saved_state(cfg, caplog):
     e, b = make_engine(cfg)
     e.run(ticks=5, interval=0)
     before = db.get_state(e.conn)
-    cfg.character["needs"]["thirst"] = {"start": 42, "decay": 3}
+    cfg.character["needs"]["thirst"] = {"start": 42, "decay_per_hour": 3, "meaning": "m",
+                                         "expressions": {"empty": "e", "low": "l", "full": "f"}}
     cfg.character["tendencies"]["curiosity"] = 0.7
-    del cfg.character["needs"]["cleanliness"]
+    del cfg.character["needs"]["peace"]
     b.need_ids = list(cfg.character["needs"])
     with caplog.at_level("WARNING", logger="cat.engine"):
         e2 = Engine(cfg, b, conn=e.conn, rng=random.Random(2))
     st = db.get_state(e2.conn)
-    assert st["needs"]["thirst"] == 42 and "cleanliness" not in st["needs"]
-    assert st["needs"]["fun"] == before["needs"]["fun"]                 # untouched needs keep their value
+    assert st["needs"]["thirst"] == 42 and "peace" not in st["needs"]
+    assert st["needs"]["joy"] == before["needs"]["joy"]                 # untouched needs keep their value
     assert st["tendencies"]["curiosity"] == 0.7
     assert st["tendencies"]["boldness"] == before["tendencies"]["boldness"]
-    assert "new need 'thirst'" in caplog.text and "dropped need 'cleanliness'" in caplog.text
+    assert "new need 'thirst'" in caplog.text and "dropped need 'peace'" in caplog.text
     assert e2.run(ticks=20, interval=0) == 20                           # and the loop works
     assert e2.conn.execute("SELECT COUNT(*) FROM ticks").fetchone()[0] == 25
 

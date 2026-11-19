@@ -42,12 +42,12 @@ def synth(cfg):
     return conn
 
 
-def tick(conn, i, sim, kind="tick", dur=30, needs=None, mood=None, area="living_room", action=None, changes=(), rejected=(), outcome="ok"):
-    needs = needs or {"food": 50, "rest": 50, "fun": 50, "cleanliness": 50, "curiosity": 50}
-    conn.execute("INSERT INTO ticks(id,kind,sim_time,real_time,area,action,outcome,duration,changes,rejected_changes,needs_after,mood_after,gains) "
-                 "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'{}')",
+def tick(conn, i, sim, kind="tick", dur=30, needs=None, mood=None, area="living_room", action=None, changes=(), rejected=(), outcome="ok", energy=20.0):
+    needs = needs or {"sustenance": 50, "wonder": 50, "joy": 50, "peace": 50, "curiosity": 50}
+    conn.execute("INSERT INTO ticks(id,kind,sim_time,real_time,area,action,outcome,duration,changes,rejected_changes,needs_after,mood_after,energy_after,gains) "
+                 "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'{}')",
                  (i, kind, sim, "2026-11-18T10:00:00", area, action, outcome, dur, json.dumps(list(changes)), json.dumps(list(rejected)),
-                  json.dumps(needs), json.dumps(mood or {"valence": 0.1, "arousal": 0.4, "word": "calm"})))
+                  json.dumps(needs), json.dumps(mood or {"valence": 0.1, "arousal": 0.4, "word": "calm"}), energy))
 
 
 # =============================== needs & mood ===============================
@@ -57,21 +57,20 @@ def synthetic_needs_run(cfg):
         t = clock.advance("2026-11-18T08:00", 30 * i)
         food = 10.0 if 3 <= i <= 6 else 60.0         # critical (<15) for ticks 3..6 = 4 x 30 min
         kind = "asleep" if i in (7, 8) else ("doze" if i == 9 else "tick")
-        tick(conn, i + 1, t, kind=kind, needs={"food": food, "rest": 80, "fun": 40, "cleanliness": 90, "curiosity": 20},
+        tick(conn, i + 1, t, kind=kind, needs={"sustenance": food, "wonder": 80, "joy": 40, "peace": 90, "curiosity": 20},
              mood={"valence": 0.1 * i, "arousal": 0.5, "word": "calm"})
     return conn
 
 
-def test_needs_series_shapes_values_and_derived_energy(cfg):
+def test_needs_series_shapes_values_and_stored_energy(cfg):
     synthetic_needs_run(cfg)
     s = data.needs_series(cfg, "all")
     assert s["ticks"] == 10 and len(s["x"]) == 10 and all(len(v) == 10 for v in s["needs"].values())
     assert s["x"] == sorted(s["x"]) and s["x"][1] - s["x"][0] == 30 * 60                   # epoch seconds, 30 sim minutes apart
     assert s["x"][0] == 1_795_000_000 + (s["x"][0] - 1_795_000_000) and s["from"] == "2026-11-18T08:00"
-    assert s["needs"]["food"][3] == 10.0 and s["needs"]["food"][0] == 60.0
+    assert s["needs"]["sustenance"][3] == 10.0 and s["needs"]["sustenance"][0] == 60.0
     assert s["valence"] == pytest.approx([0.1 * i for i in range(10)]) and s["arousal"] == [0.5] * 10
-    n = {"food": 10.0, "rest": 80, "fun": 40, "cleanliness": 90, "curiosity": 20}
-    assert s["energy"][3] == character.energy(n, cfg) == pytest.approx((10 * 1 + 80 * 3) / 4, abs=0.1)
+    assert s["energy"] == [20.0] * 10                                                    # stored per tick, not derived
     assert set(s["labels"]) == set(cfg.character["needs"])
 
 
@@ -85,10 +84,10 @@ def test_naive_sim_time_is_plotted_as_is(cfg):
 def test_critical_time_and_longest_stretch(cfg):
     synthetic_needs_run(cfg)
     c = {r["need"]: r for r in data.needs_series(cfg, "all")["critical"]}
-    assert c["food"]["minutes"] == 120 and c["food"]["hours"] == 2.0 and c["food"]["longest_minutes"] == 120
-    assert c["food"]["pct"] == pytest.approx(100 * 120 / 300, abs=0.1)                    # 10 ticks x 30 = 300 min
-    assert c["rest"]["minutes"] == 0 and c["fun"]["minutes"] == 0
-    assert data.needs_series(cfg, "all")["critical"][0]["need"] == "food"                  # sorted: worst first
+    assert c["sustenance"]["minutes"] == 120 and c["sustenance"]["hours"] == 2.0 and c["sustenance"]["longest_minutes"] == 120
+    assert c["sustenance"]["pct"] == pytest.approx(100 * 120 / 300, abs=0.1)                    # 10 ticks x 30 = 300 min
+    assert c["wonder"]["minutes"] == 0 and c["joy"]["minutes"] == 0
+    assert data.needs_series(cfg, "all")["critical"][0]["need"] == "sustenance"                  # sorted: worst first
     assert data.needs_series(cfg)["critical_below"] == cfg.settings["web_ui"]["need_critical_below"]
 
 
@@ -96,8 +95,8 @@ def test_critical_streaks_are_split_by_recovery(cfg):
     conn = synth(cfg)
     pattern = [5, 5, 5, 60, 5, 5, 60, 5]                                                  # streaks of 3, 2, 1
     for i, f in enumerate(pattern):
-        tick(conn, i + 1, clock.advance("2026-11-18T08:00", 30 * i), needs={"food": f, "rest": 80, "fun": 40, "cleanliness": 90, "curiosity": 20})
-    c = next(r for r in data.needs_series(cfg, "all")["critical"] if r["need"] == "food")
+        tick(conn, i + 1, clock.advance("2026-11-18T08:00", 30 * i), needs={"sustenance": f, "wonder": 80, "joy": 40, "peace": 90, "curiosity": 20})
+    c = next(r for r in data.needs_series(cfg, "all")["critical"] if r["need"] == "sustenance")
     assert c["minutes"] == 6 * 30 and c["longest_minutes"] == 90
 
 
@@ -188,11 +187,11 @@ def test_penalty_hits_only_count_real_reductions(cfg):
     nm = lambda t, need, mult, raw: conn.execute(
         'INSERT INTO need_math(tick_id,need,"before",decay,bucket,gain_raw,repetition_mult,effort_cost,clamp_adjust,"after") '
         "VALUES(?,?,0,0,'+',?,?,0,0,0)", (t, need, raw, mult))
-    nm(2, "fun", 0.4, 15)            # hit
+    nm(2, "joy", 0.4, 15)            # hit
     nm(2, "curiosity", 0.4, 15)      # same tick: counted once
-    nm(4, "fun", 0.4, 0)             # multiplier but nothing to reduce: not a hit
-    nm(5, "fun", 1.0, 15)            # no penalty
-    nm(8, "fun", 0.4, 30)            # hit (day 2)
+    nm(4, "joy", 0.4, 0)             # multiplier but nothing to reduce: not a hit
+    nm(5, "joy", 1.0, 15)            # no penalty
+    nm(8, "joy", 0.4, 30)            # hit (day 2)
     p = data.behaviour(cfg)["penalty"]
     assert p["hits"] == 2 and p["ticks"] == 8 and [h["tick_id"] for h in p["recent"]] == [8, 2]
     assert p["by_day"] == {1: 1, 2: 1} and {d["day"]: d["penalty_hits"] for d in data.behaviour(cfg)["days"]} == {1: 1, 2: 1}

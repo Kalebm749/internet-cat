@@ -373,10 +373,9 @@ def test_tick_detail_numbers_equal_the_public_site(cfg, seeded):
     for m in d["need_math"]:                                                # ... and the arithmetic behind each
         assert round(m["after"]) == site[m["need"]]["value"]
         assert m["after"] == pytest.approx(m["before"] - m["decay"] + m["gain_raw"] * m["repetition_mult"]
-                                           - m["effort_cost"] + m["clamp_adjust"], abs=2e-3)
+                                           + m["clamp_adjust"], abs=2e-3)
     assert (pub["energy"]["value"], pub["energy"]["word"]) == (state["energy"]["value"], state["energy"]["word"])
-    assert d["energy"] == pytest.approx(sum(x["value"] * x["weight"] for x in d["energy_terms"]) /
-                                        sum(x["weight"] for x in d["energy_terms"]), abs=0.1)
+    assert d["energy"] == pytest.approx(state["energy"]["value"], abs=0.5)          # stored, not derived
     assert d["mood_math"]["word"] == state["mood"]["word"] == pub["mood"]["word"]
     assert d["mood_math"]["valence"] == state["mood"]["valence"] and d["mood_math"]["arousal"] == state["mood"]["arousal"]
     # trend arrows on the site compare with the previous tick: the math's `before` is that previous value
@@ -455,9 +454,7 @@ def test_tick_detail_sleep_section_shows_proposed_vs_clamped(cfg):
     b.handlers["tendencies"] = lambda m, s: {"changes": {"boldness": 1, "sociability": -9}}
     e.tick()
     e.state["sim_time"] = "2026-11-18T23:00"
-    e.state["needs"].update(rest=5.0, food=5.0)
-    from cat import character
-    e.state["energy"] = character.energy(e.state["needs"], cfg)
+    e.state["energy"] = -45.0
     tid = e.tick()["id"]
     d = data.tick_detail(cfg, tid)
     assert d["sleep_logs"] and {t["step"] for t in d["sleep_logs"][0]["traces"]} == {"consolidate", "tendencies", "preferences", "self_image"}

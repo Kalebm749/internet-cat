@@ -36,7 +36,7 @@ def scripted(b, action="watch the rain", feeling="positive", changes=None, gains
 
     def na(m, s):
         seen["narrator"].append((m, s))
-        return {"outcome": "It rains softly.", "gains": gains or {"fun": "+"}, "effort": "medium",
+        return {"outcome": "It rains softly.", "gains": gains or {"joy": "+"}, "effort": "medium",
                 "duration": 20, "changes": changes or []}
     b.handlers["brain"], b.handlers["narrator"] = br, na
     return seen
@@ -90,11 +90,14 @@ def test_mock_tick_writes_complete_trace(cfg):
     assert [r["need"] for r in nm] == list(cfg.character["needs"])
     for r in nm:                                              # the arithmetic reproduces the stored number
         assert r["after"] == pytest.approx(needs_after[r["need"]], abs=1e-3)
-        rebuilt = r["before"] - r["decay"] + r["gain_raw"] * r["repetition_mult"] - r["effort_cost"] + r["clamp_adjust"]
+        rebuilt = r["before"] - r["decay"] + r["gain_raw"] * r["repetition_mult"] + r["clamp_adjust"]
+        assert r["effort_cost"] == 0                          # effort spends energy, not needs
         assert rebuilt == pytest.approx(r["after"], abs=2e-3)
-    fun = next(r for r in nm if r["need"] == "fun")
-    assert fun["bucket"] == "+" and fun["gain_raw"] == cfg.settings["gain_values"]["+"]
-    assert next(r for r in nm if r["need"] == "rest")["effort_cost"] == cfg.settings["effort_energy_cost"]["medium"]
+    joy = next(r for r in nm if r["need"] == "joy")
+    assert joy["bucket"] == "+" and joy["gain_raw"] == cfg.settings["gain_values"]["+"]
+    prev = rows(e, "SELECT energy_after FROM ticks WHERE id<? ORDER BY id DESC LIMIT 1", tid)
+    start = prev[0]["energy_after"] if prev else cfg.settings["energy_start"]
+    assert tick_row["energy_after"] == pytest.approx(start - cfg.settings["effort_energy_cost"]["medium"])
 
     mm = rows(e, "SELECT * FROM mood_math WHERE tick_id=?", tid)[0]
     mood_after = json.loads(tick_row["mood_after"])
@@ -122,7 +125,7 @@ def test_need_and_mood_math_hold_for_every_tick_of_a_long_run(cfg):
         after = json.loads(t["needs_after"])
         for r in nm:
             assert r["after"] == pytest.approx(after[r["need"]], abs=1e-3)
-            assert (r["before"] - r["decay"] + r["gain_raw"] * r["repetition_mult"] - r["effort_cost"]
+            assert (r["before"] - r["decay"] + r["gain_raw"] * r["repetition_mult"]
                     + r["clamp_adjust"]) == pytest.approx(r["after"], abs=2e-3)
             n += 1
         mm = rows(e, "SELECT word, valence FROM mood_math WHERE tick_id=?", t["id"])[0]
@@ -140,8 +143,12 @@ def test_doze_tick_trace_and_failed_attempts_recorded(cfg):
     calls = rows(e, "SELECT * FROM llm_calls WHERE tick_id=? ORDER BY id", info["id"])
     assert [(c["kind"], c["attempt"], c["valid_json"]) for c in calls] == [("brain", 1, 0), ("brain", 2, 0)]
     assert all("injected failure" in c["error"] and c["system_prompt"] for c in calls)
-    nm = rows(e, "SELECT * FROM need_math WHERE tick_id=? AND need='rest'", info["id"])[0]
-    assert nm["gain_raw"] == cfg.settings["doze"]["energy_restore"] and nm["bucket"] == "restore"
+    nm = rows(e, "SELECT * FROM need_math WHERE tick_id=?", info["id"])
+    assert [r["need"] for r in nm] == list(cfg.character["needs"]) and all(r["gain_raw"] == 0 for r in nm)
+    prev = rows(e, "SELECT energy_after FROM ticks WHERE id<? ORDER BY id DESC LIMIT 1", info["id"])
+    start = prev[0]["energy_after"] if prev else cfg.settings["energy_start"]
+    assert rows(e, "SELECT energy_after FROM ticks WHERE id=?", info["id"])[0]["energy_after"] == pytest.approx(
+        min(50, start + cfg.settings["doze"]["energy_restore"]))
 
 
 def test_unparseable_reply_then_good_reply_records_both_attempts(cfg):
@@ -236,8 +243,7 @@ def test_sleep_cycle_traced_with_proposed_vs_clamped(cfg):
     b.handlers["tendencies"] = lambda m, s: {"changes": {"boldness": 1, "sociability": -3}}
     e.tick()                                                  # a day to consolidate
     e.state["sim_time"] = "2026-11-18T23:00"
-    e.state["needs"].update(rest=5.0, food=5.0)
-    e.state["energy"] = character.energy(e.state["needs"], cfg)
+    e.state["energy"] = -45.0
     info = e.tick()
     assert info["kind"] == "asleep"
     kinds = [r["kind"] for r in rows(e, "SELECT kind FROM llm_calls WHERE tick_id=? ORDER BY id", info["id"])]
@@ -294,8 +300,7 @@ def test_retention_runs_during_sleep(cfg):
     old = (datetime.now() - timedelta(days=5)).isoformat(timespec="milliseconds")
     e.conn.execute("UPDATE llm_calls SET started_at=?", (old,))
     e.state["sim_time"] = "2026-11-18T23:00"
-    e.state["needs"].update(rest=5.0, food=5.0)
-    e.state["energy"] = character.energy(e.state["needs"], cfg)
+    e.state["energy"] = -45.0
     e.tick()                                                  # falls asleep: cycle + retention
     assert rows(e, "SELECT COUNT(*) c FROM llm_calls WHERE started_at=?", old)[0]["c"] == 0
 
@@ -303,13 +308,13 @@ def test_retention_runs_during_sleep(cfg):
 # ---------- the pieces ----------
 def test_explain_needs_describes_ignored_and_invalid_gains(cfg):
     before = {k: 50.0 for k in cfg.character["needs"]}
-    after = character.apply_gains(character.decay(before, 60, cfg), {"food": "++", "fun": "huge"}, "low", cfg)
-    rows_ = {r["need"]: r for r in character.explain_needs(before, 60, {"food": "++", "fun": "huge"}, "low", cfg, after)}
-    assert "ignored" in rows_["food"]["bucket"] and rows_["food"]["gain_raw"] == 0
-    assert "invalid" in rows_["fun"]["bucket"]
-    eaten = character.apply_gains(character.decay(before, 60, cfg), {}, "low", cfg, consumed=True)
-    r = {x["need"]: x for x in character.explain_needs(before, 60, {}, "low", cfg, eaten, consumed=True)}
-    assert r["food"]["gain_raw"] == cfg.settings["gain_values"][cfg.settings["consume_min_gain"]]
+    after = character.apply_gains(character.decay(before, 60, cfg), {"sustenance": "++", "joy": "huge"}, cfg)
+    rows_ = {r["need"]: r for r in character.explain_needs(before, 60, {"sustenance": "++", "joy": "huge"}, cfg, after)}
+    assert "ignored" in rows_["sustenance"]["bucket"] and rows_["sustenance"]["gain_raw"] == 0
+    assert "invalid" in rows_["joy"]["bucket"]
+    eaten = character.apply_gains(character.decay(before, 60, cfg), {}, cfg, consumed=True)
+    r = {x["need"]: x for x in character.explain_needs(before, 60, {}, cfg, eaten, consumed=True)}
+    assert r["sustenance"]["gain_raw"] == cfg.settings["gain_values"][cfg.settings["consume_min_gain"]]
 
 
 def test_rng_stream_is_unchanged_by_event_tracing(cfg, conn):

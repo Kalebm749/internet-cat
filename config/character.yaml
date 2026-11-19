@@ -20,9 +20,57 @@ tendency_labels:
 
 start_area: living_room
 
-needs:                                 # 0..100, decay per sim hour
-  food:        {start: 60, decay: 6,   requires_consume: true, energy_weight: 1}
-  rest:        {start: 80, decay: 4,   effort_drain: true, sleep_restore: true, energy_weight: 3, label: "rest"}
-  fun:         {start: 50, decay: 7}
-  cleanliness: {start: 70, decay: 2}
-  curiosity:   {start: 50, decay: 5}
+# Needs (0..100). Each level becomes one of four bands (settings.yaml need_bands): full, okay, low, empty.
+# The brain sees only the expressions of the most pressing needs, in words, never numbers and never a
+# list of actions. `okay` may be null. Energy is not a need: it is a separate resource (effort spends
+# it, sleep restores it).
+needs:
+  sustenance:
+    start: 70
+    decay_per_hour: 5
+    meaning: "How well sustained you are: whether you have taken in anything to keep you going."
+    expressions:
+      full: "You feel thoroughly sustained, with nothing lacking."
+      okay: null
+      low: "A hollowness is growing in you, a want for something to sustain you."
+      empty: "You are running on nothing. A deep, gnawing lack crowds out almost everything else."
+  wonder:
+    start: 60
+    decay_per_hour: 4
+    meaning: "Your sense of awe and delight at the world: being moved by what is beautiful, strange or vast."
+    expressions:
+      full: "The world feels astonishing; even small things shimmer."
+      okay: null
+      low: "Things are starting to look ordinary; the sense of marvel is thin."
+      empty: "Everything seems flat and grey; nothing stirs any marvel in you."
+  joy:
+    start: 60
+    decay_per_hour: 6
+    meaning: "Lightness and play: simply enjoying yourself."
+    expressions:
+      full: "You are bubbling with lightness and the urge to play."
+      okay: null
+      low: "It has been a while since anything felt light or fun."
+      empty: "Joy has drained away; everything feels heavy and joyless."
+  peace:
+    start: 70
+    decay_per_hour: 2
+    meaning: "Inner calm and stillness: freedom from restlessness, noise and worry."
+    expressions:
+      full: "A deep stillness has settled in you."
+      okay: null
+      low: "A jangle of restlessness runs under everything."
+      empty: "You are wound tight; there is no quiet anywhere in you."
+  curiosity:
+    start: 50
+    decay_per_hour: 5
+    meaning: "The pull to find out, explore and understand what you don't yet know."
+    expressions:
+      full: "Questions are buzzing in you; you are hungry to know more."
+      okay: null
+      low: "The urge to find things out has dulled; little makes you want to look closer."
+      empty: "Nothing seems worth finding out; the world feels already known and closed."
+
+# Shown to the brain when it has stayed in one place for settings.yaml stale_after_ticks ticks.
+# It changes no need values; it is only a sentence in the prompt.
+stale_here: "You have been here a while, and everything about this place feels familiar and used up."

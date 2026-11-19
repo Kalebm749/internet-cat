@@ -69,7 +69,7 @@ def test_kill_ollama_midrun_engine_keeps_going_and_recovers(rig, cfg):
     st = db.get_state(e.conn)
     assert st["brain_online"] == 0
     assert st["sim_time"] > t_before                        # the clock kept moving
-    assert st["needs"]["fun"] < needs_before["fun"]         # needs kept decaying
+    assert st["needs"]["joy"] < needs_before["joy"]         # needs kept decaying
     assert all(0 <= v <= 100 for v in st["needs"].values())
     doze_rows = e.conn.execute("SELECT * FROM ticks WHERE kind='doze'").fetchall()
     assert len(doze_rows) == 8 and all(r["outcome"] == "dozing" and r["action"] is None for r in doze_rows)
@@ -84,15 +84,17 @@ def test_kill_ollama_midrun_engine_keeps_going_and_recovers(rig, cfg):
     assert db.get_meta(e.conn, "brain_last_seen")
 
 
-def test_doze_restores_a_little_rest(rig, cfg):
+def test_doze_restores_a_little_energy(rig, cfg):
     e, fake = rig
     e.tick()
-    e.state["needs"]["rest"] = 40.0
+    e.state["energy"] = -10.0
+    needs0 = dict(e.state["needs"])
     fake.mode = "down"
     e.tick()
     s = cfg.settings
-    drop = cfg.character["needs"]["rest"]["decay"] * s["doze"]["sim_minutes"] / 60
-    assert e.state["needs"]["rest"] == pytest.approx(40 - drop + s["doze"]["energy_restore"])
+    assert e.state["energy"] == pytest.approx(-10 + s["doze"]["energy_restore"])
+    drop = cfg.character["needs"]["joy"]["decay_per_hour"] * s["doze"]["sim_minutes"] / 60
+    assert e.state["needs"]["joy"] == pytest.approx(needs0["joy"] - drop)       # needs only decay
 
 
 def test_hung_model_is_survived_via_retry_then_doze(rig):
@@ -143,9 +145,7 @@ def test_no_just_woke_note_after_sleeping_through_a_doze(cfg):
     e.tick()
     b.online = True
     e.state["sim_time"] = "2026-11-18T23:00"
-    e.state["needs"].update(rest=5.0, food=5.0)
-    from cat import character
-    e.state["energy"] = character.energy(e.state["needs"], cfg)
+    e.state["energy"] = -45.0
     while not e.tick()["outcome"].startswith("wakes"):
         pass
     e.tick()

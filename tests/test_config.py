@@ -22,17 +22,8 @@ def test_default_config_loads():
     assert set(c.settings["gain_values"]) == {"0", "+", "++"}
 
 
-def test_energy_need_rejected(tmp_path):
-    d = _edit(tmp_path, "character.yaml",
-              lambda c: c["needs"].update(energy={"start": 50, "decay": 1}))
-    with pytest.raises(ConfigError, match="derived"):
-        load_config(d)
 
 
-def test_needs_flags_required(tmp_path):
-    d = _edit(tmp_path, "character.yaml", lambda c: c["needs"]["rest"].pop("sleep_restore"))
-    with pytest.raises(ConfigError, match="sleep_restore"):
-        load_config(d)
 
 
 def test_unmirrored_exit(tmp_path):
@@ -67,16 +58,8 @@ def test_default_character_has_no_form():
     assert c["self_image"] == {"seed": ""}
 
 
-def test_event_need_effect_must_name_a_real_need(tmp_path):
-    msg = _problems(tmp_path, "world.yaml",
-                    lambda w: w["events"].append({"text": "A feast.", "chance": 0.1, "needs": {"hunger": "+"}}))
-    assert "unknown need 'hunger'" in msg
 
 
-def test_event_need_effect_with_real_need_is_fine(tmp_path):
-    d = _edit(tmp_path, "world.yaml",
-              lambda w: w["events"].append({"text": "A feast.", "chance": 0.1, "needs": {"food": "+"}}))
-    load_config(d)
 
 
 def test_tendency_labels_must_match_tendencies(tmp_path):
@@ -95,24 +78,10 @@ def test_start_area_must_exist(tmp_path):
     assert "start_area 'moon' is not an area" in msg
 
 
-def test_unknown_behaviour_flag_rejected(tmp_path):
-    msg = _problems(tmp_path, "character.yaml", lambda c: c["needs"]["fun"].update(sparkly=True))
-    assert "unknown behaviour flag or field 'sparkly'" in msg
 
 
-def test_behaviour_flag_must_be_boolean(tmp_path):
-    msg = _problems(tmp_path, "character.yaml", lambda c: c["needs"]["food"].update(requires_consume="yes"))
-    assert "requires_consume must be true or false" in msg
 
 
-def test_numeric_ranges(tmp_path):
-    def bad(c):
-        c["needs"]["fun"]["start"] = 150
-        c["needs"]["fun"]["decay"] = -1
-        c["tendencies"]["boldness"] = 1.5
-    msg = _problems(tmp_path, "character.yaml", bad)
-    assert "need 'fun': start must be 0..100" in msg and "decay must be a number >= 0" in msg
-    assert "tendency 'boldness': must be 0..1" in msg
 
 
 def test_event_ranges(tmp_path):
@@ -135,13 +104,6 @@ def test_self_image_seed_text_accepted(tmp_path):
     assert load_config(d).character["self_image"]["seed"] == "I might be small."
 
 
-def test_every_problem_is_reported_at_once(tmp_path):
-    def bad(c):
-        c.update(start_area="moon")
-        c["tendency_labels"].update(luck=["a", "b"])
-        c["needs"]["fun"]["start"] = -5
-    msg = _problems(tmp_path, "character.yaml", bad)
-    assert msg.startswith("3 config problems") and msg.count("\n  - ") == 3
 
 
 def test_unknown_top_level_field_is_a_warning(tmp_path, caplog):
@@ -160,3 +122,130 @@ def test_main_refuses_to_start_and_prints_everything(tmp_path, capsys):
     assert main(["--mock", "--ticks", "1", "--config-dir", str(d)]) == 2
     err = capsys.readouterr().err
     assert "refusing to start" in err and "start_area" in err and "luck" in err
+
+
+# ---- needs: meaning, expressions, bands, drains ----
+def test_default_needs_are_the_five_with_meaning_and_expressions():
+    needs = load_config().character["needs"]
+    assert list(needs) == ["sustenance", "wonder", "joy", "peace", "curiosity"]
+    for n in needs.values():
+        assert set(n) == {"start", "decay_per_hour", "meaning", "expressions"}
+        assert all(n["expressions"][b] for b in ("empty", "low", "full"))
+    assert load_config().character["stale_here"]
+
+
+def test_energy_is_not_a_need(tmp_path):
+    msg = _problems(tmp_path, "character.yaml", lambda c: c["needs"].update(
+        energy=dict(c["needs"]["joy"])))
+    assert "'energy' is not a need" in msg
+
+
+def test_old_need_fields_are_unknown(tmp_path):
+    msg = _problems(tmp_path, "character.yaml", lambda c: c["needs"]["joy"].update(
+        requires_consume=True, energy_weight=1, decay=3, label="x"))
+    for f in ("requires_consume", "energy_weight", "decay", "label"):
+        assert f"unknown field '{f}'" in msg
+
+
+def test_event_drains_must_name_a_real_need(tmp_path):
+    msg = _problems(tmp_path, "world.yaml", lambda w: w["events"].append(
+        {"text": "Bad news.", "chance": 0.1, "drains": {"hunger": 10}}))
+    assert "drains references unknown need 'hunger'" in msg
+
+
+def test_event_drains_with_real_needs_are_fine(tmp_path):
+    d = _edit(tmp_path, "world.yaml", lambda w: w["events"].append(
+        {"text": "Bad news.", "chance": 0.1, "drains": {"peace": 10, "joy": 5}}))
+    assert load_config(d)
+
+
+def test_event_drain_amount_must_be_a_non_negative_number(tmp_path):
+    msg = _problems(tmp_path, "world.yaml", lambda w: w["events"].append(
+        {"text": "Odd.", "chance": 0.1, "drains": {"peace": -5, "joy": "lots"}}))
+    assert msg.count("must be a number >= 0") == 2
+
+
+@pytest.mark.parametrize("band", ["empty", "low", "full"])
+def test_expressions_required_for_empty_low_and_full(tmp_path, band):
+    msg = _problems(tmp_path, "character.yaml", lambda c: c["needs"]["joy"]["expressions"].pop(band))
+    assert f"need 'joy': expressions.{band} is required" in msg
+
+
+def test_okay_expression_may_be_null_or_text_but_not_blank(tmp_path):
+    load_config(_edit(tmp_path, "character.yaml",
+                      lambda c: c["needs"]["joy"]["expressions"].update(okay="Mostly light.")))
+    msg = _problems(tmp_path / "b", "character.yaml",
+                    lambda c: c["needs"]["joy"]["expressions"].update(okay="  "))
+    assert "expressions.okay must be null or non-empty text" in msg
+
+
+def test_unknown_band_rejected(tmp_path):
+    msg = _problems(tmp_path, "character.yaml", lambda c: c["needs"]["joy"]["expressions"].update(great="x"))
+    assert "unknown band 'great'" in msg
+
+
+@pytest.mark.parametrize("where", ["meaning", "empty", "low", "full"])
+def test_any_present_text_must_be_non_empty(tmp_path, where):
+    def blank(c):
+        n = c["needs"]["peace"]
+        if where == "meaning":
+            n["meaning"] = " "
+        else:
+            n["expressions"][where] = ""
+    assert "non-empty text" in _problems(tmp_path, "character.yaml", blank)
+
+
+def test_stale_here_must_be_non_empty_when_present(tmp_path):
+    assert "stale_here must be non-empty text" in _problems(
+        tmp_path, "character.yaml", lambda c: c.update(stale_here=" "))
+
+
+def test_need_numbers_ranges(tmp_path):
+    def bad(c):
+        c["needs"]["joy"]["start"] = 150
+        c["needs"]["joy"]["decay_per_hour"] = -1
+        c["tendencies"]["boldness"] = 1.5
+    msg = _problems(tmp_path, "character.yaml", bad)
+    assert "need 'joy': start must be 0..100" in msg and "decay_per_hour must be a number >= 0" in msg
+    assert "tendency 'boldness': must be 0..1" in msg
+
+
+def test_band_thresholds_must_ascend(tmp_path):
+    msg = _problems(tmp_path, "settings.yaml", lambda s: s["need_bands"].update(empty_below=50, low_below=40))
+    assert "thresholds must ascend" in msg
+
+
+def test_band_thresholds_must_be_complete_numbers_in_range(tmp_path):
+    assert "must be numbers for empty_below, low_below, okay_below" in _problems(
+        tmp_path, "settings.yaml", lambda s: s["need_bands"].pop("low_below"))
+    assert "thresholds must be 0..100" in _problems(
+        tmp_path / "b", "settings.yaml", lambda s: s["need_bands"].update(okay_below=150))
+
+
+def test_pressing_and_stale_settings_are_validated(tmp_path):
+    assert "max_pressing_needs: must be an integer >= 1" in _problems(
+        tmp_path, "settings.yaml", lambda s: s.update(max_pressing_needs=0))
+    assert "stale_after_ticks: must be an integer >= 0" in _problems(
+        tmp_path / "b", "settings.yaml", lambda s: s.update(stale_after_ticks=-1))
+
+
+def test_sustenance_need_and_repetition_needs_must_exist(tmp_path):
+    assert "'hunger' is not a need" in _problems(
+        tmp_path, "settings.yaml", lambda s: s.update(sustenance_need="hunger"))
+    assert "repetition_penalty.needs: 'fun' is not a need" in _problems(
+        tmp_path / "b", "settings.yaml", lambda s: s["repetition_penalty"].update(needs=["wonder", "fun"]))
+
+
+def test_energy_start_range(tmp_path):
+    assert "energy_start: must be a number -50..50" in _problems(
+        tmp_path, "settings.yaml", lambda s: s.update(energy_start=80))
+
+
+def test_every_problem_is_reported_at_once(tmp_path):
+    def bad(c):
+        c.update(start_area="moon")
+        c["tendency_labels"].update(luck=["a", "b"])
+        c["needs"]["joy"]["start"] = -5
+    msg = _problems(tmp_path, "character.yaml", bad)
+    assert msg.startswith("3 config problems") and msg.count("\n  - ") == 3
+

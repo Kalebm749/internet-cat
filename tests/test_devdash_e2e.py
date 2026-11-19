@@ -73,7 +73,7 @@ PAGES = [
     ("/ticks", ["/ticks/", "dozing", "rejections"]),
     ("/llm", ["sleep_consolidate", "brain", "narrator", "uPlot.iife.min.js"]),
     ("/memory", ["Long-term memories", "<circle", "Most recalled", "times recalled"]),
-    ("/needs?range=all", ["chart-needs", "critical level the longest", "food"]),
+    ("/needs?range=all", ["chart-needs", "critical level the longest", "sustenance"]),
     ("/behaviour", ["Action variety", "Top repeated actions", "Rejection reasons", "no such object"]),
     ("/sleep", ["Night #", "LLM proposed", "Consolidate memories", "chart-tendencies"]),
     ("/world", ["Object history", "creature is here", "a feather"]),

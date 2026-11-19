@@ -41,7 +41,7 @@ def _state_row(conn, cfg: Config) -> dict:
     needs = character.initial_needs(cfg)   # first boot: the creature hasn't woken up yet
     return {"sim_time": cfg.settings["sim_start"], "area": cfg.character["start_area"],
             "needs": needs, "mood": character.initial_mood(needs, cfg),
-            "energy": character.energy(needs, cfg), "weather": "clear",
+            "energy": float(cfg.settings["energy_start"]), "weather": "clear",
             "tendencies": dict(cfg.character["tendencies"]), "is_asleep": 0, "brain_online": 1}
 
 
@@ -342,8 +342,9 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
                  "aria": f"Mood map: {mood['word']}, leaning "
                          f"{'pleasant' if mood['valence'] > 0.25 else 'unpleasant' if mood['valence'] < -0.25 else 'neutral'} "
                          f"and {'lively' if mood['arousal'] >= 0.5 else 'quiet'}"},
-        "energy": {"value": round(energy), "word": character.energy_word(energy, cfg),
-                   "aria": f"energy: {character.energy_word(energy, cfg)}, {energy:.0f} out of 100"},
+        "energy": {"value": round(energy), "pct": round(energy - character.ENERGY_MIN),
+                   "word": character.energy_word(energy, cfg),
+                   "aria": f"energy: {character.energy_word(energy, cfg)}, {energy:.0f} on a scale from -50 to 50"},
         "needs": needs_view(conn, cfg, st),
         "tendencies": tendencies_view(conn, cfg, st),
         "preferences": preferences_view(conn, cfg),
