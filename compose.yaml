@@ -76,6 +76,28 @@ services:
       retries: 3
       start_period: 15s
 
+  # Developer dashboard (see README "Using the dev dashboard"). Published on 127.0.0.1 ONLY by default.
+  # Set DEVDASH_BIND=0.0.0.0 in .env to reach it from your LAN: it then REQUIRES DEVDASH_USER/DEVDASH_PASS
+  # (the service refuses to start without them). Never expose it beyond your local network.
+  devdash:
+    <<: *app
+    environment:
+      CAT_CONFIG_DIR: /app/config
+      CAT_STRUCTURED_LOGS: "1"
+      TZ: ${TZ:-UTC}
+      DEVDASH_BIND: ${DEVDASH_BIND:-127.0.0.1}
+      DEVDASH_USER: ${DEVDASH_USER:-}
+      DEVDASH_PASS: ${DEVDASH_PASS:-}
+    command: ["uvicorn", "cat.devdash.app:app", "--host", "0.0.0.0", "--port", "8090", "--no-access-log"]
+    ports:
+      - "${DEVDASH_BIND:-127.0.0.1}:8090:8090"
+    healthcheck:
+      test: ["CMD", "python", "-m", "cat.healthcheck", "http", "http://127.0.0.1:8090/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
   # One-off: docker compose --profile init run --rm model-pull   (or deploy/pull-models.sh)
   model-pull:
     <<: *app

@@ -29,7 +29,7 @@ SERVICES = COMPOSE["services"]
 
 # ---------- compose.yaml ----------
 def test_services_present():
-    assert {"ollama", "engine", "web", "model-pull"} <= set(SERVICES)
+    assert {"ollama", "engine", "web", "devdash", "model-pull"} <= set(SERVICES)
 
 
 def test_everything_restarts_and_has_healthchecks():
@@ -56,12 +56,27 @@ def test_only_the_website_is_exposed_to_the_network():
     for name, svc in SERVICES.items():
         for port in svc.get("ports", []):
             p = str(port)
-            if not p.startswith("127.0.0.1:"):
-                assert name == "web" and p.endswith(":8080"), f"{name} publishes {p}"
+            if p.startswith("127.0.0.1:"):
+                continue
+            if name == "devdash":                        # loopback unless DEVDASH_BIND is set in .env
+                assert p == "${DEVDASH_BIND:-127.0.0.1}:8090:8090", p
+                continue
+            assert name == "web" and p.endswith(":8080"), f"{name} publishes {p}"
+
+
+def test_devdash_is_loopback_by_default_and_gets_its_credentials():
+    d = SERVICES["devdash"]
+    assert d["ports"] == ["${DEVDASH_BIND:-127.0.0.1}:8090:8090"]
+    assert {"DEVDASH_BIND", "DEVDASH_USER", "DEVDASH_PASS"} <= set(d["environment"])
+    assert d["restart"] == "unless-stopped" and d["healthcheck"]["test"]
+    assert "cat.devdash.app:app" in d["command"] and "8090" in d["command"]
+    env = (ROOT / ".env.example").read_text()
+    assert "DEVDASH_BIND=127.0.0.1" in env and "DEVDASH_USER=" in env
+    assert (ROOT / ".gitignore").read_text().split().count(".env") == 1
 
 
 def test_config_is_readonly_data_is_a_bind_mount():
-    for name in ("engine", "web"):
+    for name in ("engine", "web", "devdash"):
         vols = SERVICES[name]["volumes"]
         assert "./config:/app/config:ro" in vols, name
         assert "./data:/app/data" in vols, name
@@ -87,7 +102,7 @@ def test_model_pull_is_an_opt_in_init_step():
 
 
 def test_same_image_for_our_services_and_nothing_privileged():
-    for name in ("engine", "web", "model-pull"):
+    for name in ("engine", "web", "devdash", "model-pull"):
         assert SERVICES[name]["image"] == "internet-cat:local"
         assert SERVICES[name]["build"]["target"] == "runtime"
     for svc in SERVICES.values():

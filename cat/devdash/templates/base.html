@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · devdash · {{ creature }}</title>
+  <link rel="stylesheet" href="/static/devdash.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">devdash</a><span class="who">{{ creature }}</span>
+  <nav>
+    {% for key, label, href in nav %}<a href="{{ href }}" class="{{ 'active' if active == key else '' }}">{{ label }}</a>{% endfor %}
+  </nav>
+  <span class="spacer"></span>
+  {% if refresh_s %}<label class="refresh" title="auto-refresh this page every {{ refresh_s }}s"><input type="checkbox" id="auto-refresh" checked> auto-refresh <span id="refresh-state" class="dim"></span></label>{% endif %}
+</header>
+<main id="content" data-refresh="{{ refresh_s }}">
+{% block content %}{% endblock %}
+</main>
+<div id="toast" class="toast" hidden></div>
+<script src="/static/devdash.js" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
