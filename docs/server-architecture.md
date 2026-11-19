@@ -8,7 +8,7 @@ Everything runs on **one machine**: an Ubuntu laptop (HP Omen 15, GTX 1060 6GB, 
 
 ## 1. Goals for v1
 
-1. A world loop that runs 24/7 and keeps the creature alive: ticks, brain and narrator calls, needs, mood, memory, sleep.
+1. A world loop that runs 24/7 and keeps the entity alive: ticks, brain and narrator calls, needs, mood, memory, sleep.
 2. A read-only website, served on the home network, that shows the creature's current state and history.
 3. Survives the brain going offline, the machine or containers restarting, and bad LLM output, without corrupting state.
 
@@ -122,7 +122,7 @@ sleep_log(id, sim_date, summary, tick_id,   -- tick_id: where the sleep began
 Three YAML files in `config/`, mounted read-only into the containers. Every field is described in `config-reference.md`. **All tuning numbers live in `settings.yaml`, never in code.** Key points:
 
 - `ollama_host` defaults to `http://ollama:11434` (the Compose service name).
-- `character.yaml` and `world.yaml` currently hold a placeholder cat and a tiny house; the engine works with any content that follows the schema.
+- `character.yaml` and `world.yaml` currently hold a placeholder character (Gregorovitch, with no species or appearance) and a tiny house; the engine works with any content that follows the schema.
 - `settings.yaml` is read when a service starts. Edit it and restart the engine (a dev-dashboard command will later reload it live).
 
 ---

@@ -1,8 +1,9 @@
 # Internet Cat
 
-An autonomous creature that lives in a simulated world. Plain code tracks time, needs and rules;
-a local LLM (Ollama) writes what the creature thinks and what happens. Everything runs on **one
-Ubuntu laptop** with **Docker Compose**, and a read-only website shows the creature's journal.
+A framework for a conscious entity that lives in a simulated world. Plain code tracks time, needs and
+rules; a local LLM (Ollama) writes what the entity thinks and what happens. Nothing assumes a species,
+body or appearance: the entity starts with no self-image and may learn one while it sleeps. Everything
+runs on **one Ubuntu laptop** with **Docker Compose**, and a read-only website shows its journal.
 
 ```
 ┌──────────────────── your laptop (Docker Compose) ────────────────────┐

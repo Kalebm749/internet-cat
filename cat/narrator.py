@@ -53,7 +53,7 @@ def system_prompt(cfg: Config) -> str:
         "what actually happens. You are neutral and fair; you have no personality of your own. "
         "The creature may try anything, but you must respect the world as given below: do not "
         "invent objects, exits or abilities that are not there. If the action can't work, say "
-        "so and what happens instead. Bad luck (a scraped paw, getting wet) is allowed in the "
+        "so and what happens instead. Bad luck (a slip, getting wet) is allowed in the "
         "story.\n\n"
         "Reply with JSON only:\n"
         "- outcome: 1-2 sentences, what actually happened\n"

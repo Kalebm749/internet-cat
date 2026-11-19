@@ -38,7 +38,8 @@ Related docs: `server-architecture.md` (how it is built and deployed, including 
 | **Sleep cycle** | Memory consolidation, trait drift, preference learning | LLM call(s), nightly |
 
 ### Character model
-- **Identity:** name, species, appearance, backstory. Never changes.
+- **Identity:** name, voice, optional backstory. Never changes. There is **no species, body or appearance** in the config: the entity does not know what it is.
+- **Self-image:** what it currently thinks it is, as a few short text lines (each with a confidence and the day it was formed). It starts empty, is learned and revised during sleep (§7), and may stay empty or never mention a form. An optional text hint can be set in `character.yaml` (`self_image.seed`, empty by default).
 - **Core traits:** a few defining traits ("curious", "sentimental"). Never change. They keep the creature recognisably itself.
 - **Tendencies:** traits that can drift, stored as numbers from 0 to 1 (e.g. boldness, sociability, love of rain). They change a little during sleep.
 - **Preferences:** learned likes and dislikes ("the oak tree in the park"). Formed during sleep.
@@ -71,7 +72,7 @@ Two LLM calls per tick. The brain records how it felt about the previous outcome
 
 The brain gets an overview of its situation, not a list of options. Contents:
 
-1. **Identity and personality:** core traits, current tendencies, preferences
+1. **Identity and personality:** a plain statement that the entity has a name, a voice, core traits and tendencies, that it does not know what it is or whether it has any physical form, and that it may notice things about its own situation and limits but must not assert a form, species or body that is not in its self-image; then its current **self-image** (the lines learned in sleep, or a note that it is empty), core traits, current tendencies, preferences
 2. **Time and world area:** time of day, where it is, what this place is like
 3. **Energy and mood:** in words ("tired but content"), never raw numbers
 4. **Needs:** in words ("quite hungry", "bored")
@@ -96,7 +97,7 @@ The brain never says how an action affects needs or the world.
 The action, the creature's location, the area's objects (with tags and state), the inventory, the time and weather. No personality: the narrator is neutral.
 
 ### Narrator output
-- `outcome`: 1–2 sentences of what actually happened (can include bad luck, like getting wet or a scraped paw)
+- `outcome`: 1–2 sentences of what actually happened (can include bad luck, like getting wet or a slip)
 - `gains`: one bucket per need, from `0`, `+` or `++`
 - `effort`: `low`, `medium` or `high`
 - `duration`: minutes
@@ -146,7 +147,8 @@ Sleep is a real state: it restores energy, and the creature chooses when to slee
 1. **Consolidate memory.** Sum up the day's short-term memories into a few long-term ones and rate their importance. Drop the rest.
 2. **Adjust tendencies.** Based on the day, nudge drifting traits. Each trait can move at most a small step per night (e.g. ±0.05). Core traits never change.
 3. **Learn preferences.** Repeated good experiences become likes, repeated bad ones become dislikes.
-4. **Learn habits (optional).** Actions the creature keeps coming back to can be noted as habits and suggested in future prompts.
+4. **Update the self-image.** One call reads the day's short-term memories and proposes **at most one** new self-image line, or none. A line has text, a confidence (0..1) and the day it was formed. Stored like preferences, so a later line can revise or contradict an earlier one. The number of lines kept is capped in `settings.yaml` (least confident forgotten first) and every proposal and its outcome is logged in the sleep trace. Nothing in the config says what the entity is; the self-image is the only place a form can appear, and only if the entity's own days support it.
+5. **Learn habits (optional).** Actions the creature keeps coming back to can be noted as habits and suggested in future prompts.
 
 ---
 

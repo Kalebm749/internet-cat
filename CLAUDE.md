@@ -1,6 +1,10 @@
 # Internet Cat
 
-Autonomous creature in a simulated world. One Ubuntu laptop (GTX 1060 6GB) runs everything under
+A framework for a conscious entity in a simulated world. Nothing in the code, config or docs assumes a
+particular form, species, body or appearance; the current character (Gregorovitch) is one configuration.
+The entity starts with no self-image and learns one during sleep. The cat 3D model work is paused: keep
+the cat assets (`cat/web/static/img/cat*.png`, `scripts/make_placeholder_assets.py`) but leave them unused.
+One Ubuntu laptop (GTX 1060 6GB) runs everything under
 Docker Compose: **ollama** (the brain), **engine** (tick loop, SQLite, the only writer) and **web**
 (read-only website). Plain code owns time, needs and rules; the LLM only describes.
 There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
@@ -32,7 +36,7 @@ Website (read-only, never calls the LLM):
 .venv/bin/python scripts/seed_db.py --db data/seed.db --force   # ~120 mock ticks incl. sleep + a doze stretch
 .venv/bin/python -m cat.web --db data/seed.db                   # http://127.0.0.1:8080 (port from settings)
 .venv/bin/python scripts/add_ticks.py --db data/seed.db --ticks 3 [--offline]   # watch it update live
-.venv/bin/python scripts/make_placeholder_assets.py            # regenerate placeholder portrait/texture
+.venv/bin/python scripts/make_placeholder_assets.py            # paused: regenerates the unused cat images + paper texture
 node tests/js/live_updates.cjs    # optional browser-side check; needs `npm i --no-save jsdom`
 ```
 Web layout: `cat/web/views.py` (all words/labels/phases), `app.py` (routes), `templates/`, `static/`.
@@ -65,6 +69,7 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 - Tick order: events roll at tick start; the action's duration then advances the clock and decays needs in the apply step.
 - Placeholder content in `config/character.yaml` / `world.yaml` — the engine must work with any valid config.
 - Don't run docker, sudo or deploy commands for the user; write the files and document the steps.
+- No config field, prompt or doc may state what the entity is. Self-image lines (table `self_image`) are written only by the sleep cycle (`cat/sleep.py`), capped by `sleep.max_self_image_lines`; the web only reads them. The config validator (`cat/config.py`) reports every problem at once and refuses to start.
 - **Tracing never breaks the creature** (`cat/trace.py`): every hook is wrapped, a failed trace write is a warning. Anything new in a tick that affects a number should also be traced (need/mood math, effects, event rolls) so Tick detail can explain it.
 - **The dev dashboard never writes game state**: `cat.db` is opened `readonly=True` (a test greps for it); its writes go to `data/devdash.db` (`cat/devqueue.py`). Commands are run by the engine (`cat/devcontrol.py`).
 - POSTs to devdash need the `X-Requested-With: devdash` header and `"confirm": true`. LAN exposure (`DEVDASH_BIND`) requires Basic auth (`cat/devdash/auth.py`).

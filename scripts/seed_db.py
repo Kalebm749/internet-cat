@@ -30,18 +30,18 @@ from cat.llm import MockBackend  # noqa: E402
 
 # (action, outcome, reaction) - generic so they fit any placeholder world
 LINES = [
-    ("stretch out in the patch of sun", "She stretches until her toes curl, warm light on her fur.", "mmm. warm."),
-    ("bat at something shiny", "A glint skitters across the floor and she pounces on it, missing by a whisker.", "so close!!"),
-    ("sniff along the skirting board", "She finds a forgotten crumb and an interesting smell of old dust.", "mysteries everywhere."),
+    ("settle in the patch of sun", "She stays in the warm light until the afternoon feels slow and soft.", "mmm. warm."),
+    ("chase something shiny", "A glint skitters across the floor and she nearly catches it.", "so close!!"),
+    ("look along the skirting board", "She finds a forgotten crumb and an interesting smell of old dust.", "mysteries everywhere."),
     ("watch the window", "Outside, the light shifts slowly and a bird hops along the ledge.", "i could watch this all day."),
-    ("wash a paw", "She licks a paw and smooths her whiskers until they sit just so.", "tidy. very tidy."),
-    ("curl up on something soft", "She kneads the cushion, turns three times and settles down, purring.", "this is the best spot."),
-    ("explore the next room", "She slips through the doorway, tail high, and inspects every corner.", "new smells. good."),
-    ("chase her own tail", "She spins in a dizzy circle and flops over, surprised to have lost.", "that was NOT my fault."),
-    ("sit very still and listen", "A pipe ticks somewhere in the walls. Her ears swivel toward it.", "what was that."),
+    ("tidy a corner", "She straightens what she can reach until it sits just so.", "tidy. very tidy."),
+    ("settle on something soft", "She rearranges the cushion, turns about and settles down.", "this is the best spot."),
+    ("explore the next room", "She slips through the doorway and inspects every corner.", "new things. good."),
+    ("go round in circles", "She spins in a dizzy loop and stops, surprised to have lost the thread.", "that was NOT my fault."),
+    ("sit very still and listen", "A pipe ticks somewhere in the walls. She turns toward the sound.", "what was that."),
     ("knock a small thing off a shelf", "It tumbles, clatters and rolls away. She watches it go, satisfied.", "gravity works. noted."),
-    ("nap in a sunbeam", "She dozes lightly with one ear still listening to the house.", "zzz... five more minutes."),
-    ("investigate the smell of food", "She follows her nose and finds a tempting bowl, then licks her whiskers.", "yes. yes please."),
+    ("rest in a sunbeam", "She dozes lightly, still half listening to the house.", "zzz... five more minutes."),
+    ("investigate the smell of food", "She follows the smell and finds a tempting bowl.", "yes. yes please."),
 ]
 KEEPSAKES = [
     "I found the warmest spot in the house and it was mine for an afternoon.",
@@ -90,7 +90,7 @@ def seed(db_path: Path | str, ticks: int = 120, seed_value: int = 1, force: bool
         out = default_brain(m, s)
         picked["line"] = rng.choice(LINES)
         a_, _, r_ = picked["line"]
-        return {**out, "action": a_, "reaction": r_, "thought": "", "intent": "just being a cat"}
+        return {**out, "action": a_, "reaction": r_, "thought": "", "intent": "just passing the time"}
 
     def narrator(m, s):
         out = default_narr(m, s)
@@ -108,7 +108,7 @@ def seed(db_path: Path | str, ticks: int = 120, seed_value: int = 1, force: bool
         engine.tick()
         if i == ticks // 2:                                           # exercise the dashboard's dev controls
             q.enqueue("set_interval", {"seconds": 5, "ticks": 2})
-            q.enqueue("inject_event", {"text": "A neighbour's cat appears on the fence.",
+            q.enqueue("inject_event", {"text": "A neighbour appears on the fence.",
                                        "spawn": {"name": "a feather", "tags": ["toy", "movable"], "area": engine.state["area"]}})
             q.enqueue("pause")
             q.enqueue("step")

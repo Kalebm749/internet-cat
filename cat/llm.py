@@ -320,7 +320,7 @@ class MockBackend(LLMBackend):
         r = self.rng
         if task == "brain":
             act = r.choice(["looks out of the window", "bats at the red ball", "naps on the sofa",
-                            "sniffs around", "washes a paw"])
+                            "sniffs around", "tidies up"])
             tired = any(w in (messages[-1]["content"] if messages else "")
                         for w in ("Energy: tired", "Energy: exhausted"))
             return {"reaction": "hm, ok.", "thought": "what next?", "action": act,

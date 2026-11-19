@@ -25,7 +25,7 @@ def main() -> int:
     try:
         t = time.time()
         out = b.chat_json("brain", cfg.settings["brain_model"],
-                          [{"role": "system", "content": "You are a cat. Reply with JSON only."},
+                          [{"role": "system", "content": "You are someone living in a small house. Reply with JSON only."},
                            {"role": "user", "content": "You are on a sunny windowsill. What do you do?"}],
                           brain.BRAIN_SCHEMA)
         print(f"chat ok in {time.time() - t:.1f}s:", out)
