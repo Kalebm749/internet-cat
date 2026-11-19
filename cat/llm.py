@@ -55,7 +55,7 @@ class LLMBackend(ABC):
     @abstractmethod
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
         """Return a dict matching `schema`. `task` is one of brain|narrator|consolidate|
-        tendencies|preferences. Raises BackendError on failure."""
+        tendencies|preferences|self_image. Raises BackendError on failure."""
 
     @abstractmethod
     def embed(self, model: str, texts: list[str]) -> list[list[float]]:
@@ -176,7 +176,7 @@ class OllamaBackend(LLMBackend):
 
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
         options = {"temperature": self.s["llm_temperature"].get(
-            "sleep" if task in ("consolidate", "tendencies", "preferences") else task, 0.7),
+            "sleep" if task in ("consolidate", "tendencies", "preferences", "self_image") else task, 0.7),
             "num_ctx": self.s["llm_num_ctx"]}
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False,
                                    "format": schema, "options": options}
@@ -320,7 +320,7 @@ class MockBackend(LLMBackend):
         r = self.rng
         if task == "brain":
             act = r.choice(["looks out of the window", "bats at the red ball", "naps on the sofa",
-                            "sniffs around", "washes a paw"])
+                            "sniffs around", "tidies up"])
             tired = any(w in (messages[-1]["content"] if messages else "")
                         for w in ("Energy: tired", "Energy: exhausted"))
             return {"reaction": "hm, ok.", "thought": "what next?", "action": act,
@@ -346,6 +346,16 @@ class MockBackend(LLMBackend):
                 return {"preferences": []}
             return {"preferences": [{"subject": r.choice(["the old tree", "the sofa", "rain"]),
                                      "valence": r.choice([-0.8, 0.6, 0.9]), "reason": "mock"}]}
+        if task == "self_image":
+            text = messages[-1]["content"] if messages else ""
+            ids = [int(i) for i in re.findall(r"^- \[(\d+)\] ", text, re.M)]
+            r = random.Random(len(text))        # own stream: leaves the seeded tick sequence untouched
+            if r.random() < 0.5:
+                return {"self_image": []}
+            line = r.choice(["I seem to get tired when I do a lot.", "I notice I keep coming back to the window.",
+                             "I am not sure what I am.", "I seem to like quiet places."])
+            return {"self_image": [{"text": line, "confidence": r.choice([0.3, 0.5, 0.8]),
+                                    "replaces": r.choice(ids) if ids and r.random() < 0.4 else 0}]}
         raise BackendError(f"mock: unknown task '{task}'")
 
 

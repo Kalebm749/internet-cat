@@ -34,13 +34,16 @@
     <section class="card portrait-card">
       <figure class="portrait">
         <div class="frame">
-          <img id="portrait-img" src="{{ s.portrait.asleep_src if s.status.state != 'awake' and s.portrait.asleep_src else s.portrait.src }}"
-               data-awake="{{ s.portrait.src }}" data-asleep="{{ s.portrait.asleep_src or '' }}"
-               alt="{{ s.creature.name }}, {{ s.creature.species }}" width="240" height="240">
+          <svg id="presence" class="presence" viewBox="-100 -100 200 200" role="img"
+               style="{{ s.presence.style }}" aria-label="{{ s.presence.aria }}"
+               data-f-attr="style:presence.style;aria-label:presence.aria">
+            <circle class="pv-ring r3" r="88"/><circle class="pv-ring r2" r="66"/>
+            <circle class="pv-ring r1" r="46"/><circle class="pv-core" r="26"/>
+          </svg>
           <span class="zzz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
         </div>
         <figcaption>
-          <span id="portrait-caption" data-f="portrait.caption">{{ s.portrait.caption }}</span>
+          <span id="portrait-caption" data-f="presence.caption">{{ s.presence.caption }}</span>
           <span class="doze-caption">dozing… (brain offline)</span>
         </figcaption>
       </figure>
@@ -106,6 +109,11 @@
       <ul class="chips" id="traits">
         {% for t in s.creature.core_traits %}<li class="chip-trait">{{ t }}</li>{% endfor %}
       </ul>
+      <h3 class="sub-title">What it thinks it is</h3>
+      <ul class="self-image" id="self-image">
+        {% for l in s.self_image.lines %}<li title="{{ l.title }}">{{ l.text }}</li>{% endfor %}
+      </ul>
+      <p class="empty small" id="self-image-empty" {% if not s.self_image.empty %}hidden{% endif %}>{{ s.self_image.empty_text }}</p>
       <h3 class="sub-title">Tendencies</h3>
       <ul class="tendencies" id="tendencies">
         {% for t in s.tendencies %}
@@ -187,6 +195,8 @@
     <ul class="sleep-list" data-show="new_preferences"><template data-each="new_preferences"><li data-f="text"></li></template></ul>
   </li>
 </template>
+
+<template id="tpl-self-image"><li data-f="text" data-f-attr="title:title"></li></template>
 
 <template id="tpl-need">
   <li class="need" data-f-class="cls" data-f-attr="title:title">

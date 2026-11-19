@@ -1,18 +1,18 @@
 # Config reference
 
-Three files in `config/`. Loaded and validated by `cat/config.py`; errors name the file and field.
+Three files in `config/`. Loaded and validated by `cat/config.py`. The validator collects **every** problem and refuses to start, printing them all (need ids in event effects exist, `tendency_labels` match `tendencies`, `start_area` exists, need flags are known, numeric ranges are valid, `self_image` is text only). Unknown top-level fields in `character.yaml` and `world.yaml` only produce a warning (e.g. a leftover `species`).
 
 ## character.yaml
 | Field | Req | Meaning |
 |---|---|---|
-| `name`, `species` | ✔ | Identity. |
+| `name` | ✔ | Identity. |
 | `pronoun` | | Used in prompts/web copy (default `they`). |
-| `appearance`, `backstory`, `voice` | | Prompt text for the brain. |
+| `backstory`, `voice` | | Optional prompt text for the brain. |
+| `self_image` | | `{seed: ""}`. Optional text hint for the entity's self-image; empty by default (the entity starts with none). Text only. Learned self-image lines are stored in the database, not here. |
 | `core_traits` | ✔ | List of strings. Never change. |
 | `tendencies` | ✔ | `{name: 0..1}`. Drift ≤ `sleep.tendency_max_step` per night. |
 | `tendency_labels` | | `{tendency: [low_label, high_label]}` for the web sliders. |
 | `start_area` | ✔ | Area id the creature starts in. |
-| `portrait` | | Static path of the portrait image (default `img/cat.png`). |
 | `needs` | ✔ | `{id: {...}}`, see below. Order is display order. |
 
 ### Need fields
@@ -70,8 +70,9 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 ## Sleep (`cat/sleep.py`, settings `sleep.*`)
 - **Falls asleep** when it is night and energy < `fall_asleep_energy_below` (no brain call), or the brain's `wants_sleep` is true and energy < `wants_sleep_energy_below` (or it is night).
 - **Asleep ticks** (`ticks.kind = 'asleep'`) skip the brain/narrator, restore the `sleep_restore` need by `restore_per_sim_hour`, and decay needs at `decay_multiplier` speed. It **wakes** when that need reaches `wake_rest_at_least`, it is past `wake_not_before_hour` and not night, or after `max_hours`.
-- **The cycle** runs when sleep begins and makes 3 LLM calls (consolidate, tendencies, preferences). Nothing is written unless all succeed; if the brain is offline it stays pending (`meta.sleep_pending`) and retries on every sleeping tick. Short-term memories are kept until then.
+- **The cycle** runs when sleep begins and makes 4 LLM calls (consolidate, tendencies, preferences, self-image). Nothing is written unless all succeed; if the brain is offline it stays pending (`meta.sleep_pending`) and retries on every sleeping tick. Short-term memories are kept until then.
 - LLM output is turned into numbers by code: memory importance is `low|medium|high` -> `importance_values`; tendency proposals are -1..1, scaled by `tendency_max_step` and clamped to 0..1 (core traits are never touched); preference valences are blended with the existing value (`preference_blend`), so new likes start weak and strengthen by repetition. Weak ones (< `preference_min_abs`) are forgotten and the total is capped.
+- Self-image: after preferences, one call may propose a single line `{text, confidence 0..1, replaces?}`. `max_self_image_lines` caps the lines kept (least confident forgotten first), `self_image_min_confidence` rejects weak proposals, `max_self_image_length` truncates text. Lines are stored like preferences (table `self_image`) and logged with their outcome in the sleep trace.
 - `sleep_log.sim_date` is the date the sleep began.
 
 ## Brain offline (`cat/engine.py`)
@@ -81,7 +82,7 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 - If a tick raises an unexpected error, the state is reloaded from the DB and the loop waits at least `error_backoff_seconds` before the next one.
 
 ## Website (`cat/web/`)
-- `character.yaml` optional fields used by the page: `portrait` (default `img/cat.png`; `<name>-asleep.<ext>` next to it is swapped in while asleep/dozing if the file exists), per-need `label` and `words`, `tendency_labels`, `pronoun`.
+- `character.yaml` optional fields used by the page: `self_image.seed` (shown as a first self-image line), per-need `label` and `words`, `tendency_labels`, `pronoun`. The portrait frame shows an abstract presence tuned by `settings.yaml` `web_ui.presence` (colour from valence, breathing from arousal, dimmer asleep, desaturated dozing). The About panel lists the learned self-image lines (`self_image` in `/api/state`).
 - `GET /` is a complete server-rendered snapshot (works without JS; "read older pages" and "more keepsakes" are plain links). `journal.js` polls `GET /api/state` every `web_ui.poll_seconds` and adds only new entries. `GET /api/diary?before=<tick id>&limit=` and `GET /api/keepsakes?offset=&limit=` page through history.
 - Diary entries are keyed (`t<tick id>`, `d<first doze tick id>`, `s<sleep_log id>`). Consecutive dozing ticks collapse into one entry; asleep ticks are hidden (the "Last night…" card stands for them). `sleep_log.tick_id` is the tick where the sleep began, which is where the card sits.
 - With an empty or missing database the page shows the empty states, built from the config.

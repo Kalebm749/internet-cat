@@ -318,3 +318,125 @@ def test_1000_mock_ticks_with_sleep(cfg):
         for ch in json.loads(r[0]).values():
             assert abs(ch["to"] - ch["from"]) <= step + 1e-9
     assert all(0 <= r[0] <= 100 for r in e.conn.execute("SELECT json_extract(needs_after,'$.rest') FROM ticks"))
+
+
+# ---------- self-image ----------
+def row(i, text, conf, day="2026-11-10"):
+    return {"id": i, "text": text, "confidence": conf, "formed_day": day}
+
+
+def test_self_image_none_or_garbage_changes_nothing(cfg):
+    for raw in (None, [], {}, "x", [{"text": "  "}], ["str"]):
+        assert sleep.decide_self_image(cfg, [], raw, "2026-11-18")["action"] in ("none", "rejected")
+
+
+def test_self_image_adds_one_line_with_text_confidence_and_day(cfg):
+    out = sleep.decide_self_image(cfg, [], [{"text": " I   seem small. ", "confidence": 0.6},
+                                           {"text": "second is ignored", "confidence": 0.9}], "2026-11-18")
+    assert out["action"] == "added" and out["text"] == "I seem small."
+    assert out["confidence"] == 0.6 and out["formed_day"] == "2026-11-18" and out["dropped"] == []
+
+
+def test_self_image_confidence_clamped_and_weak_or_bad_rejected(cfg):
+    assert sleep.decide_self_image(cfg, [], [{"text": "a", "confidence": 7}], "d")["confidence"] == 1.0
+    low = sleep.decide_self_image(cfg, [], [{"text": "a", "confidence": 0.01}], "d")
+    assert low["action"] == "rejected" and "below" in low["reason"]
+    assert sleep.decide_self_image(cfg, [], [{"text": "a", "confidence": "high"}], "d")["action"] == "rejected"
+    assert sleep.decide_self_image(cfg, [], [{"text": "a", "confidence": True}], "d")["action"] == "rejected"
+
+
+def test_self_image_duplicate_rejected(cfg):
+    out = sleep.decide_self_image(cfg, [row(1, "I seem small.", 0.5)],
+                                  [{"text": "i seem SMALL.", "confidence": 0.9}], "d")
+    assert out["action"] == "rejected" and "already" in out["reason"]
+
+
+def test_self_image_text_is_truncated(cfg):
+    n = cfg.settings["sleep"]["max_self_image_length"]
+    out = sleep.decide_self_image(cfg, [], [{"text": "x" * (n + 50), "confidence": 0.5}], "d")
+    assert len(out["text"]) == n
+
+
+def test_later_line_can_revise_or_contradict_an_earlier_one(cfg):
+    ex = [row(1, "I am small.", 0.5), row(2, "I like noise.", 0.4)]
+    out = sleep.decide_self_image(cfg, ex, [{"text": "I am not small after all.", "confidence": 0.7,
+                                             "replaces": 1}], "2026-11-18")
+    assert out["action"] == "revised" and out["replaced"]["text"] == "I am small."
+    unknown = sleep.decide_self_image(cfg, ex, [{"text": "New.", "confidence": 0.7, "replaces": 99}], "d")
+    assert unknown["action"] == "added" and unknown["replaced"] is None
+
+
+def test_self_image_cap_forgets_the_least_confident(cfg):
+    cap = cfg.settings["sleep"]["max_self_image_lines"]
+    ex = [row(i, f"line {i}", 0.3 + i / 100) for i in range(1, cap + 1)]
+    out = sleep.decide_self_image(cfg, ex, [{"text": "stronger", "confidence": 0.9}], "d")
+    assert out["action"] == "added" and [d["id"] for d in out["dropped"]] == [1]
+    weak = sleep.decide_self_image(cfg, ex, [{"text": "weaker", "confidence": 0.25}], "d")
+    assert weak["action"] == "dropped_at_cap" and weak["dropped"] == []
+
+
+def test_sleep_stores_the_line_and_the_brain_sees_it(cfg):
+    e, b = make(cfg)
+    seed_day(e, b)
+    b.handlers.pop("brain"); b.handlers.pop("narrator")
+    b.handlers["self_image"] = lambda m, s: {"self_image": [{"text": "I tire when I climb.",
+                                                             "confidence": 0.6, "replaces": 0}]}
+    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    e.tick()
+    r = e.conn.execute("SELECT * FROM self_image").fetchall()
+    assert [(x["text"], x["confidence"], x["formed_day"]) for x in r] == [("I tire when I climb.", 0.6, "2026-11-18")]
+    assert e._self_image_lines() == ["I tire when I climb."]
+    assert "I tire when I climb." in __import__("cat.brain", fromlist=["x"]).situation_prompt(
+        cfg, e._brain_context([]))
+
+
+def test_sleep_revises_a_line_and_respects_the_cap(cfg):
+    e, b = make(cfg)
+    seed_day(e, b)
+    b.handlers.pop("brain"); b.handlers.pop("narrator")
+    e.conn.execute("INSERT INTO self_image(text,confidence,formed_day,updated_at) VALUES('I am small.',0.5,'2026-11-10','x')")
+    old_id = e.conn.execute("SELECT id FROM self_image").fetchone()["id"]
+    b.handlers["self_image"] = lambda m, s: {"self_image": [{"text": "I may not be small.", "confidence": 0.7,
+                                                             "replaces": old_id}]}
+    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    e.tick()
+    assert [x["text"] for x in e.conn.execute("SELECT text FROM self_image")] == ["I may not be small."]
+
+
+def test_sleep_trace_logs_every_proposal_and_outcome(cfg):
+    import json as _j
+    e, b = make(cfg)
+    seed_day(e, b)
+    b.handlers.pop("brain"); b.handlers.pop("narrator")
+    b.handlers["self_image"] = lambda m, s: {"self_image": [{"text": "a", "confidence": 0.01}]}   # too weak
+    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    e.tick()
+    t = e.conn.execute("SELECT * FROM sleep_traces WHERE step='self_image'").fetchone()
+    assert _j.loads(t["proposed"])[0]["text"] == "a"
+    assert _j.loads(t["clamped"])["action"] == "rejected"
+    assert e.conn.execute("SELECT COUNT(*) FROM self_image").fetchone()[0] == 0
+
+
+def test_self_image_failure_postpones_the_whole_night(cfg):
+    e, b = make(cfg)
+    seed_day(e, b)
+    b.handlers.pop("brain"); b.handlers.pop("narrator")
+    def boom(m, s): raise BackendError("down")
+    b.handlers["self_image"] = boom
+    shorts = len(e.memory.all_short())
+    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    e.tick()
+    assert len(e.memory.all_short()) == shorts and e.conn.execute("SELECT COUNT(*) FROM sleep_log").fetchone()[0] == 0
+
+
+def test_sleep_prompt_asks_for_at_most_one_tentative_line_without_inventing_a_form(cfg):
+    msgs = sleep.self_image_messages(cfg, "A day.", ["a memory"], ["a log"], [row(3, "I am small.", 0.5)])
+    text = msgs[-1]["content"]
+    assert "at most ONE" in text and "[3] I am small." in text and "Do not invent a form" in text
+    assert "species" not in msgs[0]["content"]
+
+
+def test_sleep_settings_for_self_image_are_required(tmp_path):
+    from tests.test_config import _problems
+    msg = _problems(tmp_path, "settings.yaml", lambda s: s["sleep"].pop("max_self_image_lines"))
+    assert "sleep: missing required field 'max_self_image_lines'" in msg

@@ -128,6 +128,11 @@ class Engine:
         self.last_kind = k["kind"] if k else None
 
     # ---------- prompts ----------
+    def _self_image_lines(self) -> list[str]:
+        """The config seed (if any), then the lines learned in sleep, oldest first."""
+        rows = self.conn.execute("SELECT text FROM self_image ORDER BY formed_day, id").fetchall()
+        return brain.seed_self_image(self.cfg) + [r["text"] for r in rows]
+
     def _brain_context(self, fired: list[dict], long_mems: list[dict] | None = None) -> brain.BrainContext:
         cfg, st, s = self.cfg, self.state, self.cfg.settings
         n = s["recent_actions_shown"]
@@ -144,7 +149,8 @@ class Engine:
             mood=st["mood"], tendencies=st["tendencies"], weather=self.world.weather,
             objects_here=self.world.here(st["area"]), inventory=self.world.inventory(),
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
-            recent_actions=recent, preferences=prefs, just_woke_from_doze=self.last_kind in ("doze", "catchup"),
+            recent_actions=recent, preferences=prefs, self_image=self._self_image_lines(),
+            just_woke_from_doze=self.last_kind in ("doze", "catchup"),
             long_memories=[m["text"] for m in (long_mems or [])],
             short_memories=[m["text"] for m in self.memory.recent_short()])
 

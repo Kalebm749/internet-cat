@@ -8,7 +8,7 @@ Everything runs on **one machine**: an Ubuntu laptop (HP Omen 15, GTX 1060 6GB, 
 
 ## 1. Goals for v1
 
-1. A world loop that runs 24/7 and keeps the creature alive: ticks, brain and narrator calls, needs, mood, memory, sleep.
+1. A world loop that runs 24/7 and keeps the entity alive: ticks, brain and narrator calls, needs, mood, memory, sleep.
 2. A read-only website, served on the home network, that shows the creature's current state and history.
 3. Survives the brain going offline, the machine or containers restarting, and bad LLM output, without corrupting state.
 
@@ -104,6 +104,7 @@ events(id, tick_id, sim_time, area, text)
 memories(id, kind,                          -- 'short' | 'long'
          text, importance, created_sim_time, last_recalled, embedding BLOB, embed_model)
 preferences(id, subject, valence, reason, updated_at)      -- valence -1..1
+self_image(id, text, confidence, formed_day, updated_at)    -- what it thinks it is; learned in sleep; confidence 0..1
 sleep_log(id, sim_date, summary, tick_id,   -- tick_id: where the sleep began
           tendency_changes JSON, new_memories JSON, new_preferences JSON)
 -- tracing (§17): tick_traces, llm_calls, embed_calls, recall_logs, effect_logs, need_math, mood_math,
@@ -121,7 +122,7 @@ sleep_log(id, sim_date, summary, tick_id,   -- tick_id: where the sleep began
 Three YAML files in `config/`, mounted read-only into the containers. Every field is described in `config-reference.md`. **All tuning numbers live in `settings.yaml`, never in code.** Key points:
 
 - `ollama_host` defaults to `http://ollama:11434` (the Compose service name).
-- `character.yaml` and `world.yaml` currently hold a placeholder cat and a tiny house; the engine works with any content that follows the schema.
+- `character.yaml` and `world.yaml` currently hold a placeholder character (Gregorovitch, with no species or appearance) and a tiny house; the engine works with any content that follows the schema.
 - `settings.yaml` is read when a service starts. Edit it and restart the engine (a dev-dashboard command will later reload it live).
 
 ---
@@ -171,7 +172,8 @@ Anything that fails goes into `rejected_changes` with a reason, is logged, and d
 ## 11. Sleep
 
 - The creature falls asleep when exhausted at night, or when the brain sets `wants_sleep` and it is tired enough (or night). Asleep ticks skip the brain and narrator, restore the `sleep_restore` need, and decay needs slowly. It wakes when rested, in the morning.
-- When sleep begins, the sleep cycle makes three calls (consolidate memories, drift tendencies, learn preferences). **Nothing is written unless all succeed**; if the brain is offline it stays pending and retries on every sleeping tick. LLM output becomes numbers in code: importance buckets, tendency proposals scaled and **clamped** to ±`sleep.tendency_max_step`, blended preference valences. Core traits never change.
+- When sleep begins, the sleep cycle makes four calls (consolidate memories, drift tendencies, learn preferences, propose a self-image line). **Nothing is written unless all succeed**; if the brain is offline it stays pending and retries on every sleeping tick. LLM output becomes numbers in code: importance buckets, tendency proposals scaled and **clamped** to ±`sleep.tendency_max_step`, blended preference valences. Core traits never change.
+- **Self-image step:** one call reads the day's short-term memories and log plus the current self-image lines and proposes **at most one** new line (or none). A line carries text, a confidence (0..1) and the day it was formed. A proposal may name an existing line in `replaces` to revise or contradict it. Proposals below `sleep.self_image_min_confidence`, duplicates and empty text are rejected; over `sleep.max_self_image_lines` the least confident lines are forgotten. Every proposal and its outcome (`added`, `revised`, `rejected`, `dropped_at_cap`, `none`) is written to the `sleep_traces` row with step `self_image`. The brain sees the lines (text only) in its situation prompt; the website shows them in the About panel.
 
 ---
 

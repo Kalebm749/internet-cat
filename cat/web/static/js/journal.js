@@ -77,11 +77,6 @@
     keep.push(s.time.phase, "state-" + s.status.state);
     body.className = keep.join(" ");
 
-    // portrait
-    var img = $("#portrait-img");
-    var want = s.status.state !== "awake" && s.portrait.asleep_src ? s.portrait.asleep_src : s.portrait.src;
-    if (img.getAttribute("src") !== want) img.setAttribute("src", want);
-
     // mood pad + energy
     var dot = $("#pad-dot"); dot.style.left = s.mood.pad_x + "%"; dot.style.top = s.mood.pad_y + "%";
     var eb = $("#energy-bar");
@@ -95,6 +90,11 @@
       setList($("#dislikes"), "tpl-dislike", s.preferences.dislikes);
       $("#loves-empty").hidden = s.preferences.loves.length > 0;
       $("#dislikes-empty").hidden = s.preferences.dislikes.length > 0;
+    }
+    if (changed("selfimage", s.self_image)) {
+      setList($("#self-image"), "tpl-self-image", s.self_image.lines);
+      $("#self-image-empty").hidden = !s.self_image.empty;
+      $("#self-image-empty").textContent = s.self_image.empty_text;
     }
     if (changed("keepsakes", s.keepsakes)) {
       setList($("#keepsakes"), "tpl-keepsake", s.keepsakes);

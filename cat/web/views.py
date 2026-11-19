@@ -6,13 +6,11 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from cat import character, clock, db
 from cat.config import Config
 
-STATIC = Path(__file__).parent / "static"
 ARROWS = {"up": "▲", "down": "▼", "flat": "—"}
 
 
@@ -118,6 +116,40 @@ def preferences_view(conn, cfg: Config) -> dict:
             f"ORDER BY {order} LIMIT ?", (n,))]
     return {"loves": _safe(conn, lambda c: q(c, ">", "valence DESC"), []),
             "dislikes": _safe(conn, lambda c: q(c, "<", "valence ASC"), [])}
+
+
+def self_image_view(conn, cfg: Config, first) -> dict:
+    """What it thinks it is: the optional config hint, then the lines learned in sleep."""
+    lines = []
+    seed = (cfg.character.get("self_image") or {}).get("seed", "")
+    if isinstance(seed, str) and seed.strip():
+        lines.append({"text": seed.strip(), "title": "a hint it started with"})
+    rows = _safe(conn, lambda c: [dict(r) for r in c.execute(
+        "SELECT text, confidence, formed_day FROM self_image ORDER BY formed_day, id")], [])
+    for r in rows:
+        try:
+            day = clock.day_number(first, clock.parse(f"{r['formed_day']}T00:00"))
+            when = f"formed on day {day}"
+        except Exception:
+            when = "formed some time ago"
+        lines.append({"text": r["text"], "title": f"{when}, {round(r['confidence'] * 100)}% sure"})
+    return {"lines": lines, "empty": not lines, "empty_text": "still figuring that out"}
+
+
+def presence_view(cfg: Config, mood: dict, state: str, name: str) -> dict:
+    """The abstract presence: colour follows valence, motion follows arousal, it dims when
+    asleep and desaturates when dozing. All numbers come from settings.yaml web_ui.presence."""
+    p = _ui(cfg)["presence"]
+    v = max(-1.0, min(1.0, float(mood["valence"])))
+    a = max(0.0, min(1.0, float(mood["arousal"])))
+    hue = round(p["hue_low_valence"] + (p["hue_high_valence"] - p["hue_low_valence"]) * (v + 1) / 2)
+    sat = p["saturation_dozing"] if state == "dozing" else p["saturation_awake"]
+    light = {"awake": p["lightness_awake"], "asleep": p["lightness_asleep"],
+             "dozing": p["lightness_dozing"]}[state]
+    period = round(p["pulse_seconds_calm"] + (p["pulse_seconds_aroused"] - p["pulse_seconds_calm"]) * a, 2)
+    return {"hue": hue, "saturation": sat, "lightness": light, "pulse_seconds": period,
+            "style": f"--pv-h:{hue};--pv-s:{sat}%;--pv-l:{light}%;--pv-t:{period}s",
+            "aria": f"A soft glow for {name}: its colour shows how pleasant things feel, its motion how lively"}
 
 
 def keepsakes_view(conn, cfg: Config, offset: int = 0, limit: int | None = None) -> tuple[list[dict], bool]:
@@ -287,12 +319,10 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
 
     diary, next_before = diary_view(conn, cfg)
     keepsakes, more = keepsakes_view(conn, cfg)
-    portrait = ch.get("portrait", "img/cat.png")
-    asleep_img = Path(portrait).with_name(Path(portrait).stem + "-asleep" + Path(portrait).suffix)
     mood = st["mood"]
     pad_x, pad_y = (mood["valence"] + 1) / 2 * 100, (1 - mood["arousal"]) * 100
     return {
-        "creature": {"name": ch["name"], "species": ch["species"], "core_traits": ch["core_traits"],
+        "creature": {"name": ch["name"], "core_traits": ch["core_traits"],
                      "pronoun": ch.get("pronoun", "they")},
         "time": {"sim_time": st["sim_time"], "day_number": clock.day_number(first, dt),
                  "label": f"{clock.day_label(first, dt)} · {clock.time_label(dt)}",
@@ -304,9 +334,8 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
                    "pill": {"awake": "awake", "asleep": "asleep · dreaming", "dozing": "dozing"}[state],
                    "brain_text": "brain: connected" if brain_online else
                                  f"brain: last seen {last_seen}" if last_seen else "brain: not seen yet"},
-        "portrait": {"src": f"/static/{portrait}",
-                     "asleep_src": f"/static/{asleep_img.as_posix()}" if (STATIC / asleep_img).exists() else None,
-                     "caption": f"{ch['species']}, in {area_name}"},
+        "presence": {**presence_view(cfg, mood, state, ch["name"]),
+                     "caption": f"{ch['name']}, in {area_name}"},
         "mood": {"word": mood["word"], "description": mood["description"],
                  "valence": mood["valence"], "arousal": mood["arousal"],
                  "pad_x": round(pad_x, 1), "pad_y": round(pad_y, 1),
@@ -318,6 +347,7 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
         "needs": needs_view(conn, cfg, st),
         "tendencies": tendencies_view(conn, cfg, st),
         "preferences": preferences_view(conn, cfg),
+        "self_image": self_image_view(conn, cfg, first),
         "latest_tick_id": latest,
         "diary": diary, "diary_next_before": next_before,
         "keepsakes": keepsakes, "keepsakes_has_more": more,

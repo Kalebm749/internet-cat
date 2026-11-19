@@ -5,7 +5,7 @@ from cat.llm import BackendError, MockBackend, cosine, hash_embed
 
 def test_mock_outputs_for_all_tasks():
     m = MockBackend(seed=1)
-    for t in ("brain", "narrator", "consolidate", "tendencies", "preferences"):
+    for t in ("brain", "narrator", "consolidate", "tendencies", "preferences", "self_image"):
         assert isinstance(m.chat_json(t, "m", [], {}), dict)
 
 
