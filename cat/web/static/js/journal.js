@@ -96,6 +96,10 @@
       $("#self-image-empty").hidden = !s.self_image.empty;
       $("#self-image-empty").textContent = s.self_image.empty_text;
     }
+    if (changed("habits", s.habits)) {
+      setList($("#habits"), "tpl-habit", s.habits.rows);
+      $("#habits-empty").hidden = !s.habits.empty;
+    }
     if (changed("projects", s.projects)) {
       setList($("#projects"), "tpl-project", s.projects.rows);
       setList($("#artifacts"), "tpl-artifact", s.projects.artifacts);

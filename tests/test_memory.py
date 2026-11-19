@@ -6,6 +6,7 @@ import pytest
 from cat import db, memory as mem
 from cat.engine import Engine
 from cat.llm import MockBackend, hash_embed
+from tests.helpers import pick
 
 T0 = "2026-11-18T08:00"
 
@@ -161,22 +162,19 @@ def engine(cfg, seed=1):
 def test_notable_tick_creates_short_memory_shown_in_next_prompt(cfg):
     e, b = engine(cfg)
     prompts = []
-    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), {
-        "reaction": "wow", "thought": "", "action": "stare at the rain", "intent": "",
-        "feeling": "positive", "wants_sleep": False})[1]
+    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), pick(m, "look out and watch the world for a while", feeling="positive", reaction="wow"))[1]
     e.tick()
     shorts = e.memory.all_short()
-    assert len(shorts) == 1 and "stare at the rain" in shorts[0]["text"] and 'You felt: "wow"' in shorts[0]["text"]
+    assert len(shorts) == 1 and "look out and watch the world for a while" in shorts[0]["text"] and 'You felt: "wow"' in shorts[0]["text"]
     assert shorts[0]["embedding"] is not None and shorts[0]["importance"] >= 0.5
     e.tick()
-    assert "Earlier today:" in prompts[1] and "stare at the rain" in prompts[1]
+    assert "Earlier today:" in prompts[1] and "look out and watch the world for a while" in prompts[1]
     assert "Earlier today" not in prompts[0]
 
 
 def test_quiet_tick_makes_no_memory(cfg):
     e, b = engine(cfg)
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "sit",
-                                        "intent": "", "feeling": "neutral", "wants_sleep": False}
+    b.handlers["brain"] = lambda m, s: pick(m)
     b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {}, "effort": "low",
                                            "duration": 10, "changes": []}
     e.tick()
@@ -189,9 +187,7 @@ def test_long_memory_recalled_into_prompt_and_marked(cfg):
     with db.transaction(e.conn):
         e.memory.save(m, "long")
     prompts = []
-    b.handlers["brain"] = lambda msgs, s: (prompts.append(msgs[-1]["content"]), {
-        "reaction": "", "thought": "", "action": "sit", "intent": "", "feeling": "neutral",
-        "wants_sleep": False})[1]
+    b.handlers["brain"] = lambda msgs, s: (prompts.append(msgs[-1]["content"]), pick(msgs))[1]
     e.tick()
     assert "You remember: the red ball under the sofa" in prompts[0]
     row = e.conn.execute("SELECT last_recalled FROM memories WHERE kind='long'").fetchone()

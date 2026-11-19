@@ -7,6 +7,7 @@ from cat.config import ConfigError, load_config
 from cat.engine import Engine
 from cat.llm import MockBackend
 from cat.web import views
+from tests.helpers import pick
 
 HOUR = 3600.0
 
@@ -210,8 +211,7 @@ def test_brain_is_told_it_dozed_after_catch_up(cfg):
     e, b = make(cfg)
     e.run(ticks=2, interval=0)
     prompts = []
-    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), {
-        "reaction": "", "thought": "", "action": "sit", "intent": "", "feeling": "neutral", "wants_sleep": False})[1]
+    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), pick(m))[1]
     e2 = restart(cfg, e, b, later=3 * HOUR)
     e2.startup_downtime()
     e2.state["is_asleep"] = False

@@ -23,6 +23,7 @@ class Config:
     character: dict[str, Any]
     world: dict[str, Any]
     prompts: dict[str, Any] = field(default_factory=dict)   # config/prompts.yaml: every fixed prompt text
+    moves: dict[str, Any] = field(default_factory=dict)     # config/moves.yaml: the verbs the world offers
     root: Path = ROOT
     config_dir: Path = CONFIG_DIR           # where the YAML was loaded from (for reload_settings)
     overrides: dict | None = None           # CLI overrides applied on top of settings.yaml
@@ -67,7 +68,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "dislike_drain", "projects", "director", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "projects", "habits", "director", "moves", "activity", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -309,6 +310,30 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             fv = md.get("feeling_values")
             if not isinstance(fv, dict) or not all(_num(v) and -50 <= v <= 50 for v in fv.values()):
                 errs.append("settings.yaml mood.feeling_values: must map feelings to numbers -50..50")
+        ac_ = st.get("activity")
+        if isinstance(ac_, dict):
+            for k in ("enabled", "interrupt_on_events", "interrupt_on_empty_need"):
+                if not isinstance(ac_.get(k), bool):
+                    errs.append(f"settings.yaml activity.{k}: must be true or false")
+            if isinstance(ac_.get("step_minutes"), bool) or not isinstance(ac_.get("step_minutes"), int) \
+                    or ac_["step_minutes"] < 1:
+                errs.append("settings.yaml activity.step_minutes: must be an integer >= 1")
+            if not _num(ac_.get("carry_interval_seconds")) or ac_["carry_interval_seconds"] < 0:
+                errs.append("settings.yaml activity.carry_interval_seconds: must be a number >= 0")
+        elif "activity" in st:
+            errs.append("settings.yaml activity: must be a mapping")
+        mv_ = st.get("moves")
+        if isinstance(mv_, dict):
+            for k, lo in (("max_offered", 1),):
+                v = mv_.get(k)
+                if isinstance(v, bool) or not isinstance(v, int) or v < lo:
+                    errs.append(f"settings.yaml moves.{k}: must be an integer >= {lo}")
+            if not _num(mv_.get("novelty_hours")) or mv_["novelty_hours"] < 0:
+                errs.append("settings.yaml moves.novelty_hours: must be a number >= 0")
+            if not isinstance(mv_.get("narrate"), bool):
+                errs.append("settings.yaml moves.narrate: must be true or false")
+        elif "moves" in st:
+            errs.append("settings.yaml moves: must be a mapping")
         dr_ = st.get("director")
         if isinstance(dr_, dict):
             if not isinstance(dr_.get("enabled"), bool):
@@ -327,6 +352,19 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                 errs.append("settings.yaml director.stale_every_ticks: must not exceed every_ticks")
         elif "director" in st:
             errs.append("settings.yaml director: must be a mapping")
+        hb = st.get("habits")
+        if isinstance(hb, dict):
+            for k in ("window_ticks", "min_count", "max_stored", "max_shown", "text_max_length"):
+                v = hb.get(k)
+                if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+                    errs.append(f"settings.yaml habits.{k}: must be an integer >= 1")
+            ms = hb.get("min_share")
+            if isinstance(ms, bool) or not isinstance(ms, (int, float)) or not 0 < ms <= 1:
+                errs.append("settings.yaml habits.min_share: must be a number above 0 and up to 1")
+            if not isinstance(hb.get("enabled"), bool):
+                errs.append("settings.yaml habits.enabled: must be true or false")
+        elif "habits" in st:
+            errs.append("settings.yaml habits: must be a mapping")
         pj = st.get("projects")
         if isinstance(pj, dict):
             for k, lo in (("max_active", 1), ("milestone_every", 1), ("title_max_length", 1), ("why_max_length", 1),
@@ -339,6 +377,10 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                 errs.append("settings.yaml projects.idle_hours_note: must be a number >= 0")
             if not _num(pj.get("taper")) or not 0 <= pj["taper"] <= 1:
                 errs.append("settings.yaml projects.taper: must be a number 0..1")
+            if not isinstance(pj.get("artifacts_enabled"), bool):
+                errs.append("settings.yaml projects.artifacts_enabled: must be true or false")
+            if pj.get("work_bucket") not in (pj.get("progress_values") or {}):
+                errs.append("settings.yaml projects.work_bucket: must be a key of progress_values")
             pv = pj.get("progress_values")
             if not isinstance(pv, dict) or not pv or not all(_num(v) and 0 < v <= 100 for v in pv.values()):
                 errs.append("settings.yaml projects.progress_values: must map buckets to numbers 0..100 (> 0)")
@@ -414,9 +456,15 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
     return errs, warns
 
 
-def validate(settings: dict, character: dict, world: dict, prompts: dict | None = None) -> list[str]:
+def validate(settings: dict, character: dict, world: dict, prompts: dict | None = None,
+             moves: dict | None = None) -> list[str]:
     """Raise one ConfigError listing every problem; return the warnings."""
     errs, warns = check(settings, character, world)
+    if moves is not None:
+        from cat import moves as M
+        me, mw = M.check(moves, character, settings)
+        errs += me
+        warns += mw
     if prompts is not None:
         from cat import prompts as P
         pe, pw = P.check(prompts)
@@ -444,9 +492,10 @@ def load_config(config_dir: Path | str | None = None, overrides: dict | None = N
     character = _load_yaml(d / "character.yaml")
     world = _load_yaml(d / "world.yaml")
     prompts = _load_yaml(d / "prompts.yaml")
-    for w in validate(settings, character, world, prompts):
+    moves = _load_yaml(d / "moves.yaml")
+    for w in validate(settings, character, world, prompts, moves):
         logging.getLogger("cat.config").warning("%s", w)
     # YAML may parse bucket keys as strings already ("0"); normalise
     settings["gain_values"] = {str(k): v for k, v in settings["gain_values"].items()}
-    return Config(settings, character, world, prompts, root=d.resolve().parent, config_dir=d.resolve(),
+    return Config(settings, character, world, prompts, moves, root=d.resolve().parent, config_dir=d.resolve(),
                   overrides=dict(overrides) if overrides else None)

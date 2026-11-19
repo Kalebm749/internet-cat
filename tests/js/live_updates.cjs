@@ -81,7 +81,7 @@ const ids = (w) => entries(w).map((e) => parseFloat(e.dataset.id));
     await t("server render has entries, newest first, with day headers", async () => {
       assert.ok(n0 >= 15);
       assert.deepStrictEqual(ids(w), [...ids(w)].sort((a, b) => b - a));
-      assert.ok(w.document.querySelectorAll("#diary > .day-header").length >= 2);
+      assert.ok(w.document.querySelectorAll("#diary > .day-header").length >= 1);
     });
 
     py("scripts/add_ticks.py", "--db", DB, "--config-dir", path.join(tmp, "config"), "--ticks", "2", "--seed", "5");

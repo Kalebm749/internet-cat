@@ -9,7 +9,7 @@ embed_model: nomic-embed-text
 ollama_think: false            # qwen3: disable thinking so JSON `format` output stays clean
 llm_timeout_seconds: 120
 health_timeout_seconds: 3
-llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5, director: 0.8}
+llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5, director: 0.8, create: 0.9}
 llm_num_ctx: 4096
 error_backoff_seconds: 30      # extra wait after a tick that raised an unexpected error
 llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
@@ -75,7 +75,6 @@ gain_values: {"0": 0, "+": 15, "++": 30}
 effort_energy_cost: {low: 2, medium: 6, high: 12}   # energy points an action's effort spends
 repetition_penalty:
   window: 6
-  similarity_threshold: 0.85
   multiplier: 0.4
   needs: [wonder, curiosity]   # only these needs' gains shrink when an action repeats
 create_limit_per_tick: 1
@@ -84,6 +83,20 @@ inventory_max: 3
 name_max_length: 40            # created object names / set_state keys
 consume_min_gain: "+"          # eating an edible guarantees at least this bucket on the sustenance need
 sustenance_need: sustenance    # the one need that only rises when an edible object is consumed this tick
+
+# --- moves: what the brain is offered each decision (config/moves.yaml defines the verbs) ---
+moves:
+  max_offered: 30              # the menu is cut to this many (earlier verbs first, then nearer targets)
+  novelty_hours: 24            # a place not visited for this many sim hours counts as new (go: novelty gains)
+  narrate: true                # a cheap prose call turns the result into a sentence; false = templated outcome
+
+# --- activities: a move takes time. It runs without LLM calls until it ends or something interrupts it ---
+activity:
+  enabled: true                # false: one decision per tick, the move's whole length in one tick
+  step_minutes: 20             # sim minutes per tick while a longer move runs (no brain call, no narrator)
+  carry_interval_seconds: 10   # real seconds between those ticks (a decision still waits tick_interval_seconds)
+  interrupt_on_events: true    # any event (hand-written, injected or the director's) ends it
+  interrupt_on_empty_need: true   # a need newly dropping into the empty band ends it
 
 # --- need bands: a level becomes a band; the brain sees words, never numbers ---
 need_bands: {empty_below: 15, low_below: 40, okay_below: 75}   # below empty_below => empty; ... ; else full
@@ -98,8 +111,19 @@ dislike_drain:
   max_matches: 2               # at most this many dislikes count in one tick (the strongest)
 
 # --- long-term projects (formed in sleep, advanced by the narrator, leave artifacts) ---
+habits:
+  enabled: true
+  window_ticks: 150            # the last N decisions are looked at (carried-on ticks are not decisions)
+  min_count: 4                 # a move must recur at least this often in one part of the day...
+  min_share: 0.4               # ...and make up at least this share of the decisions made in that part
+  max_stored: 6                # habits kept
+  max_shown: 3                 # habit lines in the brain prompt
+  text_max_length: 120
+
 projects:
   max_active: 1                # projects it can be working on at once
+  work_bucket: "+"             # progress bucket for one "work on" move (a key of progress_values)
+  artifacts_enabled: true      # at each milestone and on finishing, a call in its own voice makes the piece
   progress_values: {"+": 8, "++": 16}   # progress points per narrator bucket (0..100 per project)
   taper: 0.5                   # a step is multiplied by 1 - taper*progress/100: slower as it nears the end
   milestone_every: 25          # crossing each multiple of this is a notable moment (a short-term memory)

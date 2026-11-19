@@ -2,9 +2,11 @@
 {% if e.type == "tick" %}
 <li class="entry entry-tick" data-key="{{ e.key }}" data-id="{{ e.id }}" data-day="{{ e.day_number }}" data-day-label="{{ e.day_label }}">
   {% for ev in e.events %}<p class="margin-note"><span class="leaf" aria-hidden="true"></span>{{ ev }}</p>{% endfor %}
-  <p class="entry-meta"><span class="time">{{ e.time_label }}</span> · <span class="area">{{ e.area }}</span></p>
+  <p class="entry-meta"><span class="time">{{ e.time_label }}</span> · <span class="area">{{ e.area }}</span>{% if e.span %} · <span class="span">{{ e.span }}</span>{% endif %}</p>
   <p class="entry-action">{{ e.action }}</p>
   <p class="entry-outcome">{{ e.outcome }}</p>
+  {% if e.why_text %}<p class="entry-why">{{ e.why_text }}</p>{% endif %}
+  {% if e.carried_text %}<p class="entry-carried">{{ e.carried_text }}</p>{% endif %}
   {% if e.reaction %}<p class="entry-reaction">“{{ e.reaction }}”</p>{% endif %}
   {% if e.need_changes or e.world_changes %}
   <p class="entry-tags">

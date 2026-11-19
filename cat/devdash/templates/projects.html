@@ -16,6 +16,16 @@
     Project work is exempt from the repetition penalty.</p>
 </section>
 <section class="card">
+  <h2>Habits <span class="dim small">found by code in the last {{ cfg_habits.window_ticks }} decisions, worded in sleep</span></h2>
+  <table class="data num">
+    <tr><th>line shown to the brain</th><th>part of day</th><th>count</th><th>share</th><th>since</th></tr>
+    {% for h in p.habits %}<tr><td>{{ h.text }}</td><td>{{ h.part }}</td><td>{{ h.count }}</td><td>{{ '%.0f'|format(h.share*100) }}%</td><td>{{ h.formed_day }}</td></tr>
+    {% else %}<tr><td colspan="5" class="dim">none stored yet (set at each sleep)</td></tr>{% endfor %}
+  </table>
+  <p class="dim small">Candidates right now (the next sleep will word these): {% for c in p.habit_candidates %}{{ c.move_key }} in the {{ c.part }} ({{ c.count }}/{{ c.total }}){% if not loop.last %}; {% endif %}{% else %}none{% endfor %}.
+    A pattern needs {{ cfg_habits.min_count }}+ repeats and a {{ '%.0f'|format(cfg_habits.min_share*100) }}% share of that part of the day. Habits describe the past; they never rank or mark a move.</p>
+</section>
+<section class="card">
   <h2>Artifacts <span class="dim small">newest first</span></h2>
   {% for a in p.artifacts %}
   {{ block('artifact-%d'|format(a.id), '#%d · %s · %s (project %d, tick %s)'|format(a.id, a.kind, a.title, a.project_id, a.tick_id), a.text) }}

@@ -10,6 +10,7 @@ from cat.devdash import data
 from cat.devdash.app import create_app
 from cat.engine import Engine
 from cat.llm import MockBackend
+from tests.helpers import pick
 
 
 @pytest.fixture(autouse=True)
@@ -22,8 +23,7 @@ def make(cfg):
     b = MockBackend(seed=4)
     b.need_ids = list(cfg.character["needs"])
     b.tendency_names = list(cfg.character["tendencies"])
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "sit", "intent": "",
-                                        "feeling": "neutral", "wants_sleep": False}
+    b.handlers["brain"] = lambda m, s: pick(m)
     b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {}, "effort": "low", "duration": 10,
                                            "changes": []}
     return Engine(cfg, b, rng=random.Random(4)), b

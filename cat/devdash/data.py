@@ -141,7 +141,8 @@ def stats(conn: sqlite3.Connection | None, cfg: Config, hours: float | None = No
                            "llm_attempts": 0, "rejected_rate": None, "effects": 0,
                            "brain": {"n": 0, "mean_ms": None, "p95_ms": None},
                            "narrator": {"n": 0, "mean_ms": None, "p95_ms": None},
-                           "tokens_per_tick": None}
+                           "tokens_per_tick": None, "decisions": 0, "carried": 0, "carried_share": None,
+                           "avg_tokens_per_call": None, "per_day": []}
     if conn is None:
         return out
     since = _cutoff(hours)
@@ -159,6 +160,17 @@ def stats(conn: sqlite3.Connection | None, cfg: Config, hours: float | None = No
     toks = sum((c["prompt_tokens"] or 0) + (c["completion_tokens"] or 0) for c in llm)
     if out["ticks"]:
         out["tokens_per_tick"] = round(toks / out["ticks"])
+    if llm:
+        out["avg_tokens_per_call"] = round(toks / len(llm))
+    kinds = {r["kind"]: r["n"] for r in rows(
+        conn, "SELECT kind, COUNT(*) n FROM ticks WHERE real_time>=? GROUP BY kind", since)}
+    out["decisions"], out["carried"] = kinds.get("tick", 0), kinds.get("carry", 0)
+    if out["decisions"] + out["carried"]:
+        out["carried_share"] = out["carried"] / (out["decisions"] + out["carried"])
+    out["per_day"] = rows(
+        conn, "SELECT substr(started_at,1,10) day, COUNT(*) calls, "
+              "SUM(COALESCE(prompt_tokens,0)+COALESCE(completion_tokens,0)) tokens "
+              "FROM llm_calls WHERE started_at>=? GROUP BY day ORDER BY day DESC LIMIT 14", since)
     eff = one(conn, "SELECT COUNT(*) n, SUM(CASE WHEN accepted=0 THEN 1 ELSE 0 END) rej FROM effect_logs "
                     "WHERE tick_id IN (SELECT tick_id FROM tick_traces WHERE started_at>=?)", since)
     out["effects"] = eff["n"] or 0
@@ -272,7 +284,7 @@ def ticks_list(cfg: Config, f: dict, page: int = 1, limit: int | None = None) ->
 
 
 # ---------- Tick detail ----------
-STAGE_ORDER = ["world", "recall", "brain", "narrator", "apply", "record", "sleep"]
+STAGE_ORDER = ["world", "director", "recall", "brain", "narrator", "create", "apply", "record", "sleep"]
 
 
 def _llm_view(c: dict) -> dict:
@@ -1006,10 +1018,10 @@ def config_view(cfg: Config) -> dict:
         loaded = q.get_config()
         status = q.get_status()
     files = []
-    for name in ("settings", "character", "world", "prompts"):
+    for name in ("settings", "character", "world", "prompts", "moves"):
         path = Path(cfg.config_dir) / f"{name}.yaml"
         item: dict[str, Any] = {"name": name, "file": f"{name}.yaml", "loaded": None, "loaded_at": None, "disk": None,
-                                "diff": "", "state": "unknown", "error": None, "applies": "live (reload_settings)" if name in ("settings", "prompts") else "on restart"}
+                                "diff": "", "state": "unknown", "error": None, "applies": "live (reload_settings)" if name in ("settings", "prompts", "moves") else "on restart"}
         try:
             raw = path.read_bytes()
             item["disk_sha"] = hashlib.sha256(raw).hexdigest()
@@ -1040,7 +1052,7 @@ def config_view(cfg: Config) -> dict:
 def projects_page(cfg: Config, limit: int = 50) -> dict:
     """Every project with its progress number, idle counters and artifacts, and the settings behind them."""
     pc = cfg.settings["projects"]
-    out: dict[str, Any] = {"projects": [], "artifacts": [], "settings": {
+    out: dict[str, Any] = {"projects": [], "artifacts": [], "habits": [], "habit_candidates": [], "settings": {
         k: pc[k] for k in ("max_active", "progress_values", "taper", "milestone_every", "completion_gains",
                            "pause_after_idle_nights", "stages")}}
     with game_db(cfg) as conn:
@@ -1052,6 +1064,9 @@ def projects_page(cfg: Config, limit: int = 50) -> dict:
                 p["artifact_count"] = (one(conn, "SELECT COUNT(*) n FROM artifacts WHERE project_id=?", p["id"]) or {}).get("n", 0)
                 out["projects"].append(p)
             out["artifacts"] = rows(conn, "SELECT * FROM artifacts ORDER BY id DESC LIMIT ?", limit)
+            out["habits"] = rows(conn, "SELECT * FROM habits ORDER BY share*count DESC, id")
+            from cat import habits as HB
+            out["habit_candidates"] = HB.mine(conn, cfg)     # what the next sleep would see right now
         except Exception:                        # an old database without the tables
             pass
     return out

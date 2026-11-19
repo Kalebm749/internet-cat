@@ -13,6 +13,7 @@ def cfg(tmp_path):
     shutil.copytree(CONFIG_DIR, d)
     c = load_config(d)
     c.settings["db_path"] = str(tmp_path / "cat.db")
+    c.settings["activity"]["enabled"] = False       # most tests want one decision per tick; test_activity turns it on
     return c
 
 

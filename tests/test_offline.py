@@ -8,6 +8,7 @@ import pytest
 from cat import db
 from cat.engine import Engine
 from cat.llm import MockBackend, OllamaBackend, hash_embed
+from tests.helpers import pick
 
 
 # ---------- a fake Ollama we can take down and bring back ----------
@@ -33,8 +34,7 @@ class FakeOllama:
         props = body["format"]["properties"]
         if "reaction" in props:
             self.prompts.append(body["messages"][-1]["content"])
-            out = {"reaction": "mm", "thought": "hm", "action": "sniff the sofa", "intent": "curious",
-                   "feeling": "positive", "wants_sleep": False}
+            out = pick(body["messages"], feeling="positive")
         elif "outcome" in props:
             out = {"outcome": "It smells of dust.", "gains": {"curiosity": "+"}, "effort": "low",
                    "duration": 15, "changes": []}
@@ -137,9 +137,7 @@ def test_events_still_fire_while_dozing(cfg):
 def test_no_just_woke_note_after_sleeping_through_a_doze(cfg):
     b = MockBackend()
     prompts = []
-    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), {
-        "reaction": "", "thought": "", "action": "sit", "intent": "", "feeling": "neutral",
-        "wants_sleep": False})[1]
+    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), pick(m))[1]
     e = Engine(cfg, b, rng=random.Random(1))
     b.online = False
     e.tick()

@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS self_image(
   formed_day TEXT,                                     -- sim date the line was formed (YYYY-MM-DD)
   updated_at TEXT);
 
+-- habits: patterns found by code in what it did, worded in sleep, shown to the brain as "you tend to..."
+CREATE TABLE IF NOT EXISTS habits(
+  id INTEGER PRIMARY KEY, key TEXT, text TEXT, part TEXT, count INT, share REAL,
+  formed_day TEXT, updated_at TEXT);
+
 -- long-term projects: formed in sleep, advanced by the narrator, with the pieces they leave behind
 CREATE TABLE IF NOT EXISTS projects(
   id INTEGER PRIMARY KEY, title TEXT, activity TEXT, why TEXT,
@@ -73,7 +78,7 @@ CREATE TABLE IF NOT EXISTS tick_traces(
 
 CREATE TABLE IF NOT EXISTS llm_calls(
   id INTEGER PRIMARY KEY, tick_id INT,
-  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | sleep_self_image | sleep_projects | director | other
+  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | sleep_self_image | sleep_projects | sleep_habits | director | create | other
   model TEXT, options JSON, system_prompt TEXT, user_prompt TEXT, schema JSON,
   raw_response TEXT, parsed JSON, valid_json INT, attempt INT, error TEXT,
   prompt_tokens INT, completion_tokens INT,
@@ -144,6 +149,10 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) ->
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     _add_column(conn, "mood_math", "value", "REAL")        # the one mood number (valence/arousal are legacy)
+    _add_column(conn, "state", "activity", "JSON")          # what it is in the middle of (see the engine)
+    _add_column(conn, "ticks", "activity_minutes", "INT")   # a move's full length when it spans several ticks
+    _add_column(conn, "tick_traces", "activity", "JSON")    # an activity started, carried on, interrupted or finished
+    _add_column(conn, "ticks", "move_key", "TEXT")          # the move chosen: "verb" or "verb:target"
     _add_column(conn, "tick_traces", "director", "JSON")   # the world director's proposal and what code did
     _add_column(conn, "tick_traces", "project", "JSON")    # the narrator's project report and what code did
     _add_column(conn, "tick_traces", "pressing", "JSON")   # the brain prompt's need selection and why
@@ -187,19 +196,19 @@ def get_state(conn: sqlite3.Connection) -> dict | None:
     if row is None:
         return None
     d = dict(row)
-    for k in ("needs", "mood", "tendencies"):
-        d[k] = json.loads(d[k]) if d[k] else None
+    for k in ("needs", "mood", "tendencies", "activity"):
+        d[k] = json.loads(d[k]) if d.get(k) else None
     return d
 
 
 def save_state(conn: sqlite3.Connection, s: dict, updated_at: str) -> None:
     conn.execute(
         "INSERT INTO state(id,sim_time,area,needs,mood,energy,weather,tendencies,is_asleep,"
-        "brain_online,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?,?) "
+        "brain_online,activity,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(id) DO UPDATE SET sim_time=excluded.sim_time, area=excluded.area, "
         "needs=excluded.needs, mood=excluded.mood, energy=excluded.energy, "
         "weather=excluded.weather, tendencies=excluded.tendencies, is_asleep=excluded.is_asleep, "
-        "brain_online=excluded.brain_online, updated_at=excluded.updated_at",
+        "brain_online=excluded.brain_online, activity=excluded.activity, updated_at=excluded.updated_at",
         (s["sim_time"], s["area"], dumps(s["needs"]), dumps(s["mood"]), s["energy"],
          s["weather"], dumps(s["tendencies"]), int(s["is_asleep"]), int(s["brain_online"]),
-         updated_at))
+         dumps(s.get("activity")) if s.get("activity") else None, updated_at))

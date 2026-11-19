@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from cat.engine import Engine
 
 log = logging.getLogger("cat.dev")
-CONFIG_FILES = ("settings", "character", "world", "prompts")
+CONFIG_FILES = ("settings", "character", "world", "prompts", "moves")
 
 
 class DevControl:

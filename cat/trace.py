@@ -23,7 +23,7 @@ log = logging.getLogger("cat.trace")
 
 KIND = {"brain": "brain", "narrator": "narrator", "consolidate": "sleep_consolidate",
         "tendencies": "sleep_tendencies", "preferences": "sleep_preferences",
-        "self_image": "sleep_self_image", "projects": "sleep_projects", "director": "director"}
+        "self_image": "sleep_self_image", "projects": "sleep_projects", "habits": "sleep_habits", "director": "director", "create": "create"}
 
 
 def _now() -> str:
@@ -55,6 +55,7 @@ class Tracer:
         self.effects: list[dict] = []
         self.need_math: list[dict] = []
         self.mood: dict | None = None
+        self.activity: dict | None = None       # an activity started, carried on, interrupted or finished
         self.director: dict | None = None       # the world director: trigger, proposal, outcome
         self.project: dict | None = None        # the narrator's project report and what code did with it
         self.pressing: dict | None = None      # which need expressions the brain prompt used, and why
@@ -97,6 +98,9 @@ class Tracer:
 
     def set_need_math(self, rows: list[dict]) -> None:
         self.need_math = rows
+
+    def set_activity(self, rec: dict) -> None:
+        self.activity = rec
 
     def set_director(self, rec: dict) -> None:
         self.director = rec
@@ -148,6 +152,8 @@ class Tracer:
                 conn.execute("INSERT INTO tick_traces(tick_id,started_at,finished_at,total_ms,stage_timings,"
                              "status,error) VALUES(?,?,?,?,?,?,?)",
                              (tick_id, self.started_at, _now(), round(total, 1), dumps(stages), status, error))
+            if self.activity is not None:
+                conn.execute("UPDATE tick_traces SET activity=? WHERE tick_id=?", (dumps(self.activity), tick_id))
             if self.director is not None:
                 conn.execute("UPDATE tick_traces SET director=? WHERE tick_id=?", (dumps(self.director), tick_id))
             if self.project is not None:

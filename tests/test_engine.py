@@ -6,6 +6,7 @@ import pytest
 from cat import db
 from cat.engine import Engine
 from cat.llm import MockBackend
+from tests.helpers import pick
 
 
 def make_engine(cfg, seed=1, backend=None):
@@ -113,32 +114,38 @@ def test_run_survives_a_failing_tick(cfg, monkeypatch):
 
 def test_effects_wired_in_engine(cfg):
     e, b = make_engine(cfg)
-    b.handlers["narrator"] = lambda m, s: {
-        "outcome": "She eats and wanders.", "gains": {"joy": "+"}, "effort": "low", "duration": 20,
-        "changes": [{"op": "consume", "object_id": "ghost"},
-                    {"op": "move_self", "area": "kitchen"}, {"op": "consume", "object_id": "bowl"}]}
+    b.handlers["brain"] = lambda m, s: pick(m, "eat a bowl of fish")
     e.state["area"] = "kitchen"
     e.state["needs"]["sustenance"] = 10.0
     info = e.tick()
     row = e.conn.execute("SELECT * FROM ticks WHERE id=?", (info["id"],)).fetchone()
-    assert [c["op"] for c in json.loads(row["changes"])] == ["consume"]
-    assert json.loads(row["rejected_changes"])[0]["reason"].startswith("no such object")
+    assert [c["op"] for c in json.loads(row["changes"])] == ["consume"] and json.loads(row["rejected_changes"]) == []
+    assert row["action"] == "eat a bowl of fish" and row["move_key"] == "eat:bowl"
     assert db.get_state(e.conn)["needs"]["sustenance"] > 10
     assert e.conn.execute("SELECT COUNT(*) FROM objects WHERE id='bowl'").fetchone()[0] == 0
 
 
+def test_the_world_decides_what_a_move_does_not_the_narrator(cfg):
+    e, b = make_engine(cfg)
+    b.handlers["brain"] = lambda m, s: pick(m, "go to the kitchen")
+    b.handlers["narrator"] = lambda m, s: {"outcome": "x", "gains": {"joy": "++"}, "effort": "high", "duration": 90,
+                                           "changes": [{"op": "move_self", "area": "garden"}]}     # all ignored
+    before = dict(e.state["needs"])
+    e.tick()
+    assert e.state["area"] == "kitchen" and e.state["needs"]["joy"] < before["joy"]
+    row = e.conn.execute("SELECT * FROM ticks ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["effort"] == "low" and row["duration"] <= 15
+
+
 def test_repeated_action_pays_less(cfg):
     e, b = make_engine(cfg)
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "bat the red ball",
-                                        "intent": "", "feeling": "neutral", "wants_sleep": False}
-    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {"wonder": "++"}, "effort": "low",
-                                           "duration": 5, "changes": []}
+    b.handlers["brain"] = lambda m, s: pick(m, "look out and watch the world for a while")
     e.state["needs"]["wonder"] = 10.0
     e.tick()
     f1 = db.get_state(e.conn)["needs"]["wonder"]
     e.tick()
     f2 = db.get_state(e.conn)["needs"]["wonder"]
-    assert f1 - 10 > 25 and (f2 - f1) < 20        # first ~+30, repeat ~+12 (x0.4)
+    assert f1 - 10 > 8 and (f2 - f1) < (f1 - 10) * 0.6        # the first pays +15, the same move again x0.4
 
 
 def test_nothing_appears_or_vanishes_without_an_effect(cfg):
@@ -158,7 +165,7 @@ def test_nothing_appears_or_vanishes_without_an_effect(cfg):
                 ids.remove(c["object_id"])
         rejected_total += len(json.loads(r["rejected_changes"]))
     assert ids == {r[0] for r in e.conn.execute("SELECT id FROM objects")}
-    assert applied_total > 100 and rejected_total > 20       # the mock exercised both paths
+    assert applied_total > 100 and rejected_total == 0       # the world only ever applies valid moves
     valid_areas = set(cfg.world["areas"]) | {"inventory"}
     for o in e.conn.execute("SELECT area FROM objects"):
         assert o["area"] in valid_areas

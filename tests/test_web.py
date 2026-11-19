@@ -11,6 +11,7 @@ from cat.engine import Engine
 from cat.llm import MockBackend
 from cat.web import views
 from cat.web.app import create_app
+from tests.helpers import pick
 
 WEB = Path(__file__).resolve().parent.parent / "cat" / "web"
 
@@ -288,8 +289,7 @@ def test_no_js_paging_links(cfg, seeded):
 def test_output_is_escaped(cfg):
     e, b = make_engine(cfg)
     evil = "<script>alert(1)</script><b>x</b>"
-    b.handlers["brain"] = lambda m, s: {"reaction": evil, "thought": "", "action": evil, "intent": "",
-                                        "feeling": "neutral", "wants_sleep": False}
+    b.handlers["brain"] = lambda m, s: pick(m)
     b.handlers["narrator"] = lambda m, s: {"outcome": evil, "gains": {}, "effort": "low", "duration": 10, "changes": []}
     e.tick()
     html = client(cfg).get("/").text

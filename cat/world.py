@@ -27,7 +27,7 @@ class WorldState:
         self.cfg = cfg
         self.objects = objects
         self.weather = weather
-        self._dirty: set[str] = set()
+        self._dirty: dict[str, None] = {}          # an ordered set: objects are written in a fixed order
         self._deleted: set[str] = set()
 
     # --- construction ---
@@ -39,13 +39,13 @@ class WorldState:
                              "tags": list(o["tags"]), "state": dict(o.get("state") or {}),
                              "created_by": "world", "created_at": now}
         w = cls(cfg, objs, (cfg.world.get("weather") or ["clear"])[0])
-        w._dirty = set(objs)
+        w._dirty = dict.fromkeys(objs)
         return w
 
     @classmethod
     def load(cls, conn: Connection, cfg: Config, weather: str) -> "WorldState":
         objs = {}
-        for r in conn.execute("SELECT * FROM objects"):
+        for r in conn.execute("SELECT * FROM objects ORDER BY rowid"):
             objs[r["id"]] = {"id": r["id"], "name": r["name"], "area": r["area"],
                              "tags": json.loads(r["tags"]), "state": json.loads(r["state"]),
                              "created_by": r["created_by"], "created_at": r["created_at"]}
@@ -77,17 +77,17 @@ class WorldState:
         o = {"id": oid, "name": name, "area": area, "tags": list(tags),
              "state": dict(state or {}), "created_by": created_by, "created_at": now}
         self.objects[oid] = o
-        self._dirty.add(oid)
+        self._dirty[oid] = None
         return o
 
     def remove_object(self, oid: str) -> None:
         self.objects.pop(oid, None)
-        self._dirty.discard(oid)
+        self._dirty.pop(oid, None)
         self._deleted.add(oid)
 
     def touch(self, oid: str) -> None:
         if oid in self.objects:
-            self._dirty.add(oid)
+            self._dirty[oid] = None
 
     def sync(self, conn: Connection) -> None:
         """Write only what changed. Call inside the tick transaction."""

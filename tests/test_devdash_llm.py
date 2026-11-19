@@ -15,6 +15,7 @@ from cat.devdash import data, playground
 from cat.devdash.app import create_app
 from cat.engine import Engine
 from cat.llm import BackendError, MockBackend
+from tests.helpers import pick
 
 HDR = {"X-Requested-With": "devdash"}
 REAL_CLIENT = httpx.Client            # the real class, captured before any test patches it
@@ -85,7 +86,7 @@ def test_llm_list_filters_and_statuses(cfg):
 
     def flaky(m, s):
         o = next(outs, None)
-        return o or {"reaction": "", "thought": "", "action": "sit", "intent": "", "feeling": "neutral", "wants_sleep": False}
+        return o or pick(m)
     b.handlers["brain"] = flaky
     e.run(ticks=6, interval=0)
     conn = db.connect(cfg.db_path)
@@ -97,7 +98,7 @@ def test_llm_list_filters_and_statuses(cfg):
     assert [c["id"] for c in allc["items"]] == sorted((c["id"] for c in allc["items"]), reverse=True)
     bad = L(valid="invalid")["items"]
     assert [(c["kind"], c["attempt"], c["status"]) for c in bad] == [("brain", 1, "error")]
-    assert "no action" in bad[0]["error"]
+    assert "not on the menu" in bad[0]["error"]
     assert all(c["status"] == "ok" for c in L(valid="valid")["items"])
     assert L(errors=1)["total"] == 1
     assert all(c["kind"] == "narrator" for c in L(kind="narrator")["items"]) and L(kind="nope")["total"] == 0

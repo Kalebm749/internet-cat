@@ -28,7 +28,7 @@ from cat.engine import Engine  # noqa: E402
 from cat.healthcheck import write_heartbeat  # noqa: E402
 from cat.llm import MockBackend  # noqa: E402
 
-# (action, outcome, reaction) - generic so they fit any placeholder world
+# (action, outcome, reaction): only the reactions are used now (the moves and their outcomes come from the world)
 LINES = [
     ("settle in the patch of sun", "She stays in the warm light until the afternoon feels slow and soft.", "mmm. warm."),
     ("chase something shiny", "A glint skitters across the floor and she nearly catches it.", "so close!!"),
@@ -83,20 +83,13 @@ def seed(db_path: Path | str, ticks: int = 120, seed_value: int = 1, force: bool
     b = MockBackend(seed=seed_value)
     b.need_ids = list(cfg.character["needs"])
     b.tendency_names = list(cfg.character["tendencies"])
-    default_brain, default_narr = (lambda m, s: b._default("brain", m)), (lambda m, s: b._default("narrator", m))
-    picked = {"line": LINES[0]}
+    default_brain = lambda m, s: b._default("brain", m)               # the mock picks a random move from the menu
 
     def brain(m, s):
         out = default_brain(m, s)
-        picked["line"] = rng.choice(LINES)
-        a_, _, r_ = picked["line"]
-        return {**out, "action": a_, "reaction": r_, "thought": "", "intent": "just passing the time"}
+        return {**out, "reaction": rng.choice(LINES)[2], "thought": "", "why": "just passing the time"}
 
-    def narrator(m, s):
-        out = default_narr(m, s)
-        return {**out, "outcome": picked["line"][1], "duration": rng.choice([15, 20, 25, 30, 40])}
-
-    b.handlers.update(brain=brain, narrator=narrator,
+    b.handlers.update(brain=brain,
                       consolidate=lambda m, s: {"summary": "A long, soft day of small adventures.",
                                                 "memories": [{"text": rng.choice(KEEPSAKES), "importance": rng.choice(["low", "medium", "high"])}]})
     engine = Engine(cfg, b, rng=random.Random(seed_value))
@@ -105,6 +98,8 @@ def seed(db_path: Path | str, ticks: int = 120, seed_value: int = 1, force: bool
     outage = range(int(ticks * 0.45), int(ticks * 0.45) + 7)          # a brain-offline stretch => a collapsed doze entry
     for i in range(ticks):
         b.online = i not in outage
+        if i == outage.start:                                         # awake, so the outage makes real dozes
+            engine.state["is_asleep"], engine.state["energy"] = False, max(engine.state["energy"], 20.0)
         engine.tick()
         if i == ticks // 2:                                           # exercise the dashboard's dev controls
             q.enqueue("set_interval", {"seconds": 5, "ticks": 2})

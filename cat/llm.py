@@ -176,7 +176,7 @@ class OllamaBackend(LLMBackend):
 
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
         options = {"temperature": self.s["llm_temperature"].get(
-            "sleep" if task in ("consolidate", "tendencies", "preferences", "self_image", "projects") else task, 0.7),
+            "sleep" if task in ("consolidate", "tendencies", "preferences", "self_image", "projects", "habits") else task, 0.7),
             "num_ctx": self.s["llm_num_ctx"]}
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False,
                                    "format": schema, "options": options}
@@ -286,53 +286,22 @@ class MockBackend(LLMBackend):
         self.calls.append(("embed", model))
         return [hash_embed(t) for t in texts]
 
-    def _mock_changes(self, messages: list[dict]) -> list[dict]:
-        """Random, mostly-valid world changes (plus some deliberately bad ones) so the effects
-        validator gets exercised by mock runs."""
-        r = self.rng
-        ctx = _parse_narrator_context(messages)
-        if "area" not in ctx or r.random() > 0.6:
-            return []
-        movable = [o for o in ctx["here"] if "movable" in o["tags"]]
-        edible = [o for o in ctx["here"] + ctx["inv"] if "edible" in o["tags"]]
-        choices: list[dict] = []
-        if ctx["exits"]:
-            choices.append({"op": "move_self", "area": r.choice(ctx["exits"])})
-        if movable:
-            choices.append({"op": "take", "object_id": r.choice(movable)["id"]})
-        if ctx["inv"]:
-            choices.append({"op": "drop", "object_id": r.choice(ctx["inv"])["id"]})
-        if edible:
-            choices.append({"op": "consume", "object_id": r.choice(edible)["id"]})
-        if ctx["here"]:
-            choices.append({"op": "set_state", "object_id": r.choice(ctx["here"])["id"],
-                            "key": "touched", "value": "true"})
-        choices.append({"op": "create", "name": r.choice(["a cushion fort", "a paper boat"]),
-                        "tags": ["movable", "soft", "bogus_tag"]})
-        out = [r.choice(choices)]
-        if r.random() < 0.2:  # bad ones: nonexistent object / non-adjacent area / unknown op
-            out.append(r.choice([{"op": "consume", "object_id": "ghost_fish"},
-                                 {"op": "move_self", "area": "the_moon"},
-                                 {"op": "teleport", "area": "garden"}]))
-        return out
-
     def _default(self, task: str, messages: list[dict]) -> dict[str, Any]:
         r = self.rng
         if task == "brain":
-            act = r.choice(["looks out of the window", "bats at the red ball", "naps on the sofa",
-                            "sniffs around", "tidies up"])
-            tired = any(w in (messages[-1]["content"] if messages else "")
-                        for w in ("Energy: tired", "Energy: exhausted"))
-            return {"reaction": "hm, ok.", "thought": "what next?", "action": act,
-                    "intent": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"]),
-                    "wants_sleep": tired and r.random() < 0.5}
+            text = messages[-1]["content"] if messages else ""
+            ids = re.findall(r"^- \[(m\d+)\] (.+)$", text, re.M)
+            tired = any(w in text for w in ("Energy: tired", "Energy: exhausted"))
+            sleepy = [i for i, lab in ids if lab == "go to sleep"]
+            others = [i for i, lab in ids if lab != "go to sleep"]
+            pick = (sleepy[0] if sleepy and (tired or not others) and r.random() < 0.6 else
+                    r.choice(others or [i for i, _ in ids])) if ids else "m1"
+            return {"reaction": "hm, ok.", "thought": "what next?", "move": pick,
+                    "why": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"])}
         if task == "narrator":
-            gains = {n: r.choice(["0", "+", "+", "++"]) for n in r.sample(
-                self.need_ids, min(2, len(self.need_ids)))}
-            return {"outcome": "Nothing much happens.",
-                    "gains": gains, "effort": r.choice(["low", "medium"]),
-                    "duration": r.choice([10, 20, 30]),
-                    "changes": self._mock_changes(messages)}
+            text = messages[-1]["content"] if messages else ""
+            m = re.search(r"What happened \(decided by the world\): (.+)", text)
+            return {"outcome": m.group(1).strip() if m else "Nothing much happens."}
         if task == "consolidate":
             first = re.search(r"^- (.+)$", messages[-1]["content"] if messages else "", re.M)
             text = first.group(1)[:120] if first else "A quiet day at home."
@@ -356,6 +325,11 @@ class MockBackend(LLMBackend):
                              "I am not sure what I am.", "I seem to like quiet places."])
             return {"self_image": [{"text": line, "confidence": r.choice([0.3, 0.5, 0.8]),
                                     "replaces": r.choice(ids) if ids and r.random() < 0.4 else 0}]}
+        if task == "create":
+            r = random.Random(len(messages[-1]["content"]) if messages else 0)
+            return {"kind": r.choice(["sketch", "passage", "melody"]), "title": "Something small",
+                    "text": r.choice(["A few quiet lines about the old tree and the light on it.",
+                                      "The shape of the garden, drawn from memory, a little crooked."])}
         if task == "director":
             text = messages[-1]["content"] if messages else ""
             r = random.Random(len(text))        # own stream: leaves the seeded tick sequence untouched
@@ -367,6 +341,10 @@ class MockBackend(LLMBackend):
             if r.random() < 0.25:
                 out["spawn"] = {"name": "a smooth pebble", "tags": ["movable"]}
             return {"happening": out}
+        if task == "habits":
+            text = messages[-1]["content"] if messages else ""
+            ids = [int(m) for m in re.findall(r"^- \[(\d+)\] ", text, re.M)]
+            return {"habits": [{"id": i, "text": "Tends to come back to this around the same time."} for i in ids]}
         if task == "projects":
             text = messages[-1]["content"] if messages else ""
             r = random.Random(len(text))        # own stream: leaves the seeded tick sequence untouched
@@ -376,28 +354,6 @@ class MockBackend(LLMBackend):
             return {"projects": [{"op": "start", "title": r.choice(["keeping a notebook of the garden", "learning the old tree"]),
                                   "activity": "looking closely", "why": "it keeps returning to it"}]}
         raise BackendError(f"mock: unknown task '{task}'")
-
-
-def _parse_narrator_context(messages: list[dict]) -> dict:
-    """Read the engine's narrator context (see Engine._narrator_context)."""
-    text = messages[-1]["content"] if messages else ""
-    ctx: dict[str, Any] = {"exits": [], "here": [], "inv": []}
-    section = None
-    for line in text.splitlines():
-        if line.startswith("Location:"):
-            ctx["area"] = line.split()[1]
-        elif line.startswith("Exits:"):
-            ctx["exits"] = [e.split(" (")[0].strip() for e in line[6:].split(";") if e.strip()]
-        elif line.startswith("Objects here"):
-            section = "here"
-        elif line.startswith("Inventory"):
-            section = "inv"
-        elif line.startswith("- ") and section:
-            m = re.match(r"- (\S+): .*\| tags: ([^|]*)\|", line)
-            if m:
-                tags = [t.strip() for t in m.group(2).split(",") if t.strip() != "none"]
-                ctx[section].append({"id": m.group(1), "tags": tags})
-    return ctx
 
 
 def cosine(a: list[float], b: list[float]) -> float:

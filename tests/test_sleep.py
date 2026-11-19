@@ -6,6 +6,7 @@ import pytest
 from cat import clock, db, sleep
 from cat.engine import Engine
 from cat.llm import BackendError, MockBackend
+from tests.helpers import pick
 
 
 def make(cfg, seed=1):
@@ -16,10 +17,8 @@ def make(cfg, seed=1):
 
 
 def quiet_brain(b, wants_sleep=False, action="sit"):
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": action,
-                                        "intent": "", "feeling": "neutral", "wants_sleep": wants_sleep}
-    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {}, "effort": "low",
-                                           "duration": 10, "changes": []}
+    b.handlers["brain"] = lambda m, s: pick(m, "go to sleep" if wants_sleep else None, feeling="neutral")
+    b.handlers["narrator"] = lambda m, s: {"outcome": "ok" if action == "sit" else action}     # shows in the day log
 
 
 def set_time(e, t, energy=None, **needs):
@@ -179,8 +178,7 @@ def test_sleep_decay_is_slower(cfg):
 # ---------- engine: the sleep cycle ----------
 def seed_day(e, b):
     """A day with a few notable moments."""
-    b.handlers["brain"] = lambda m, s: {"reaction": "wow!", "thought": "", "action": "watch the sunset",
-                                        "intent": "", "feeling": "positive", "wants_sleep": False}
+    b.handlers["brain"] = lambda m, s: pick(m, feeling="positive")
     b.handlers["narrator"] = lambda m, s: {"outcome": "It was beautiful.", "gains": {"joy": "++"},
                                            "effort": "low", "duration": 20, "changes": []}
     for _ in range(4):
@@ -275,15 +273,13 @@ def test_second_night_only_sees_the_new_day(cfg):
     set_time(e, "2026-11-18T12:00", energy=50)
     quiet_brain(b, action="first-day-thing")
     e.tick()
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "second-day-thing",
-                                        "intent": "", "feeling": "neutral", "wants_sleep": True}
+    b.handlers["brain"] = lambda m, s: pick(m, "go to sleep", feeling="neutral")
     set_time(e, "2026-11-18T22:00", energy=50)
     e.tick()                                                   # wants_sleep at night -> cycle 1
     assert "first-day-thing" in seen[0]
     # wake, second day
     run_until(e, lambda i: i["outcome"].startswith("wakes"))
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "second-day-thing",
-                                        "intent": "", "feeling": "neutral", "wants_sleep": False}
+    quiet_brain(b, action="second-day-thing")
     e.tick()
     set_time(e, "2026-11-19T23:00", energy=-45)
     e.tick()

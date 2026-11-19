@@ -186,6 +186,14 @@ def projects_view(conn, cfg: Config) -> dict:
             "empty_text": "no projects yet.", "artifacts_empty_text": "nothing made yet."}
 
 
+def habits_view(conn, cfg: Config) -> dict:
+    """The patterns it keeps repeating, in the words it was given in sleep."""
+    rows = _safe(conn, lambda c: [dict(r) for r in c.execute(
+        "SELECT text, part FROM habits ORDER BY share*count DESC, id")], [])
+    return {"rows": [{"text": r["text"], "title": f"most often in the {r['part']}"} for r in rows],
+            "empty": not rows, "empty_text": "none noticed yet."}
+
+
 def keepsakes_view(conn, cfg: Config, offset: int = 0, limit: int | None = None) -> tuple[list[dict], bool]:
     limit = limit if limit is not None else cfg.settings["keepsakes_first_page"]
     first = first_dt(conn, cfg)
@@ -246,7 +254,17 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
         wc.append({"op": "make", "label": a["title"], "text": f"made “{a['title']}”"})
     events = [e["text"] for e in conn.execute("SELECT text FROM events WHERE tick_id=? ORDER BY id",
                                               (r["id"],))]
-    return {"type": "tick", "key": f"t{r['id']}", "id": r["id"],
+    am = r["activity_minutes"] if "activity_minutes" in r.keys() else None
+    span = f"about {am} min" if am and am > (r["duration"] or 0) else ""          # a longer move, carried on
+    nxt = conn.execute("SELECT MIN(id) FROM ticks WHERE id>? AND kind!='carry'", (r["id"],)).fetchone()[0]
+    carried = conn.execute("SELECT COUNT(*) FROM ticks WHERE kind='carry' AND id>? AND id<?",
+                           (r["id"], nxt if nxt is not None else 2 ** 62)).fetchone()[0]
+    why = (r["intent"] or "").strip()
+    return {"type": "tick", "key": f"t{r['id']}", "id": r["id"], "span": span,
+            "why": why, "why_text": f"because: {why}" if why else "",
+            "carried": carried,
+            "carried_text": (f"carried on for {carried} more step{'s' if carried != 1 else ''}, "
+                             "no new decision") if carried else "",
             "day_number": clock.day_number(first, dt), "day_label": clock.day_label(first, dt),
             "time_label": clock.time_label(dt), "area": _area_name(cfg, r["area"]),
             "action": r["action"] or "", "outcome": r["outcome"] or "", "reaction": r["reaction"] or "",
@@ -387,6 +405,7 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
         "tendencies": tendencies_view(conn, cfg, st),
         "preferences": preferences_view(conn, cfg),
         "projects": projects_view(conn, cfg),
+        "habits": habits_view(conn, cfg),
         "self_image": self_image_view(conn, cfg, first),
         "latest_tick_id": latest,
         "diary": diary, "diary_next_before": next_before,

@@ -17,6 +17,7 @@ from cat.devdash.app import create_app
 from cat.engine import Engine
 from cat.llm import MockBackend
 from cat.web.app import create_app as create_web
+from tests.helpers import inject_rejections, pick
 
 HERE = Path(__file__).resolve().parent.parent / "cat" / "devdash"
 HDR = {"X-Requested-With": "devdash"}
@@ -44,8 +45,11 @@ def seeded(cfg):
     e, b = make_engine(cfg, ticks=0)
     for i in range(90):
         b.online = not (40 <= i < 45)
+        if i == 40:
+            e.state["is_asleep"], e.state["energy"] = False, 20.0     # awake, so the outage makes real dozes
         e.tick()
     b.online = True
+    inject_rejections(e)
     return e
 
 
@@ -350,8 +354,7 @@ def test_tick_detail_shows_the_exact_prompts_that_were_sent(cfg):
 
     def br(m, s):
         sent["brain"] = m
-        return {"reaction": "r", "thought": "t", "action": "bat <b>the</b> ball & run", "intent": "i",
-                "feeling": "neutral", "wants_sleep": False}
+        return pick(m, why="bat <b>the</b> ball & run")
     b.handlers["brain"] = br
     tid = e.tick()["id"]
     page = dash(cfg).get(f"/ticks/{tid}").text
@@ -459,7 +462,7 @@ def test_tick_detail_sleep_section_shows_proposed_vs_clamped(cfg):
     e.state["energy"] = -45.0
     tid = e.tick()["id"]
     d = data.tick_detail(cfg, tid)
-    assert d["sleep_logs"] and {t["step"] for t in d["sleep_logs"][0]["traces"]} == {"consolidate", "tendencies", "preferences", "self_image", "projects"}
+    assert d["sleep_logs"] and {t["step"] for t in d["sleep_logs"][0]["traces"]} == {"consolidate", "tendencies", "preferences", "self_image", "projects", "habits"}
     page = dash(cfg).get(f"/ticks/{tid}").text
     assert "Sleep cycle" in page and "LLM proposed" in page and "applied change" in page and "sleep_tendencies" in page
 

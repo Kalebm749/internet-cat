@@ -10,6 +10,7 @@ from cat import brain, narrator, projects as PJ
 from cat.engine import Engine
 from cat.llm import MockBackend
 from cat.world import WorldState
+from tests.helpers import pick
 
 
 def active_project(**kw):
@@ -102,37 +103,28 @@ def test_no_project_section_without_projects_and_never_a_number(cfg, conn):
     assert not re.search(r"\d", section)
 
 
-def test_the_narrator_sees_active_projects_with_ids_and_stage_words(cfg, conn):
+def test_the_brain_output_schema_has_no_project_field():
+    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling"}
+
+
+def test_the_narrator_is_not_told_about_projects(cfg, conn):
     w = WorldState.seed(conn, cfg, "2026-11-18T19:40")
-    view = [{"id": 7, "title": "drawing the old tree", "why": "likes it", "stage": "underway", "note": "trunk done"}]
-    text = narrator.describe_world(cfg, "2026-11-18T19:40", "garden", "clear", w.here("garden"), [],
-                                   {k: 60 for k in cfg.character["needs"]}, view)
-    assert "Projects it is working on" in text
-    assert "- [7] drawing the old tree (likes it). It is underway. Where it stands: trunk done" in text
-    assert not re.search(r"progress|\d+%", text.split("Projects it is working on")[1])
-    assert "Projects it is working on" not in narrator.describe_world(
-        cfg, "2026-11-18T19:40", "garden", "clear", w.here("garden"), [], {k: 60 for k in cfg.character["needs"]}, [])
+    text = narrator.describe_world(cfg, "2026-11-18T19:40", "garden", "clear", w.here("garden"), [])
+    assert "project" not in text.lower() and "project" not in narrator.system_prompt(cfg).lower()
 
 
-def test_the_narrator_prompt_explains_the_project_field(cfg):
-    s = narrator.system_prompt(cfg)
-    assert "- project: OPTIONAL" in s and "artifact" in s and "{id, advance, note, artifact}" in s
+# ---------- in the engine: work_on is a move, and code decides the progress ----------
+WORK = "work on drawing the old tree"
 
 
-def test_the_brain_output_schema_is_unchanged_by_projects():
-    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "action", "intent", "feeling", "wants_sleep"}
-
-
-# ---------- in the engine ----------
-def make(cfg, gains=None, project=None, action="draw the old tree"):
+def make(cfg, label=WORK, why="the trunk is done"):
     cfg.world["events"] = []
+    cfg.settings["director"]["enabled"] = False
     b = MockBackend(seed=1)
     b.need_ids = list(cfg.character["needs"])
     b.tendency_names = list(cfg.character["tendencies"])
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": action, "intent": "",
-                                        "feeling": "neutral", "wants_sleep": False}
-    out = {"outcome": "It draws.", "gains": gains or {}, "effort": "low", "duration": 6, "changes": []}
-    b.handlers["narrator"] = lambda m, s: {**out, **({"project": project} if project else {})}
+    b.handlers["brain"] = lambda m, s: pick(m, label, why=why)
+    b.handlers["narrator"] = lambda m, s: {"outcome": "It draws."}
     e = Engine(cfg, b, rng=random.Random(1))
     e.world.events = None
     return e, b
@@ -147,99 +139,82 @@ def add_project(e, **kw):
                                                  vals["progress"], vals["note"], vals["formed_day"]))
 
 
-def test_a_report_advances_the_project_and_keeps_a_note_for_next_time(cfg):
-    e, b = make(cfg, project={"id": 1, "advance": "++", "note": "the trunk is done"})
+def test_working_on_a_project_advances_it_by_the_configured_step_and_keeps_the_why_as_the_note(cfg):
+    e, b = make(cfg)
     add_project(e)
     e.tick()
     p = PJ.get(e.conn, 1)
-    assert p["progress"] == cfg.settings["projects"]["progress_values"]["++"] and p["note"] == "the trunk is done"
+    step = cfg.settings["projects"]["progress_values"][cfg.settings["projects"]["work_bucket"]]
+    assert p["progress"] == step and p["note"] == "the trunk is done"
     assert p["last_worked"] and p["ticks_worked"] == 1 and p["worked_today"] == 1
     seen = []
-    b.handlers["brain"] = lambda m, s: (seen.append(m[-1]["content"]) or
-                                        {"reaction": "", "thought": "", "action": "keep drawing", "intent": "",
-                                         "feeling": "neutral", "wants_sleep": False})
+    b.handlers["brain"] = lambda m, s: (seen.append(m[-1]["content"]), pick(m, WORK, why="now the leaves"))[1]
     e.tick()
     assert "Where you got to: the trunk is done" in seen[0] and "just begun" in seen[0]
+    assert "- [m" in seen[0] and "work on drawing the old tree" in seen[0]               # still on the menu
+
+
+def test_the_step_tapers_as_the_project_nears_the_end(cfg):
+    e, b = make(cfg)
+    add_project(e, progress=50.0)
+    e.tick()
+    step = cfg.settings["projects"]["progress_values"][cfg.settings["projects"]["work_bucket"]]
+    assert PJ.get(e.conn, 1)["progress"] == pytest.approx(50 + step * (1 - cfg.settings["projects"]["taper"] * 0.5))
 
 
 def test_the_report_is_traced_with_the_exemption(cfg):
-    e, b = make(cfg, project={"id": 1, "advance": "+"})
+    e, b = make(cfg)
     add_project(e)
     info = e.tick()
     t = json.loads(e.conn.execute("SELECT project FROM tick_traces WHERE tick_id=?", (info["id"],)).fetchone()[0])
     assert t["ok"] and t["repetition_exempt"] is True and t["progress_after"] == 8
 
 
-def test_rejected_reports_change_nothing_and_are_traced(cfg):
-    e, b = make(cfg, project={"id": 99, "advance": "++"})
-    add_project(e)
-    info = e.tick()
-    assert PJ.get(e.conn, 1)["progress"] == 0
-    t = json.loads(e.conn.execute("SELECT project FROM tick_traces WHERE tick_id=?", (info["id"],)).fetchone()[0])
-    assert t["ok"] is False and "no active project" in t["reason"]
-
-
-def test_a_paused_project_cannot_be_advanced(cfg):
-    e, b = make(cfg, project={"id": 1, "advance": "++"})
+def test_a_paused_or_finished_project_is_not_on_the_menu(cfg):
+    e, b = make(cfg, label="sit quietly")
     add_project(e, status="paused")
-    e.tick()
-    assert PJ.get(e.conn, 1)["progress"] == 0
+    add_project(e, title="a finished thing", status="done", progress=100.0)
+    assert not any(m.verb == "work_on" for m in e._menu())
+    e.conn.execute("UPDATE projects SET status='active' WHERE id=1")
+    assert [m.label for m in e._menu() if m.verb == "work_on"] == ["work on drawing the old tree"]
 
 
 def test_project_work_is_exempt_from_the_repetition_penalty(cfg, tmp_path):
-    def wonder_gains(project):
-        cfg.settings["db_path"] = str(tmp_path / f"{bool(project)}.db")
-        e, b = make(cfg, gains={"wonder": "++"}, project=project)
+    def wonder_gains(label):
+        cfg.settings["db_path"] = str(tmp_path / f"{abs(hash(label))}.db")
+        e, b = make(cfg, label=label)
         add_project(e)
+        cfg.moves["verbs"]["look_out"]["effects"] = {"wonder": "++"}
+        cfg.moves["verbs"]["work_on"]["effects"] = {"wonder": "++"}
         e.state["needs"]["wonder"] = 5.0
         e.tick()
         first = e.state["needs"]["wonder"]
         e.tick()
         return first, e.state["needs"]["wonder"] - first
-    first_plain, second_plain = wonder_gains(None)
-    first_proj, second_proj = wonder_gains({"id": 1, "advance": "+"})
-    assert second_plain < first_plain - 5 and second_plain == pytest.approx(11.6, abs=0.6)   # x0.4 on the repeat
-    assert second_proj == pytest.approx(29.5, abs=0.6)                                       # exempt: full gain again
-
-
-def test_a_report_with_no_progress_does_not_exempt_the_action(cfg, tmp_path):
-    e, b = make(cfg, gains={"wonder": "++"}, project={"id": 1, "advance": "0"})
-    add_project(e)
-    e.state["needs"]["wonder"] = 5.0
-    e.tick()
-    first = e.state["needs"]["wonder"]
-    e.tick()
-    assert e.state["needs"]["wonder"] - first < 15
-
-
-def test_an_artifact_is_saved_and_linked_to_the_project_and_tick(cfg):
-    art = {"kind": "sketch", "title": "Roots", "text": "Deep roots under the old tree."}
-    e, b = make(cfg, project={"id": 1, "advance": "+", "artifact": art})
-    add_project(e)
-    info = e.tick()
-    a = e.conn.execute("SELECT * FROM artifacts").fetchone()
-    assert (a["project_id"], a["tick_id"], a["kind"], a["title"], a["text"]) == \
-        (1, info["id"], "sketch", "Roots", "Deep roots under the old tree.")
-    assert a["created_sim_time"]
+    f_plain, s_plain = wonder_gains("look out and watch the world for a while")
+    f_proj, s_proj = wonder_gains(WORK)
+    assert s_plain < (f_plain - 5) * 0.6                   # the repeat pays x0.4 (about 30 -> 12)
+    assert s_proj > (f_proj - 5) * 0.8                     # project work: about the full gain again
 
 
 def test_finishing_a_project_completes_it_pays_the_gains_and_makes_a_memory(cfg):
-    e, b = make(cfg, project={"id": 1, "advance": "++", "note": "all done"})
+    e, b = make(cfg)
     add_project(e, progress=99.0)
     e.state["needs"]["joy"] = 30.0
     before = e.state["needs"]["joy"]
     e.tick()
     p = PJ.get(e.conn, 1)
+    minutes = e.conn.execute("SELECT duration FROM ticks").fetchone()[0]
     assert p["status"] == "done" and p["progress"] == 100
     gain = cfg.settings["projects"]["completion_gains"]["joy"]
-    decay = cfg.character["needs"]["joy"]["decay_per_hour"] * 6 / 60
+    decay = cfg.character["needs"]["joy"]["decay_per_hour"] * minutes / 60
     assert e.state["needs"]["joy"] == pytest.approx(before - decay + gain)
     assert len(e.memory.all_short()) == 1                              # a finished project is a notable moment
-    assert PJ.active(e.conn) == []                                   # the brain stops being told about it
+    assert PJ.active(e.conn) == []                                     # and it leaves the menu
 
 
 def test_a_milestone_makes_a_short_term_memory(cfg):
-    e, b = make(cfg, project={"id": 1, "advance": "++"})
+    e, b = make(cfg)
     add_project(e, progress=20.0)
     e.tick()
     assert len(e.memory.all_short()) == 1
@@ -247,20 +222,97 @@ def test_a_milestone_makes_a_short_term_memory(cfg):
 
 def test_working_on_a_project_does_not_make_a_place_stale(cfg):
     cfg.settings["stale_after_ticks"] = 2
-    e, b = make(cfg, project={"id": 1, "advance": "+"})
+    e, b = make(cfg)
     add_project(e)
     for _ in range(5):
         e.tick()
     assert e._ticks_in_area() == 0 and not e._stale_here()
-    e2, b2 = make(cfg)                                                # no project: the same place goes stale
+    cfg.settings["db_path"] = cfg.settings["db_path"] + "2"
+    e2, b2 = make(cfg, label="sit quietly and do nothing for a while")      # no project: the same place goes stale
     for _ in range(3):
         e2.tick()
     assert e2._stale_here()
 
 
-def test_the_narrator_cannot_set_progress_directly(cfg):
-    e, b = make(cfg, project={"id": 1, "advance": "++", "progress": 100, "status": "done"})
-    add_project(e)
+# ---------- the piece it makes, in its own voice ----------
+def creating(cfg, text="Deep roots under the old tree.", **kw):
+    e, b = make(cfg, **kw)
+    calls = []
+    b.handlers["create"] = lambda m, s: (calls.append(m), {"kind": "sketch", "title": "Roots", "text": text})[1]
+    return e, b, calls
+
+
+def test_a_milestone_asks_the_entity_itself_to_make_something(cfg):
+    e, b, calls = creating(cfg)
+    add_project(e, progress=20.0, note="the trunk is done")
+    info = e.tick()
+    assert len(calls) == 1
+    system, user = calls[0][0]["content"], calls[0][1]["content"]
+    assert system == brain.system_prompt(cfg) and cfg.character["name"] in system        # its voice and identity, not the narrator's
+    assert "drawing the old tree" in user and "likes it" in user and "You have just reached a milestone in it." in user
+    a = e.conn.execute("SELECT * FROM artifacts").fetchone()
+    assert (a["project_id"], a["tick_id"], a["kind"], a["title"], a["text"]) == (1, info["id"], "sketch", "Roots", "Deep roots under the old tree.")
+    assert e.conn.execute("SELECT kind FROM llm_calls WHERE kind='create'").fetchone()
+
+
+def test_finishing_asks_for_a_final_piece_and_says_so(cfg):
+    e, b, calls = creating(cfg)
+    add_project(e, progress=99.0)
     e.tick()
-    p = PJ.get(e.conn, 1)
-    assert p["status"] == "active" and p["progress"] == cfg.settings["projects"]["progress_values"]["++"]
+    assert "You have just finished it." in calls[0][1]["content"] and "It is finished." in calls[0][1]["content"]
+    assert e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 1
+
+
+def test_an_ordinary_step_makes_no_piece_and_no_call(cfg):
+    e, b, calls = creating(cfg)
+    add_project(e, progress=0.0)                          # 0 -> 8: no milestone
+    e.tick()
+    assert calls == [] and e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
+
+
+def test_a_failed_creation_is_just_no_piece_and_the_progress_still_counts(cfg):
+    from cat.llm import BackendError
+    e, b, calls = creating(cfg)
+    def down(m, s): raise BackendError("down")
+    b.handlers["create"] = down
+    add_project(e, progress=20.0)
+    info = e.tick()
+    assert info["kind"] == "tick" and PJ.get(e.conn, 1)["progress"] > 25
+    assert e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
+
+
+def test_artifacts_can_be_turned_off(cfg):
+    cfg.settings["projects"]["artifacts_enabled"] = False
+    e, b, calls = creating(cfg)
+    add_project(e, progress=20.0)
+    e.tick()
+    assert calls == [] and e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
+
+
+def test_the_piece_is_cleaned_and_a_blank_one_is_dropped(cfg):
+    e, b, calls = creating(cfg, text="  words   " + "x" * 5000)
+    add_project(e, progress=20.0)
+    e.tick()
+    t = e.conn.execute("SELECT text FROM artifacts").fetchone()[0]
+    assert t.startswith("words x") and len(t) == cfg.settings["projects"]["artifact_max_length"]
+    cfg.settings["db_path"] = cfg.settings["db_path"] + "2"
+    e2, b2, calls2 = creating(cfg, text="   ")
+    add_project(e2, progress=20.0)
+    e2.tick()
+    assert e2.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
+
+
+def test_the_creation_prompt_is_editable_yaml(cfg):
+    cfg.prompts["brain"]["milestone_reached"] = "A big step!"
+    e, b, calls = creating(cfg)
+    add_project(e, progress=20.0)
+    e.tick()
+    assert "A big step!" in calls[0][1]["content"]
+
+
+def test_the_narrator_never_writes_the_piece(cfg):
+    e, b, calls = creating(cfg)
+    b.handlers["narrator"] = lambda m, s: {"outcome": "x", "artifact": {"kind": "k", "title": "t", "text": "narrator wrote this"}}
+    add_project(e, progress=0.0)
+    e.tick()
+    assert e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
