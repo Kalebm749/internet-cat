@@ -136,7 +136,7 @@ def hash_embed(text: str, dim: int = EMBED_DIM) -> list[float]:
 class MockBackend(LLMBackend):
     """Deterministic, seedable stand-in for Ollama.
 
-    - `online` can be flipped to simulate the laptop going away; calls then raise BackendError.
+    - `online` can be flipped to simulate Ollama going away; calls then raise BackendError.
     - `handlers[task]` may be a callable(messages, schema) -> dict to script exact behaviour.
     - `fail_next` makes the next N chat/embed calls raise (to test retry/doze).
     Default outputs are generic but schema-valid; later milestones extend them.

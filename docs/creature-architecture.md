@@ -3,9 +3,9 @@
 An autonomous web creature that lives in a simulated world. It thinks with an LLM, while plain code tracks time, needs and rules. Inspired by pinos.world. Pino's internals aren't public, so this is our own design.
 
 **Scope for now:** a single creature living on its own. No visitor interaction yet.
-**Hardware:** a Raspberry Pi 3B+ runs the world loop, stores the state and serves the website. A laptop with a GTX 1060, running Ollama on the same network 24/7, serves as the brain (see §8).
+**Hardware:** everything runs on one Ubuntu laptop (GTX 1060 6GB, 16GB RAM) under Docker Compose: Ollama (the brain), the world loop, the state store and the website (see §8).
 
-Related docs: `pi-architecture.md` (how to build it), `web-gui.md` (the website), `laptop-brain.md` (the Ollama server).
+Related docs: `server-architecture.md` (how it is built and deployed, including host setup), `web-gui.md` (the website), `config-reference.md` (config fields).
 
 ---
 
@@ -95,7 +95,7 @@ The action, the creature's location, the area's objects (with tags and state), t
 - `gains`: one bucket per need, from `0`, `+` or `++`
 - `effort`: `low`, `medium` or `high`
 - `duration`: minutes
-- `changes`: a list of world changes, using only these types (full validation rules in `pi-architecture.md` §9):
+- `changes`: a list of world changes, using only these types (full validation rules in `server-architecture.md` §9):
   - `move_self(area)`
   - `move_object(object, area)`
   - `take(object)` / `drop(object)`
@@ -147,15 +147,18 @@ Sleep is a real state: it restores energy, and the creature chooses when to slee
 
 ## 8. Hardware and pacing
 
-| Machine | Role |
+One Ubuntu laptop (GTX 1060 6GB, 16GB RAM) runs everything as Docker Compose services:
+
+| Service | Role |
 |---|---|
-| **Raspberry Pi 3B+** (headless, SSH) | Runs the world loop, stores state, memory and the diary, serves the website. |
-| **Laptop, GTX 1060 6GB, Ubuntu** | Runs Ollama 24/7 on the local network. Brain, narrator, sleep and embedding calls all go here. |
+| **ollama** | Uses the GPU. Brain, narrator, sleep and embedding calls all go here. |
+| **engine** | Runs the world loop, stores state, memory and the diary. |
+| **web** | Serves the read-only website on the local network. |
 
 - **Models:** 4–8B, quantized to fit 6GB of VRAM (e.g. `qwen3:8b` or `llama3.1:8b`; `gemma3:4b` as a lighter option). Embeddings: `nomic-embed-text`.
 - **Pacing:** a few seconds per call. Tick interval about 1–2 min (to be tuned for how lively vs. how calm it should feel).
-- **Brain offline:** if the laptop can't be reached, the world keeps running (clock, decay, events) and the creature is "dozing". It catches up when the brain comes back. The loop must never crash because the brain is unavailable.
-- **Upgrade path:** any Ollama-compatible host or a hosted API. The rest of the design doesn't change.
+- **Brain offline:** if Ollama can't be reached, the world keeps running (clock, decay, events) and the creature is "dozing". It resumes when the brain comes back. The loop must never crash because the brain is unavailable.
+- **Upgrade path:** point `ollama_host` at any Ollama-compatible host or a hosted API. The rest of the design doesn't change.
 
 ---
 

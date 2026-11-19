@@ -43,11 +43,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=None, help="random seed (reproducible mock runs)")
     p.add_argument("--config-dir", default=None)
     p.add_argument("--db", default=None, help="override db_path")
+    p.add_argument("--ollama-host", default=None,
+                   help="override ollama_host (default http://ollama:11434 only resolves inside Compose)")
     p.add_argument("-q", "--quiet", action="store_true", help="don't print each tick")
     args = p.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    cfg = load_config(args.config_dir, {"db_path": args.db} if args.db else None)
+    overrides = {k: v for k, v in (("db_path", args.db), ("ollama_host", args.ollama_host)) if v}
+    cfg = load_config(args.config_dir, overrides or None)
     backend = make_backend(cfg, args.mock, args.seed)
     engine = Engine(cfg, backend, rng=random.Random(args.seed))
     engine.install_signal_handlers()

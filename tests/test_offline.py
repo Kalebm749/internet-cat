@@ -63,7 +63,7 @@ def test_kill_ollama_midrun_engine_keeps_going_and_recovers(rig, cfg):
     t_before = db.get_state(e.conn)["sim_time"]
     needs_before = dict(db.get_state(e.conn)["needs"])
 
-    fake.mode = "down"                                      # laptop dies
+    fake.mode = "down"                                      # Ollama goes away
     assert kinds(e, 8) == ["doze"] * 8
     st = db.get_state(e.conn)
     assert st["brain_online"] == 0
@@ -74,7 +74,7 @@ def test_kill_ollama_midrun_engine_keeps_going_and_recovers(rig, cfg):
     assert len(doze_rows) == 8 and all(r["outcome"] == "dozing" and r["action"] is None for r in doze_rows)
     n_prompts = len(fake.prompts)
 
-    fake.mode = "up"                                        # laptop returns
+    fake.mode = "up"                                        # Ollama returns
     assert kinds(e, 3) == ["tick"] * 3
     assert db.get_state(e.conn)["brain_online"] == 1
     assert len(fake.prompts) == n_prompts + 3
@@ -158,7 +158,7 @@ def test_restart_during_outage_still_dozes_then_recovers(cfg):
     e.tick()
     fake.mode = "down"
     e.tick()
-    e2 = Engine(cfg, mk(), conn=e.conn, rng=random.Random(2))   # Pi rebooted mid-outage
+    e2 = Engine(cfg, mk(), conn=e.conn, rng=random.Random(2))   # engine restarted mid-outage
     assert e2.tick()["kind"] == "doze"
     fake.mode = "up"
     e2.tick()

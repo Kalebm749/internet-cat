@@ -254,7 +254,7 @@ def test_failed_llm_call_mid_cycle_writes_nothing(cfg):
     tend = dict(e.state["tendencies"])
 
     def boom(m, s):
-        raise BackendError("laptop fell over")
+        raise BackendError("ollama fell over")
     b.handlers["preferences"] = boom                           # 3rd call fails
     set_time(e, "2026-11-18T23:00", rest=5, food=60)
     e.tick()

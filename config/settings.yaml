@@ -1,7 +1,7 @@
 # All tuning numbers live here. See docs/config-reference.md.
 
-# --- LLM host (laptop) ---
-ollama_host: http://192.168.1.50:11434
+# --- LLM host: the `ollama` service in compose.yaml (use http://127.0.0.1:11434 outside Docker) ---
+ollama_host: http://ollama:11434
 brain_model: qwen3:8b
 narrator_model: qwen3:8b
 sleep_model: qwen3:8b

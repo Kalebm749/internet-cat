@@ -1,4 +1,4 @@
-"""Dev server: python -m cat.web [--db PATH] [--port N]. (On the Pi systemd runs uvicorn directly.)"""
+"""Dev server: python -m cat.web [--db PATH] [--port N]. (In Docker the web service runs uvicorn directly.)"""
 import argparse
 import os
 

@@ -39,7 +39,7 @@ Three files in `config/`. Loaded and validated by `cat/config.py`; errors name t
 
 ## settings.yaml
 Every tuning number. Groups:
-- **LLM**: `llm_temperature` (per task), `llm_num_ctx`, `tendency_words`, `preferences_shown`, `ollama_host`, `brain_model`, `narrator_model`, `sleep_model`, `embed_model`, `ollama_think`, `llm_timeout_seconds`, `health_timeout_seconds`, `llm_retries`.
+- **LLM**: `ollama_host` defaults to `http://ollama:11434` (the Compose service name; use `http://127.0.0.1:11434` or `--ollama-host` when running outside Docker). `llm_temperature` (per task), `llm_num_ctx`, `tendency_words`, `preferences_shown`, `brain_model`, `narrator_model`, `sleep_model`, `embed_model`, `ollama_think`, `llm_timeout_seconds`, `health_timeout_seconds`, `llm_retries`.
 - **Pacing**: `tick_interval_seconds` (real), `sim_start`, `sim_minutes_per_tick_default`, `sim_minutes_min/max` (narrator duration clamp), `phases` (start hour of dawn/day/dusk/night).
 - **Effects**: `gain_values`, `effort_energy_cost`, `repetition_penalty`, `create_limit_per_tick`, `allowed_tags`, `state_value_max_length`.
 - **Mood**: `mood.*` weights, `feeling_values`, word thresholds. `default_need_words` / `energy_words` map values to words. `events_max_per_tick`, `max_objects_per_area` cap events.

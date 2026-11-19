@@ -1,6 +1,6 @@
 # Web GUI Spec: The Creature's Journal
 
-Spec for the Pi-hosted website. Read `pi-architecture.md` (§13) for where this sits: FastAPI on the Pi, read-only, served on the home network.
+Spec for the website. Read `server-architecture.md` (§13) for where this sits: a FastAPI service in Docker Compose on the host laptop, read-only, served on the home network.
 
 **Feel:** cozy storybook, like opening the creature's own journal. Warm paper, ink, soft colours, hand-made touches.
 **Target:** desktop first (≥1200px wide), still usable on a narrow screen.
@@ -13,7 +13,7 @@ Spec for the Pi-hosted website. Read `pi-architecture.md` (§13) for where this 
 1. **The diary is the heart.** It gets the most space and the centre of the page. Stats support the story, not the other way round.
 2. **Words before numbers.** Every bar also has a word ("peckish", "sleepy"). Exact numbers show only on hover.
 3. **The page feels alive.** It reflects the sim time (dawn, day, dusk, night), shows sleep and dozing, and new diary entries appear gently.
-4. **No framework.** Server-rendered HTML (Jinja2) + one small vanilla JS file that polls `/api/state`. It has to run happily on a Pi 3B+.
+4. **No framework.** Server-rendered HTML (Jinja2) + one small vanilla JS file that polls `/api/state`. It should stay light and fast.
 5. **Works offline.** Fonts and images are self-hosted. No CDNs, since the site lives on the LAN.
 
 ---
@@ -250,5 +250,5 @@ portrait: img/cat.png
 2. A new tick shows up in the diary within ~10s without a page reload, and without jumping the page if the reader has scrolled down.
 3. Asleep, dozing and awake each look visibly different (status pill + portrait).
 4. Night-time sim hours switch to the night palette.
-5. The page loads in <1s on the LAN from the Pi 3B+ and works with JS disabled (static snapshot).
+5. The page loads in <1s on the LAN and works with JS disabled (static snapshot).
 6. With an empty database the page shows the empty states, not errors.
