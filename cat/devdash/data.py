@@ -292,6 +292,7 @@ def tick_detail(cfg: Config, tick_id: int) -> dict | None:
         if tick is None and trace is None:
             return None
         d: dict[str, Any] = {"id": tick_id, "tick": tick, "trace": trace}
+        d["project"] = jload(trace.get("project"), None) if trace else None
         pr = jload(trace.get("pressing"), None) if trace else None
         d["pressing"] = pr
         d["pressing_marks"] = ([r["expression"] for r in pr["rows"] if r["selected"] and r["expression"]]
@@ -1033,3 +1034,23 @@ def config_view(cfg: Config) -> dict:
         files.append(item)
     return {"files": files, "engine_known": bool(loaded), "changed": [f["name"] for f in files if f["state"] == "changed"],
             "engine_state": status.get("state")}
+
+
+def projects_page(cfg: Config, limit: int = 50) -> dict:
+    """Every project with its progress number, idle counters and artifacts, and the settings behind them."""
+    pc = cfg.settings["projects"]
+    out: dict[str, Any] = {"projects": [], "artifacts": [], "settings": {
+        k: pc[k] for k in ("max_active", "progress_values", "taper", "milestone_every", "completion_gains",
+                           "pause_after_idle_nights", "stages")}}
+    with game_db(cfg) as conn:
+        if conn is None:
+            return out
+        try:
+            for p in rows(conn, "SELECT * FROM projects ORDER BY id DESC"):
+                p["stage"] = "finished" if p["status"] == "done" else character._word_from(pc["stages"], p["progress"])
+                p["artifact_count"] = (one(conn, "SELECT COUNT(*) n FROM artifacts WHERE project_id=?", p["id"]) or {}).get("n", 0)
+                out["projects"].append(p)
+            out["artifacts"] = rows(conn, "SELECT * FROM artifacts ORDER BY id DESC LIMIT ?", limit)
+        except Exception:                        # an old database without the tables
+            pass
+    return out

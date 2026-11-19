@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime
 from typing import Any
 
-from cat import character, clock, db
+from cat import character, clock, db, projects
 from cat.config import Config
 
 ARROWS = {"up": "▲", "down": "▼", "flat": "—"}
@@ -160,6 +160,32 @@ def presence_view(cfg: Config, mood: dict, state: str, name: str, energy: float 
             "aria": f"A soft glow for {name}: its colour shows its mood, its motion how much energy it has"}
 
 
+STATUS_LABEL = {"active": "working on it", "paused": "set aside", "done": "finished"}
+
+
+def projects_view(conn, cfg: Config) -> dict:
+    """What it is working on and the pieces it has made. Stage words only, never the progress number."""
+    first = first_dt(conn, cfg)
+    pc = cfg.settings["projects"]
+    rows = _safe(conn, lambda c: [dict(r) for r in c.execute(
+        "SELECT * FROM projects WHERE status IN ('active','paused','done') "
+        "ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, id DESC LIMIT 8")], [])
+    items = []
+    for r in rows:
+        stage = "finished" if r["status"] == "done" else projects.stage_word(r["progress"], cfg)
+        items.append({"id": r["id"], "title": r["title"], "why": r["why"] or "", "note": r["note"] or "",
+                      "stage": stage, "status": r["status"], "status_label": STATUS_LABEL[r["status"]],
+                      "cls": r["status"], "title_attr": r["why"] or r["title"]})
+    arts = _safe(conn, lambda c: [dict(r) for r in c.execute(
+        "SELECT a.id, a.kind, a.title, a.text, a.created_sim_time, p.title AS project FROM artifacts a "
+        "LEFT JOIN projects p ON p.id = a.project_id ORDER BY a.id DESC LIMIT ?", (pc["artifacts_shown"],))], [])
+    artifacts = [{"id": a["id"], "kind": a["kind"] or "piece", "title": a["title"], "text": a["text"],
+                  "project": a["project"] or "",
+                  "day_text": f"Day {clock.day_number(first, clock.parse(a['created_sim_time']))}"} for a in arts]
+    return {"rows": items, "empty": not items, "artifacts": artifacts, "artifacts_empty": not artifacts,
+            "empty_text": "no projects yet.", "artifacts_empty_text": "nothing made yet."}
+
+
 def keepsakes_view(conn, cfg: Config, offset: int = 0, limit: int | None = None) -> tuple[list[dict], bool]:
     limit = limit if limit is not None else cfg.settings["keepsakes_first_page"]
     first = first_dt(conn, cfg)
@@ -215,6 +241,9 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
         text = _world_change_text(cfg, c)
         if text:
             wc.append({"op": c["op"], "label": c.get("label") or c.get("name") or "", "text": text})
+    for a in _safe(conn, lambda c: c.execute("SELECT title FROM artifacts WHERE tick_id=? ORDER BY id",
+                                             (r["id"],)).fetchall(), []):
+        wc.append({"op": "make", "label": a["title"], "text": f"made “{a['title']}”"})
     events = [e["text"] for e in conn.execute("SELECT text FROM events WHERE tick_id=? ORDER BY id",
                                               (r["id"],))]
     return {"type": "tick", "key": f"t{r['id']}", "id": r["id"],
@@ -357,6 +386,7 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
         "needs": needs_view(conn, cfg, st),
         "tendencies": tendencies_view(conn, cfg, st),
         "preferences": preferences_view(conn, cfg),
+        "projects": projects_view(conn, cfg),
         "self_image": self_image_view(conn, cfg, first),
         "latest_tick_id": latest,
         "diary": diary, "diary_next_before": next_before,

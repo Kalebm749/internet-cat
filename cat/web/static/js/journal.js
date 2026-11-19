@@ -96,6 +96,12 @@
       $("#self-image-empty").hidden = !s.self_image.empty;
       $("#self-image-empty").textContent = s.self_image.empty_text;
     }
+    if (changed("projects", s.projects)) {
+      setList($("#projects"), "tpl-project", s.projects.rows);
+      setList($("#artifacts"), "tpl-artifact", s.projects.artifacts);
+      $("#projects-empty").hidden = !s.projects.empty;
+      $("#artifacts-empty").hidden = !s.projects.artifacts_empty;
+    }
     if (changed("keepsakes", s.keepsakes)) {
       setList($("#keepsakes"), "tpl-keepsake", s.keepsakes);
       $("#keepsakes-empty").hidden = s.keepsakes.length > 0;

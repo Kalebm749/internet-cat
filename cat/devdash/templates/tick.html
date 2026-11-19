@@ -141,6 +141,25 @@
   {% endif %}
 </section>
 
+{% if d.project %}
+{% set j = d.project %}
+<section class="card" id="project">
+  <h2>Project work <span class="dim small">(the narrator's report, and what code did with it)</span></h2>
+  {% if not j.ok %}
+  <p class="bad">Rejected: {{ j.reason }}. Nothing changed.</p>
+  {% else %}
+  <table class="data num">
+    <tr><th>project</th><td>#{{ j.id }} {{ j.title }}</td></tr>
+    <tr><th>narrator's advance</th><td>{{ j.bucket }} → {{ j.gained }} points (bucket × (1 − taper × progress/100))</td></tr>
+    <tr><th>progress</th><td>{{ j.progress_before }} → <b>{{ j.progress_after }}</b>{% if j.milestones %} · milestone {{ j.milestones|join(', ') }}{% endif %}{% if j.completed %} · <b>completed</b>{% endif %}</td></tr>
+    <tr><th>repetition penalty</th><td>{{ pill('exempt', 'ok') if j.repetition_exempt else 'applies (this report moved nothing)' }}</td></tr>
+    <tr><th>note kept</th><td>{{ j.note or '–' }}</td></tr>
+    {% if j.artifact %}<tr><th>artifact</th><td>{{ j.artifact.kind }}: <b>{{ j.artifact.title }}</b> (saved{% if j.artifact_id %} as #{{ j.artifact_id }}{% endif %})</td></tr>{% endif %}
+  </table>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if d.mood_math %}
 {% set m = d.mood_math %}{% set i = m.inputs %}
 <section class="card" id="mood">

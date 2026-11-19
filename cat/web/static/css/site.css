@@ -73,6 +73,13 @@ body.state-dozing .pill .dot { background: var(--honey); }
 .sub-title { font: 500 14px var(--f-head); margin: 18px 0 8px; color: var(--ink-soft); }
 .empty { color: var(--ink-soft); font-style: italic; margin: 6px 0; }
 .empty.small { font-size: 13px; margin: 0; }
+.projects, .artifacts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.project { display: flex; flex-direction: column; gap: 2px; padding-left: 10px; border-left: 3px solid var(--honey); }
+.project.paused { border-left-color: var(--rule); } .project.done { border-left-color: var(--sage); }
+.pj-title { font: 500 15px var(--f-head); } .pj-stage, .pj-note { font-size: 13px; color: var(--ink-soft); font-style: italic; }
+.artifact { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; }
+.artifact p { margin: 0; } .af-meta { font-size: 12px; color: var(--ink-soft); }
+.af-text { margin-top: 4px !important; font-size: 14px; white-space: pre-wrap; }
 .self-image { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-style: italic; }
 .self-image:empty { display: none; }
 

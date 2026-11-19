@@ -146,6 +146,30 @@
       </div>
     </section>
 
+    <section class="card" id="projects-card">
+      <h2 class="section-title">Projects</h2>
+      <p id="projects-empty" class="empty" {% if not s.projects.empty %}hidden{% endif %}>{{ s.projects.empty_text }}</p>
+      <ul class="projects" id="projects">
+        {% for p in s.projects.rows %}
+        <li class="project {{ p.cls }}" title="{{ p.title_attr }}">
+          <span class="pj-title">{{ p.title }}</span>
+          <span class="pj-stage">{{ p.status_label }} · {{ p.stage }}</span>
+          {% if p.note %}<span class="pj-note">{{ p.note }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      <h3 class="sub-title">Made so far</h3>
+      <p id="artifacts-empty" class="empty small" {% if not s.projects.artifacts_empty %}hidden{% endif %}>{{ s.projects.artifacts_empty_text }}</p>
+      <ul class="artifacts" id="artifacts">
+        {% for a in s.projects.artifacts %}
+        <li class="artifact">
+          <p class="af-head"><b>{{ a.title }}</b> <span class="af-meta">{{ a.kind }}{% if a.project %} · {{ a.project }}{% endif %} · {{ a.day_text }}</span></p>
+          <p class="af-text">{{ a.text }}</p>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+
     <section class="card" id="keepsakes-card">
       <h2 class="section-title">Keepsakes</h2>
       <p id="keepsakes-empty" class="empty" {% if s.keepsakes %}hidden{% endif %}>no keepsakes yet.</p>
@@ -195,6 +219,10 @@
     <ul class="sleep-list" data-show="new_preferences"><template data-each="new_preferences"><li data-f="text"></li></template></ul>
   </li>
 </template>
+
+<template id="tpl-project"><li class="project" data-f-class="cls" data-f-attr="title:title_attr"><span class="pj-title" data-f="title"></span><span class="pj-stage"><span data-f="status_label"></span> · <span data-f="stage"></span></span><span class="pj-note" data-f="note" data-show="note"></span></li></template>
+
+<template id="tpl-artifact"><li class="artifact"><p class="af-head"><b data-f="title"></b> <span class="af-meta"><span data-f="kind"></span> · <span data-f="project"></span> · <span data-f="day_text"></span></span></p><p class="af-text" data-f="text"></p></li></template>
 
 <template id="tpl-self-image"><li data-f="text" data-f-attr="title:title"></li></template>
 
