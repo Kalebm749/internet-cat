@@ -620,7 +620,7 @@ class Engine:
         self.cfg.settings.update(new.settings)             # same dict object: every component sees it
         self.recent_action_vecs = deque(self.recent_action_vecs,
                                         maxlen=self.cfg.settings["repetition_penalty"]["window"])
-        self.dev.publish_config()
+        self.dev.publish_config(("settings",))
         log.info("settings reloaded; changed: %s", changed, extra={"event": "settings_reloaded",
                                                                    "extra": {"changed": changed}})
         return changed

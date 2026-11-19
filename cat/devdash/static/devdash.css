@@ -86,3 +86,10 @@ details.night { border: 1px solid var(--rule); border-radius: 6px; margin: 8px 0
 details.night > summary { padding: 6px 10px; cursor: pointer; background: color-mix(in srgb, var(--rule) 35%, transparent); }
 .night-body { padding: 4px 12px 10px; }
 #needs-charts .chart, #chart-tendencies { min-height: 230px; }
+
+/* ---- logs ---- */
+table.logs td { font-size: 12px; padding: 2px 8px; } td.lvl { font-weight: 600; }
+tr.lv-warning td.lvl { color: var(--warn); } tr.lv-error td.lvl, tr.lv-critical td.lvl { color: var(--bad); }
+tr.lv-error td, tr.lv-critical td { background: color-mix(in srgb, var(--bad) 8%, transparent); }
+details.inline { display: inline; } details.inline > summary { display: inline; cursor: pointer; color: var(--accent); font-size: 11px; }
+details.inline pre { margin: 4px 0; font-size: 11.5px; max-height: 260px; overflow: auto; white-space: pre-wrap; }

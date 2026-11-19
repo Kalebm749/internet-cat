@@ -7,6 +7,7 @@ import sqlite3
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Iterator
 
 import httpx
@@ -890,3 +891,143 @@ def world_state(cfg: Config, object_id: str = "", page: int = 1, limit: int = 50
     out["objects"] = [o for o in objs if o["area"] != "inventory"]
     out["inventory"] = [o for o in objs if o["area"] == "inventory"]
     return out
+
+
+# ---------- Logs ----------
+LEVELS = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
+_SERVICE_RE = __import__("re").compile(r"^[A-Za-z0-9_-]{1,40}$")
+
+
+def log_services(cfg: Config) -> list[str]:
+    d = cfg.log_dir
+    if not d.is_dir():
+        return []
+    return sorted({p.name.split(".jsonl")[0] for p in d.glob("*.jsonl*") if p.name.split(".jsonl")[0]})
+
+
+def _log_files(cfg: Config, service: str) -> list[Path]:
+    """The service's log files, newest first: <svc>.jsonl, <svc>.jsonl.1, <svc>.jsonl.2 ..."""
+    d = cfg.log_dir
+    files = []
+    if (d / f"{service}.jsonl").is_file():
+        files.append(d / f"{service}.jsonl")
+    rotated = sorted((p for p in d.glob(f"{service}.jsonl.*") if p.name.rsplit(".", 1)[-1].isdigit()),
+                     key=lambda p: int(p.name.rsplit(".", 1)[-1]))
+    return files + rotated
+
+
+def tail_lines(path: Path, max_lines: int, block: int = 64 * 1024) -> list[str]:
+    """The last `max_lines` lines of a file, reading from the END in blocks (log files can be big)."""
+    try:
+        size = path.stat().st_size
+        with open(path, "rb") as f:
+            data_ = b""
+            pos = size
+            while pos > 0 and data_.count(b"\n") <= max_lines:
+                step = min(block, pos)
+                pos -= step
+                f.seek(pos)
+                data_ = f.read(step) + data_
+    except OSError:
+        return []
+    lines = data_.split(b"\n")
+    if pos > 0:
+        lines = lines[1:]                  # the first piece may be a partial line
+    out = [ln.decode("utf-8", "replace") for ln in lines if ln.strip()]
+    return out[-max_lines:]
+
+
+def _parse_log_line(raw: str, service: str) -> dict:
+    import hashlib
+    try:
+        r = json.loads(raw)
+        if not isinstance(r, dict):
+            raise ValueError
+    except ValueError:                      # a stray print / traceback line
+        r = {"ts": "", "level": "?", "service": service, "tick_id": None, "event": "raw", "message": raw[:2000], "extra": {}}
+    r.setdefault("service", service)
+    r["id"] = hashlib.sha1(f"{service}|{raw}".encode()).hexdigest()[:14]
+    return r
+
+
+def read_logs(cfg: Config, service: str = "", level: str = "", tick_id: int | None = None, q: str = "",
+              limit: int | None = None, since: str = "") -> dict:
+    """Merged, filtered tail of data/logs/*.jsonl, newest first. `since` (an ISO ts) returns only
+    lines at or after it (used by the live tail)."""
+    limit = min(limit or cfg.settings["devdash"]["log_tail_lines"], 2000)
+    min_level = LEVELS.get(level.upper(), 0) if level else 0
+    ql = q.lower().strip()
+    services = log_services(cfg)
+    if service:
+        services = [service] if _SERVICE_RE.match(service) and service in services else []
+    out: list[dict] = []
+    scanned = 0
+    for svc in services:
+        got = 0
+        for path in _log_files(cfg, svc):
+            for raw in reversed(tail_lines(path, 5000)):
+                scanned += 1
+                r = _parse_log_line(raw, svc)
+                if since and (r.get("ts") or "") < since:
+                    continue
+                if min_level and LEVELS.get(str(r.get("level")).upper(), 0) < min_level:
+                    continue
+                if tick_id is not None and r.get("tick_id") != tick_id:
+                    continue
+                if ql and ql not in raw.lower():
+                    continue
+                out.append(r)
+                got += 1
+                if got >= limit:
+                    break
+            if got >= limit:
+                break
+    out.sort(key=lambda r: (r.get("ts") or "", r["id"]), reverse=True)
+    return {"lines": out[:limit], "services": log_services(cfg), "dir": str(cfg.log_dir), "scanned": scanned,
+            "newest": out[0].get("ts") if out else ""}
+
+
+# ---------- Config ----------
+def _norm_yaml(obj: Any) -> str:
+    import yaml
+    return yaml.safe_dump(obj, sort_keys=False, allow_unicode=True)
+
+
+def config_view(cfg: Config) -> dict:
+    """The config as the engine loaded it (from dev.db), compared with the files on disk now."""
+    import difflib
+    import hashlib
+    import yaml
+    with dev_db(cfg) as q:
+        loaded = q.get_config()
+        status = q.get_status()
+    files = []
+    for name in ("settings", "character", "world"):
+        path = Path(cfg.config_dir) / f"{name}.yaml"
+        item: dict[str, Any] = {"name": name, "file": f"{name}.yaml", "loaded": None, "loaded_at": None, "disk": None,
+                                "diff": "", "state": "unknown", "error": None, "applies": "live (reload_settings)" if name == "settings" else "on restart"}
+        try:
+            raw = path.read_bytes()
+            item["disk_sha"] = hashlib.sha256(raw).hexdigest()
+            item["disk"] = _norm_yaml(yaml.safe_load(raw))
+        except FileNotFoundError:
+            item["error"] = "file is missing on disk"
+        except yaml.YAMLError as e:
+            item["error"] = f"invalid YAML on disk: {e}"
+        row = loaded.get(name)
+        if row:
+            item["loaded"], item["loaded_at"] = row["content"], row["loaded_at"]
+            if item["error"]:
+                item["state"] = "invalid"
+            elif row["raw_sha"] == item.get("disk_sha"):
+                item["state"] = "same"
+            else:
+                diff = list(difflib.unified_diff(row["content"].splitlines(), (item["disk"] or "").splitlines(),
+                                                 "as loaded by the engine", f"{name}.yaml on disk now", lineterm="", n=2))
+                item["diff"] = "\n".join(diff)
+                item["state"] = "changed" if diff else "cosmetic"       # raw file differs but the values do not
+        else:
+            item["state"] = "invalid" if item["error"] else "not-loaded"
+        files.append(item)
+    return {"files": files, "engine_known": bool(loaded), "changed": [f["name"] for f in files if f["state"] == "changed"],
+            "engine_state": status.get("state")}

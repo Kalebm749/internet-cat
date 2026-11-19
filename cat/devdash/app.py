@@ -22,7 +22,7 @@ HERE = Path(__file__).parent
 NAV = [("overview", "Overview", "/"), ("ticks", "Ticks", "/ticks"), ("llm", "LLM calls", "/llm"),
        ("memory", "Memory", "/memory"), ("needs", "Needs & mood", "/needs"),
        ("behaviour", "Behaviour", "/behaviour"), ("sleep", "Sleep", "/sleep"), ("world", "World", "/world"),
-       ("playground", "Playground", "/playground")]
+       ("logs", "Logs", "/logs"), ("config", "Config", "/config"), ("playground", "Playground", "/playground")]
 SECURITY_HEADERS = {"X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
                     "X-Content-Type-Options": "nosniff"}
 
@@ -121,6 +121,17 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/world", response_class=HTMLResponse)
     def world_page(request: Request, object: str = "", page_no: int = Query(1, alias="page", ge=1)):
         return page(request, "world.html", "world", "World state", w=data.world_state(cfg, object, page_no), object=object)
+
+    @app.get("/logs", response_class=HTMLResponse)
+    def logs_page(request: Request, service: str = "", level: str = "", tick_id: int | None = None, q: str = "",
+                  limit: int = Query(300, ge=1, le=2000)):
+        f = {"service": service, "level": level, "tick_id": tick_id, "q": q, "limit": limit}
+        return page(request, "logs.html", "logs", "Logs", L=data.read_logs(cfg, service, level, tick_id, q, limit), f=f,
+                    levels=list(data.LEVELS))
+
+    @app.get("/config", response_class=HTMLResponse)
+    def config_page(request: Request):
+        return page(request, "config.html", "config", "Config", c=data.config_view(cfg))
 
     @app.get("/playground", response_class=HTMLResponse)
     def playground_page(request: Request, call_id: int | None = None):
@@ -238,6 +249,15 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/dev/world")
     def api_world(object: str = "", page_no: int = Query(1, alias="page", ge=1), limit: int = Query(50, ge=1, le=500)):
         return j(data.world_state(cfg, object, page_no, limit))
+
+    @app.get("/api/dev/logs")
+    def api_logs(service: str = "", level: str = "", tick_id: int | None = None, q: str = "", since: str = "",
+                 limit: int = Query(300, ge=1, le=2000)):
+        return j(data.read_logs(cfg, service, level, tick_id, q, limit, since))
+
+    @app.get("/api/dev/config")
+    def api_config():
+        return j(data.config_view(cfg))
 
     @app.get("/api/dev/playground/models")
     def api_pg_models():

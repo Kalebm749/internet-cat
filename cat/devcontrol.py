@@ -148,13 +148,15 @@ class DevControl:
         except Exception:
             log.warning("could not publish engine status", exc_info=True)
 
-    def publish_config(self) -> None:
-        """Record the config exactly as the engine loaded it, plus a hash of the raw files."""
+    def publish_config(self, names: tuple[str, ...] = CONFIG_FILES) -> None:
+        """Record the config exactly as the engine loaded it, plus a hash of the raw files. After a
+        live reload only `settings` is republished: character/world stay as loaded until a restart,
+        so the dashboard keeps flagging them as changed on disk."""
         if self.q is None:
             return
         cfg = self.e.cfg
         try:
-            for name in CONFIG_FILES:
+            for name in names:
                 data = getattr(cfg, name) if name != "settings" else cfg.settings
                 raw = (Path(cfg.config_dir) / f"{name}.yaml")
                 sha = hashlib.sha256(raw.read_bytes()).hexdigest() if raw.exists() else ""
