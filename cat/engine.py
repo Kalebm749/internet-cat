@@ -1,0 +1,201 @@
+"""The tick loop. One tick = world events -> brain -> narrator -> apply -> record (one DB
+transaction for the last two; LLM calls happen outside it)."""
+from __future__ import annotations
+
+import logging
+import random
+import signal
+import time
+from datetime import datetime
+from typing import Callable
+
+from cat import brain, character, clock, db, narrator
+from cat.config import Config
+from cat.db import dumps
+from cat.llm import BackendError, LLMBackend
+from cat.world import WorldState
+
+log = logging.getLogger("cat.engine")
+
+
+def _now_real() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+class Engine:
+    def __init__(self, cfg: Config, backend: LLMBackend, conn=None, rng: random.Random | None = None):
+        self.cfg = cfg
+        self.backend = backend
+        self.rng = rng or random.Random()
+        self.conn = conn or db.connect(cfg.db_path)
+        db.init_db(self.conn)
+        self.stop_requested = False
+        self._bootstrap()
+        self._load()
+
+    # ---------- state ----------
+    def _bootstrap(self) -> None:
+        if db.get_state(self.conn) is not None:
+            return
+        cfg = self.cfg
+        start = cfg.settings["sim_start"]
+        needs = character.initial_needs(cfg)
+        world = WorldState.seed(self.conn, cfg, start)
+        state = {"sim_time": start, "area": cfg.character["start_area"], "needs": needs,
+                 "mood": character.initial_mood(needs, cfg),
+                 "energy": character.energy(needs, cfg), "weather": world.weather,
+                 "tendencies": dict(cfg.character["tendencies"]), "is_asleep": False,
+                 "brain_online": True}
+        with db.transaction(self.conn):
+            world.sync(self.conn)
+            db.save_state(self.conn, state, _now_real())
+            db.set_meta(self.conn, "first_sim_time", start)
+            db.set_meta(self.conn, "brain_model", cfg.settings["brain_model"])
+
+    def _load(self) -> None:
+        self.state = db.get_state(self.conn)
+        self.state["is_asleep"] = bool(self.state["is_asleep"])
+        self.world = WorldState.load(self.conn, self.cfg, self.state["weather"])
+        self.first_dt = clock.parse(db.get_meta(self.conn, "first_sim_time"))
+        row = self.conn.execute(
+            "SELECT outcome FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT 1").fetchone()
+        self.last_outcome = row["outcome"] if row else None
+
+    # ---------- prompts (M4 replaces these with the full overview) ----------
+    def _situation(self, fired: list[dict]) -> str:
+        cfg, st = self.cfg, self.state
+        dt = clock.parse(st["sim_time"])
+        area = cfg.world["areas"][st["area"]]
+        lines = [f"It is {clock.time_label(dt)} ({clock.part_of_day(dt)}). Weather: {self.world.weather}.",
+                 f"You are in {area['name']}: {area['description']}",
+                 f"Energy: {character.energy_word(st['energy'], cfg)}. Mood: {st['mood']['word']}."]
+        for k, v in st["needs"].items():
+            lines.append(f"{character.need_label(k, cfg)}: {character.need_word(k, v, cfg)}")
+        objs = [f"{o['name']} [{', '.join(o['tags'])}]" for o in self.world.here(st["area"])]
+        lines.append("Here: " + (", ".join(objs) or "nothing"))
+        if fired:
+            lines.append("Just now: " + " ".join(e["text"] for e in fired))
+        if self.last_outcome:
+            lines.append(f"Last thing that happened: {self.last_outcome}")
+        return "\n".join(lines)
+
+    def _narrator_context(self) -> str:
+        st = self.state
+        dt = clock.parse(st["sim_time"])
+        objs = [f"{o['id']}: {o['name']} tags={o['tags']} state={o['state']}"
+                for o in self.world.in_reach(st["area"])]
+        return (f"Location: {self.cfg.world['areas'][st['area']]['name']}. "
+                f"Time: {clock.time_label(dt)}. Weather: {self.world.weather}.\nObjects:\n"
+                + "\n".join(objs))
+
+    # ---------- the tick ----------
+    def tick(self) -> dict:
+        try:
+            return self._tick()
+        except BaseException:
+            # In-memory state may be ahead of the DB after a failed transaction: reload it.
+            if self.conn.in_transaction:
+                self.conn.execute("ROLLBACK")
+            self._load()
+            raise
+
+    def _tick(self) -> dict:
+        cfg, st, s = self.cfg, self.state, self.cfg.settings
+        now = st["sim_time"]
+        dt = clock.parse(now)
+
+        # 1. world events (perceived at the start of the tick)
+        fired = self.world.roll_events(self.rng, dt, st["area"], now)
+        nudge = st["mood"].get("event_nudge", 0.0) * s["mood"]["event_decay"] \
+            + sum(e["mood"] for e in fired)
+
+        # 2+3. brain and narrator (LLM calls, outside any transaction)
+        result = None
+        online = self.backend.is_online()
+        if online:
+            try:
+                b = brain.think(self.backend, cfg, self._situation(fired))
+                n = narrator.resolve(self.backend, cfg, b["action"], self._narrator_context())
+                result = (b, n)
+            except BackendError as e:
+                log.warning("brain/narrator unavailable (%s): dozing", e)
+                online = False
+
+        # 4. apply
+        before = dict(st["needs"])
+        if result:
+            b, n = result
+            minutes = n["duration"]
+            needs = character.decay(before, minutes, cfg)
+            needs = character.apply_gains(needs, n["gains"], n["effort"], cfg)
+            feeling = b["feeling"]
+            row = {"kind": "tick", "reaction": b["reaction"], "thought": b["thought"],
+                   "action": b["action"], "intent": b["intent"], "outcome": n["outcome"],
+                   "gains": n["gains"], "effort": n["effort"], "duration": minutes,
+                   "changes": [], "rejected": []}  # effects (M3) fill these in
+        else:
+            minutes = s["doze"]["sim_minutes"]
+            needs = character.decay(before, minutes, cfg)
+            needs = character.restore(needs, s["doze"]["energy_restore"], cfg)
+            feeling = None
+            row = {"kind": "doze", "reaction": None, "thought": None, "action": None,
+                   "intent": None, "outcome": "dozing", "gains": {}, "effort": None,
+                   "duration": minutes, "changes": [], "rejected": []}
+
+        mood = character.compute_mood(needs, before, nudge, feeling, cfg)
+        new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs,
+                     "mood": mood, "energy": character.energy(needs, cfg),
+                     "weather": self.world.weather, "brain_online": online}
+
+        # 5. record: one transaction; a crash leaves the previous state intact
+        real = _now_real()
+        with db.transaction(self.conn):
+            cur = self.conn.execute(
+                "INSERT INTO ticks(kind,sim_time,real_time,area,reaction,thought,action,intent,"
+                "outcome,gains,effort,duration,changes,rejected_changes,needs_after,mood_after) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (row["kind"], now, real, st["area"], row["reaction"], row["thought"],
+                 row["action"], row["intent"], row["outcome"], dumps(row["gains"]), row["effort"],
+                 row["duration"], dumps(row["changes"]), dumps(row["rejected"]), dumps(needs),
+                 dumps(mood)))
+            tick_id = cur.lastrowid
+            for e in fired:
+                self.conn.execute("INSERT INTO events(tick_id,sim_time,area,text) VALUES(?,?,?,?)",
+                                  (tick_id, now, e["area"] or st["area"], e["text"]))
+            self.world.sync(self.conn)
+            db.save_state(self.conn, new_state, real)
+            if online:
+                db.set_meta(self.conn, "brain_last_seen", real)
+        self.state = new_state
+        if result:
+            self.last_outcome = row["outcome"]
+        return {"id": tick_id, "kind": row["kind"], "sim_time": now, "area": st["area"],
+                "action": row["action"], "outcome": row["outcome"], "mood": mood["word"],
+                "energy": new_state["energy"], "fired": [e["text"] for e in fired]}
+
+    # ---------- the loop ----------
+    def run(self, ticks: int | None = None, interval: float | None = None,
+            on_tick: Callable[[dict], None] | None = None,
+            sleep: Callable[[float], None] = time.sleep) -> int:
+        """Run until `ticks` is reached or stop() is called. Never raises on a bad tick:
+        errors are logged and the loop carries on."""
+        interval = self.cfg.settings["tick_interval_seconds"] if interval is None else interval
+        done = 0
+        while not self.stop_requested and (ticks is None or done < ticks):
+            try:
+                info = self.tick()
+                if on_tick:
+                    on_tick(info)
+            except Exception:
+                log.exception("tick failed; state reloaded, continuing")
+            done += 1
+            if interval and not self.stop_requested and (ticks is None or done < ticks):
+                sleep(interval)
+        return done
+
+    def install_signal_handlers(self) -> None:
+        def _stop(signum, frame):
+            log.info("signal %s: stopping after this tick", signum)
+            self.stop_requested = True
+        signal.signal(signal.SIGTERM, _stop)
+        signal.signal(signal.SIGINT, _stop)

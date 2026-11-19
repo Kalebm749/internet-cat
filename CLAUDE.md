@@ -27,4 +27,5 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Each tick's apply+record step is one DB transaction (`db.transaction`); LLM calls happen outside it.
 - The engine is the only DB writer; `cat/web` is read-only and never calls the LLM.
 - Everything must run and be tested with `MockBackend`; never require Ollama in tests.
+- Tick order: events roll at tick start; the action's duration then advances the clock and decays needs in the apply step.
 - Placeholder content in `config/character.yaml` / `world.yaml` — engine must work with any valid config.

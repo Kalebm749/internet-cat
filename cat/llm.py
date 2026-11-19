@@ -63,6 +63,7 @@ class MockBackend(LLMBackend):
         self.fail_next = 0
         self.handlers: dict[str, Callable[[list[dict], dict], dict]] = {}
         self.calls: list[tuple[str, str]] = []  # (task, model)
+        self.need_ids: list[str] = []  # set by the engine so mock gains name real needs
 
     def is_online(self) -> bool:
         return self.online
@@ -95,8 +96,10 @@ class MockBackend(LLMBackend):
                     "intent": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"]),
                     "wants_sleep": False}
         if task == "narrator":
+            gains = {n: r.choice(["0", "+", "+", "++"]) for n in r.sample(
+                self.need_ids, min(2, len(self.need_ids)))}
             return {"outcome": "Nothing much happens.",
-                    "gains": {}, "effort": r.choice(["low", "medium"]),
+                    "gains": gains, "effort": r.choice(["low", "medium"]),
                     "duration": r.choice([10, 20, 30]), "changes": []}
         if task == "consolidate":
             return {"memories": [{"text": "A quiet day at home.", "importance": 0.4}],

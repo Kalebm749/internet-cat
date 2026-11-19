@@ -51,7 +51,8 @@ REQUIRED_SETTINGS = [
     "db_path", "tick_interval_seconds", "sim_start", "sim_minutes_per_tick_default",
     "sim_minutes_min", "sim_minutes_max", "phases", "gain_values", "effort_energy_cost",
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
-    "sleep", "recall", "notable",
+    "sleep", "recall", "notable", "default_need_words", "energy_words",
+    "events_max_per_tick", "max_objects_per_area",
 ]
 
 
