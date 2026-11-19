@@ -315,6 +315,7 @@ class Engine:
                 self.memory.mark_recalled([m["id"] for m in recalled], now)
             if sleep_start:
                 db.set_meta(self.conn, "sleep_started", now)
+                db.set_meta(self.conn, "sleep_tick_id", tick_id)
                 db.set_meta(self.conn, "sleep_pending", 1)
             if wake:
                 db.set_meta(self.conn, "sleep_started", "")

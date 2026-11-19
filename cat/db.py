@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS preferences(
   reason TEXT, updated_at TEXT);
 
 CREATE TABLE IF NOT EXISTS sleep_log(
-  id INTEGER PRIMARY KEY, sim_date TEXT, summary TEXT,
+  id INTEGER PRIMARY KEY, sim_date TEXT, summary TEXT, tick_id INT,   -- tick at which the sleep began
   tendency_changes JSON, new_memories JSON, new_preferences JSON);
 
 CREATE INDEX IF NOT EXISTS idx_ticks_kind ON ticks(kind);

@@ -45,7 +45,7 @@ Every tuning number. Groups:
 - **Mood**: `mood.*` weights, `feeling_values`, word thresholds. `default_need_words` / `energy_words` map values to words. `events_max_per_tick`, `max_objects_per_area` cap events.
 - **Doze/sleep**: `doze.*`, `sleep.*` (thresholds, restore rate, `tendency_max_step`).
 - **Memory**: `notable.*` (what counts as a notable tick, importance of short-term memories), `recall`, `recency_half_life_sim_hours`, `short_term_shown`, `notable`, `long_term_cap`.
-- **Web**: `web_port`, `diary_page_size`, `keepsakes_first_page`.
+- **Web**: `web_port`, `diary_page_size`, `keepsakes_first_page`, and `web_ui.*` (poll interval, when a need counts as low/critical, trend and chip thresholds, keepsake dot thresholds, page-size limits).
 - `db_path`, `backup_keep`.
 
 ## Effects: how narrator changes are validated (`cat/effects.py`)
@@ -74,3 +74,9 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 - When the brain returns, the first prompt says the creature just came round from a doze (and omits the stale "last outcome").
 - A creature that is exhausted at night still falls asleep while the brain is offline; the sleep cycle waits (see Sleep).
 - If a tick raises an unexpected error, the state is reloaded from the DB and the loop waits at least `error_backoff_seconds` before the next one.
+
+## Website (`cat/web/`)
+- `character.yaml` optional fields used by the page: `portrait` (default `img/cat.png`; `<name>-asleep.<ext>` next to it is swapped in while asleep/dozing if the file exists), per-need `label` and `words`, `tendency_labels`, `pronoun`.
+- `GET /` is a complete server-rendered snapshot (works without JS; "read older pages" and "more keepsakes" are plain links). `journal.js` polls `GET /api/state` every `web_ui.poll_seconds` and adds only new entries. `GET /api/diary?before=<tick id>&limit=` and `GET /api/keepsakes?offset=&limit=` page through history.
+- Diary entries are keyed (`t<tick id>`, `d<first doze tick id>`, `s<sleep_log id>`). Consecutive dozing ticks collapse into one entry; asleep ticks are hidden (the "Last night…" card stands for them). `sleep_log.tick_id` is the tick where the sleep began, which is where the card sits.
+- With an empty or missing database the page shows the empty states, built from the config.

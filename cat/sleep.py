@@ -234,7 +234,7 @@ def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time
            real_time: str, sim_date: str | None = None) -> None:
     """Apply a plan. Call inside a transaction (the caller also saves the new tendencies).
     `sim_date` is the date the sleep began (the website's "last night")."""
-    from cat.db import set_meta
+    from cat.db import get_meta, set_meta
     sl = cfg.settings["sleep"]
     for m in p.memories:
         memory.save(m, "long")
@@ -255,9 +255,9 @@ def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time
         "DELETE FROM preferences WHERE id NOT IN (SELECT id FROM preferences "
         "ORDER BY abs(valence) DESC, id DESC LIMIT ?)", (sl["max_preferences_total"],))
     conn.execute(
-        "INSERT INTO sleep_log(sim_date,summary,tendency_changes,new_memories,new_preferences) "
-        "VALUES(?,?,?,?,?)",
-        ((sim_date or sim_time[:10]), p.summary, dumps(p.tendency_changes), dumps([m["text"] for m in p.memories]),
+        "INSERT INTO sleep_log(sim_date,summary,tick_id,tendency_changes,new_memories,"
+        "new_preferences) VALUES(?,?,?,?,?,?)",
+        ((sim_date or sim_time[:10]), p.summary, int(get_meta(conn, "sleep_tick_id", "0") or 0), dumps(p.tendency_changes), dumps([m["text"] for m in p.memories]),
          dumps([{"subject": x["subject"], "valence": x["valence"], "reason": x["reason"]}
                 for x in p.preferences])))
     set_meta(conn, "sleep_pending", 0)

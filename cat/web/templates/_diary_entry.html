@@ -1,0 +1,27 @@
+{# One diary entry. Server-rendered here; journal.js clones the matching <template> in index.html. #}
+{% if e.type == "tick" %}
+<li class="entry entry-tick" data-key="{{ e.key }}" data-id="{{ e.id }}" data-day="{{ e.day_number }}" data-day-label="{{ e.day_label }}">
+  {% for ev in e.events %}<p class="margin-note"><span class="leaf" aria-hidden="true"></span>{{ ev }}</p>{% endfor %}
+  <p class="entry-meta"><span class="time">{{ e.time_label }}</span> · <span class="area">{{ e.area }}</span></p>
+  <p class="entry-action">{{ e.action }}</p>
+  <p class="entry-outcome">{{ e.outcome }}</p>
+  {% if e.reaction %}<p class="entry-reaction">“{{ e.reaction }}”</p>{% endif %}
+  {% if e.need_changes or e.world_changes %}
+  <p class="entry-tags">
+    {% for c in e.need_changes %}<span class="chip chip-need {{ c.dir }}">{{ c.label }} <span aria-hidden="true">{{ c.symbol }}</span><span class="sr">{{ c.dir }}</span></span>{% endfor %}
+    {% for w in e.world_changes %}<span class="chip chip-world">{{ w.text }}</span>{% endfor %}
+  </p>
+  {% endif %}
+</li>
+{% elif e.type == "doze" %}
+<li class="entry entry-doze" data-key="{{ e.key }}" data-id="{{ e.id }}" data-day="{{ e.day_number }}" data-day-label="{{ e.day_label }}">
+  <p class="doze-line">{{ e.text }}</p>
+</li>
+{% elif e.type == "sleep" %}
+<li class="entry entry-sleep" data-key="{{ e.key }}" data-id="{{ e.id }}" data-day="{{ e.day_number }}" data-day-label="{{ e.day_label }}">
+  <h4 class="sleep-title">Last night…</h4>
+  <p class="sleep-summary">{{ e.summary }}</p>
+  {% if e.tendency_changes %}<ul class="sleep-list">{% for t in e.tendency_changes %}<li>{{ t.text }} <span aria-hidden="true">{{ t.symbol }}</span><span class="sr">({{ t.dir }})</span></li>{% endfor %}</ul>{% endif %}
+  {% if e.new_preferences %}<ul class="sleep-list">{% for p in e.new_preferences %}<li>{{ p.text }}</li>{% endfor %}</ul>{% endif %}
+</li>
+{% endif %}

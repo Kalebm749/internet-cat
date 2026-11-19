@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ s.creature.name }}’s journal</title>
+  <link rel="preload" href="/static/fonts/Lora-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/Fraunces-500.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/css/site.css">
+  <script src="/static/js/journal.js" defer></script>
+</head>
+<body class="{{ s.time.phase }} state-{{ s.status.state }}" data-poll="{{ s.poll_seconds }}"
+      data-latest="{{ s.latest_tick_id }}">
+<div id="banner" class="banner" role="status" hidden>can’t reach the journal right now, retrying…</div>
+
+<header class="site-header">
+  <div class="header-inner">
+    <h1 class="creature-name" data-f="creature.name">{{ s.creature.name }}</h1>
+    <p class="header-mid">
+      <span data-f="location.name">{{ s.location.name }}</span> ·
+      <time data-f="time.label">{{ s.time.label }}</time>
+      (<span data-f="time.part">{{ s.time.part }}</span>)
+    </p>
+    <p class="header-status">
+      <span class="pill" id="pill"><i class="dot" aria-hidden="true"></i><span data-f="status.pill">{{ s.status.pill }}</span></span>
+      <span class="brain" id="brain" title="model: {{ s.status.model }}" data-f="status.brain_text" data-f-attr="title:status.model_title">{{ s.status.brain_text }}</span>
+    </p>
+  </div>
+</header>
+
+<main class="layout">
+
+  <aside class="col col-left" aria-label="How {{ s.creature.name }} is">
+    <section class="card portrait-card">
+      <figure class="portrait">
+        <div class="frame">
+          <img id="portrait-img" src="{{ s.portrait.asleep_src if s.status.state != 'awake' and s.portrait.asleep_src else s.portrait.src }}"
+               data-awake="{{ s.portrait.src }}" data-asleep="{{ s.portrait.asleep_src or '' }}"
+               alt="{{ s.creature.name }}, {{ s.creature.species }}" width="240" height="240">
+          <span class="zzz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
+        </div>
+        <figcaption>
+          <span id="portrait-caption" data-f="portrait.caption">{{ s.portrait.caption }}</span>
+          <span class="doze-caption">dozing… (brain offline)</span>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card" id="mood-card">
+      <h2 class="section-title">Mood &amp; energy</h2>
+      <p class="mood-word" data-f="mood.word">{{ s.mood.word }}</p>
+      <p class="mood-desc" data-f="mood.description">{{ s.mood.description }}</p>
+      <div class="pad" id="mood-pad" role="img" aria-label="{{ s.mood.aria }}" data-f-attr="aria-label:mood.aria">
+        <i class="pad-dot" id="pad-dot" style="left: {{ s.mood.pad_x }}%; top: {{ s.mood.pad_y }}%"></i>
+        <span class="q q-tl">tense</span><span class="q q-tr">excited</span>
+        <span class="q q-bl">low</span><span class="q q-br">calm</span>
+      </div>
+      <div class="energy">
+        <span class="n-label">energy</span>
+        <span class="n-word" data-f="energy.word">{{ s.energy.word }}</span>
+        <div class="bar dusk" id="energy-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="{{ s.energy.value }}" aria-label="{{ s.energy.aria }}"><i style="width: {{ s.energy.value }}%"></i></div>
+      </div>
+    </section>
+
+    <section class="card" id="needs-card">
+      <h2 class="section-title">Needs</h2>
+      <ul class="needs" id="needs">
+        {% for n in s.needs %}
+        <li class="need {{ n.cls }}" title="{{ n.title }}">
+          <span class="n-label">{{ n.label }}</span>
+          <span class="n-word">{{ n.word }}</span>
+          <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ n.value }}" aria-label="{{ n.aria }}"><i style="width: {{ n.value }}%"></i></div>
+          <span class="n-trend {{ n.trend }}" aria-hidden="true">{{ n.trend_symbol }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+  </aside>
+
+  <section class="col col-centre" aria-label="Diary">
+    <div class="card diary-card">
+      <h2 class="section-title">Diary</h2>
+      <button type="button" id="new-pill" class="new-pill" hidden></button>
+      <p id="diary-empty" class="empty" {% if s.diary %}hidden{% endif %}>the journal is empty. {{ s.creature.name | lower }} hasn’t woken up yet.</p>
+      {% if before %}<p class="newer"><a href="/">← back to the newest pages</a></p>{% endif %}
+      <ol id="diary" class="diary" data-next-before="{{ s.diary_next_before or '' }}">
+        {% set ns = namespace(day=None) %}
+        {% for e in s.diary %}
+          {% if e.day_number != ns.day %}
+            {% set ns.day = e.day_number %}
+            <li class="day-header" data-day="{{ e.day_number }}"><h3>{{ e.day_label }}</h3></li>
+          {% endif %}
+          {% include "_diary_entry.html" %}
+        {% endfor %}
+      </ol>
+      <p class="older-wrap" id="older-wrap" {% if not s.diary_next_before %}hidden{% endif %}>
+        <a id="older" class="older" href="/?before={{ s.diary_next_before }}">read older pages</a>
+      </p>
+    </div>
+  </section>
+
+  <aside class="col col-right" aria-label="About {{ s.creature.name }}">
+    <section class="card" id="about-card">
+      <h2 class="section-title">About {{ s.creature.name }}</h2>
+      <ul class="chips" id="traits">
+        {% for t in s.creature.core_traits %}<li class="chip-trait">{{ t }}</li>{% endfor %}
+      </ul>
+      <h3 class="sub-title">Tendencies</h3>
+      <ul class="tendencies" id="tendencies">
+        {% for t in s.tendencies %}
+        <li class="tendency {{ t.dir }}" role="img" aria-label="{{ t.aria }}">
+          <span class="t-name">{{ t.label }}</span>
+          <div class="slider">
+            <span class="t-end">{{ t.low_label }}</span>
+            <div class="track"><i class="ghost" style="left: {{ t.prev_pct }}%"></i><i class="dot" style="left: {{ t.pct }}%"></i></div>
+            <span class="t-end">{{ t.high_label }}</span>
+          </div>
+          <span class="t-delta" aria-hidden="true">{{ t.symbol }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="prefs" id="prefs">
+        <div>
+          <h3 class="sub-title">Loves</h3>
+          <ul class="pref-list loves" id="loves">
+            {% for p in s.preferences.loves %}<li title="{{ p.reason }}"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5S2 9.6 2 5.8C2 3.9 3.4 2.6 5 2.6c1.2 0 2.3.7 3 1.8.7-1.1 1.8-1.8 3-1.8 1.6 0 3 1.3 3 3.2 0 3.8-6 7.7-6 7.7z"/></svg>{{ p.subject }}</li>{% endfor %}
+          </ul>
+          <p class="empty small" id="loves-empty" {% if s.preferences.loves %}hidden{% endif %}>nothing yet.</p>
+        </div>
+        <div>
+          <h3 class="sub-title">Dislikes</h3>
+          <ul class="pref-list dislikes" id="dislikes">
+            {% for p in s.preferences.dislikes %}<li title="{{ p.reason }}"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>{{ p.subject }}</li>{% endfor %}
+          </ul>
+          <p class="empty small" id="dislikes-empty" {% if s.preferences.dislikes %}hidden{% endif %}>nothing yet.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="keepsakes-card">
+      <h2 class="section-title">Keepsakes</h2>
+      <p id="keepsakes-empty" class="empty" {% if s.keepsakes %}hidden{% endif %}>no keepsakes yet.</p>
+      <ul class="keepsakes" id="keepsakes">
+        {% for k in s.keepsakes %}
+        <li class="keepsake" data-id="{{ k.id }}">
+          <p class="k-text">{{ k.text }}</p>
+          <p class="k-meta"><span>Day {{ k.day_number }}</span><span class="dots" role="img" aria-label="importance {{ k.dots }} of 3">{% for i in range(3) %}<i class="{{ 'on' if i < k.dots else '' }}"></i>{% endfor %}</span></p>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="more-wrap" id="more-wrap" {% if not s.keepsakes_has_more %}hidden{% endif %}>
+        <a id="more-keepsakes" class="older" href="/?all_keepsakes=1">more keepsakes</a>
+      </p>
+    </section>
+  </aside>
+</main>
+
+<noscript><p class="noscript">This page is a snapshot. Turn on JavaScript for live updates.</p></noscript>
+
+{# ---- templates cloned by journal.js (same markup as the server-rendered pieces) ---- #}
+<template id="tpl-day-header"><li class="day-header" data-f-attr="data-day:day_number"><h3 data-f="day_label"></h3></li></template>
+
+<template id="tpl-entry-tick">
+  <li class="entry entry-tick" data-f-attr="data-key:key;data-id:id;data-day:day_number">
+    <template data-each="events"><p class="margin-note"><span class="leaf" aria-hidden="true"></span><span data-f="$"></span></p></template>
+    <p class="entry-meta"><span class="time" data-f="time_label"></span> · <span class="area" data-f="area"></span></p>
+    <p class="entry-action" data-f="action"></p>
+    <p class="entry-outcome" data-f="outcome"></p>
+    <p class="entry-reaction" data-f="reaction_quoted" data-show="reaction"></p>
+    <p class="entry-tags" data-show-any="need_changes,world_changes">
+      <template data-each="need_changes"><span class="chip chip-need" data-f-class="dir"><span data-f="label"></span> <span aria-hidden="true" data-f="symbol"></span><span class="sr" data-f="dir"></span></span></template>
+      <template data-each="world_changes"><span class="chip chip-world" data-f="text"></span></template>
+    </p>
+  </li>
+</template>
+
+<template id="tpl-entry-doze">
+  <li class="entry entry-doze" data-f-attr="data-key:key;data-id:id;data-day:day_number"><p class="doze-line" data-f="text"></p></li>
+</template>
+
+<template id="tpl-entry-sleep">
+  <li class="entry entry-sleep" data-f-attr="data-key:key;data-id:id;data-day:day_number">
+    <h4 class="sleep-title">Last night…</h4>
+    <p class="sleep-summary" data-f="summary"></p>
+    <ul class="sleep-list" data-show="tendency_changes"><template data-each="tendency_changes"><li><span data-f="text"></span> <span aria-hidden="true" data-f="symbol"></span><span class="sr" data-f="dir"></span></li></template></ul>
+    <ul class="sleep-list" data-show="new_preferences"><template data-each="new_preferences"><li data-f="text"></li></template></ul>
+  </li>
+</template>
+
+<template id="tpl-need">
+  <li class="need" data-f-class="cls" data-f-attr="title:title">
+    <span class="n-label" data-f="label"></span><span class="n-word" data-f="word"></span>
+    <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-f-attr="aria-valuenow:value;aria-label:aria"><i data-f-style="width:value%"></i></div>
+    <span class="n-trend" aria-hidden="true" data-f-class="trend" data-f="trend_symbol"></span>
+  </li>
+</template>
+
+<template id="tpl-tendency">
+  <li class="tendency" role="img" data-f-class="dir" data-f-attr="aria-label:aria">
+    <span class="t-name" data-f="label"></span>
+    <div class="slider"><span class="t-end" data-f="low_label"></span>
+      <div class="track"><i class="ghost" data-f-style="left:prev_pct%"></i><i class="dot" data-f-style="left:pct%"></i></div>
+      <span class="t-end" data-f="high_label"></span></div>
+    <span class="t-delta" aria-hidden="true" data-f="symbol"></span>
+  </li>
+</template>
+
+<template id="tpl-love"><li data-f-attr="title:reason"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5S2 9.6 2 5.8C2 3.9 3.4 2.6 5 2.6c1.2 0 2.3.7 3 1.8.7-1.1 1.8-1.8 3-1.8 1.6 0 3 1.3 3 3.2 0 3.8-6 7.7-6 7.7z"/></svg><span data-f="subject"></span></li></template>
+<template id="tpl-dislike"><li data-f-attr="title:reason"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg><span data-f="subject"></span></li></template>
+<template id="tpl-trait"><li class="chip-trait" data-f="$"></li></template>
+
+<template id="tpl-keepsake">
+  <li class="keepsake" data-f-attr="data-id:id">
+    <p class="k-text" data-f="text"></p>
+    <p class="k-meta"><span data-f="day_text"></span><span class="dots" role="img" data-f-attr="aria-label:dots_aria"><i data-f-class="dot1"></i><i data-f-class="dot2"></i><i data-f-class="dot3"></i></span></p>
+  </li>
+</template>
+</body>
+</html>
