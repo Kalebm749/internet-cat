@@ -1,4 +1,6 @@
-# Internet Cat: Creature Architecture (v0.4)
+# Internet Cat: Creature Architecture (v0.5)
+
+> **Revision (closed moves).** Sections 4–5 below describe the first design, where the creature wrote free-text actions and the narrator judged their effect. That has changed: the brain now **picks a move from a menu built by code** (`config/moves.yaml`), code decides each move's gains, effort, duration and world change, and the narrator only writes prose. Long moves run as **activities** (carry ticks with no LLM calls, interrupted by events or a newly empty need); sleep also finds **habits** that the brain hears as "you tend to…". Principles 1–4 and 8 stand. `behavior-guide.md` §3 and `server-architecture.md` §8–9 describe the system as built.
 
 A framework for a conscious entity that lives in a simulated world. It thinks with an LLM, while plain code tracks time, needs and rules. Inspired by pinos.world. Pino's internals aren't public, so this is our own design.
 
@@ -19,7 +21,7 @@ Related docs: `server-architecture.md` (how it is built and deployed, including 
 2. **No assumed form.** Nothing in the code, config or docs assumes a species, body or appearance. A self-image, if one forms, is learned and revisable (§7).
 3. **Actions aren't predefined.** The creature can do anything that makes sense in its situation. There's no fixed action menu.
 4. **Open actions, closed effects.** Actions are freeform, but they can only change the world through a small, fixed set of state changes that code checks (see §5). This keeps consequences persistent and stops things appearing out of nowhere.
-5. **The actor never grades itself.** The creature decides what to do. A separate, personality-free narrator decides what happened and how it affected needs.
+5. **The actor never grades itself.** The creature chooses a move. Code decides what the move does to needs and the world; a separate, personality-free narrator only describes the result. The menu is never ranked or marked by need.
 6. **The LLM describes, code calculates.** LLMs return words and coarse buckets. Code turns those into numbers, clamps them and applies them.
 7. **The LLM gets a situation, not instructions.** The brain receives an overview of its world and inner state, not "choose one of these options."
 8. **Needs shape the prompt, not the choice.** Need levels become words in the brain's prompt, and only the most pressing ones are shown. Code never picks, suggests or ranks actions by need, and the brain may still do anything. Actions change needs only through the narrator's outcome buckets (which only add); drains come from the world (decay, events, repetition, dislikes). Energy is a separate resource: effort spends it, sleep restores it.
