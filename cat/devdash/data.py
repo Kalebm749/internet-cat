@@ -369,3 +369,98 @@ def enqueue_command(cfg: Config, command: str, args: dict | None) -> int:
 def recent_commands(cfg: Config, limit: int = 20, offset: int = 0) -> list[dict]:
     with dev_db(cfg) as q:
         return q.recent(limit, offset)
+
+
+# ---------- LLM calls ----------
+LLM_COLS = ("id, tick_id, kind, model, attempt, valid_json, error, prompt_tokens, completion_tokens, "
+            "load_ms, prompt_eval_ms, eval_ms, total_ms, started_at, (system_prompt IS NOT NULL) AS has_prompts")
+
+
+def _llm_where(f: dict) -> tuple[str, list]:
+    where, args = [], []
+    if f.get("kind"):
+        where.append("kind = ?"); args.append(f["kind"])
+    if f.get("model"):
+        where.append("model = ?"); args.append(f["model"])
+    if f.get("valid") == "valid":
+        where.append("valid_json = 1 AND error IS NULL")
+    elif f.get("valid") == "invalid":
+        where.append("(valid_json = 0 OR error IS NOT NULL)")
+    if f.get("errors"):
+        where.append("error IS NOT NULL")
+    if f.get("slow_ms") is not None:
+        where.append("total_ms > ?"); args.append(f["slow_ms"])
+    if f.get("tick_id") is not None:
+        where.append("tick_id = ?"); args.append(f["tick_id"])
+    return ((" WHERE " + " AND ".join(where)) if where else ""), args
+
+
+def llm_list(cfg: Config, f: dict, page: int = 1, limit: int | None = None) -> dict:
+    limit = min(limit or cfg.settings["devdash"]["page_size"], 500)
+    page = max(1, page)
+    w, args = _llm_where(f)
+    with game_db(cfg) as conn:
+        if conn is None:
+            return {"items": [], "total": 0, "page": page, "limit": limit, "pages": 1, "kinds": [], "models": []}
+        total = one(conn, f"SELECT COUNT(*) n FROM llm_calls{w}", *args)["n"]
+        items = rows(conn, f"SELECT {LLM_COLS} FROM llm_calls{w} ORDER BY id DESC LIMIT ? OFFSET ?",
+                     *args, limit, (page - 1) * limit)
+        kinds = [r[0] for r in conn.execute("SELECT DISTINCT kind FROM llm_calls ORDER BY kind")]
+        models = [r[0] for r in conn.execute("SELECT DISTINCT model FROM llm_calls ORDER BY model")]
+    for it in items:
+        it["status"] = "error" if it["error"] else ("ok" if it["valid_json"] else "invalid JSON")
+    return {"items": items, "total": total, "page": page, "limit": limit,
+            "pages": max(1, math.ceil(total / limit)), "kinds": kinds, "models": models}
+
+
+def llm_detail(cfg: Config, call_id: int) -> dict | None:
+    with game_db(cfg) as conn:
+        if conn is None:
+            return None
+        c = one(conn, "SELECT * FROM llm_calls WHERE id=?", call_id)
+        if c is None:
+            return None
+        c = _llm_view(c)
+        c["has_prompts"] = c["system_prompt"] is not None
+        c["siblings"] = rows(conn, "SELECT id, attempt, valid_json, error, total_ms FROM llm_calls "
+                                   "WHERE tick_id=? AND kind=? ORDER BY id", c["tick_id"], c["kind"])
+        return c
+
+
+def llm_series(cfg: Config, kind: str = "", model: str = "", x: str = "tick", buckets: int = 60) -> dict:
+    """Latency (p50/p95), tokens and invalid-JSON rate, bucketed over tick number or real time."""
+    out: dict[str, Any] = {"x": [], "p50": [], "p95": [], "tokens_in": [], "tokens_out": [], "invalid": [],
+                           "n": [], "axis": x}
+    f = {"kind": kind, "model": model}
+    w, args = _llm_where(f)
+    with game_db(cfg) as conn:
+        if conn is None:
+            return out
+        recs = rows(conn, f"SELECT id, tick_id, started_at, total_ms, prompt_tokens, completion_tokens, valid_json, error "
+                          f"FROM llm_calls{w} ORDER BY id LIMIT 50000", *args)
+    if not recs:
+        return out
+    buckets = max(1, min(buckets, cfg.settings["devdash"]["max_series_points"]))
+    if x == "time":
+        for r in recs:
+            r["_x"] = datetime.fromisoformat(r["started_at"]).timestamp()
+    else:
+        for r in recs:
+            r["_x"] = float(r["tick_id"])
+    lo, hi = min(r["_x"] for r in recs), max(r["_x"] for r in recs)
+    width = max((hi - lo) / buckets, 1.0)
+    n_buckets = buckets if width > 1.0 else int((hi - lo) // width) + 1      # never more than asked for
+    groups: dict[int, list[dict]] = {}
+    for r in recs:
+        groups.setdefault(min(int((r["_x"] - lo) // width), n_buckets - 1), []).append(r)
+    for k in sorted(groups):
+        g = groups[k]
+        ms = [r["total_ms"] for r in g if r["total_ms"] is not None]
+        out["x"].append(lo + k * width)
+        out["p50"].append(r1(percentile(ms, 50)))
+        out["p95"].append(r1(percentile(ms, 95)))
+        out["tokens_in"].append(r1(mean([r["prompt_tokens"] for r in g if r["prompt_tokens"] is not None])))
+        out["tokens_out"].append(r1(mean([r["completion_tokens"] for r in g if r["completion_tokens"] is not None])))
+        out["invalid"].append(round(100 * sum(1 for r in g if (not r["valid_json"]) or r["error"]) / len(g), 1))
+        out["n"].append(len(g))
+    return out

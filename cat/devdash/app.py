@@ -14,12 +14,13 @@ from fastapi.templating import Jinja2Templates
 
 from cat import logs
 from cat.config import Config, load_config
-from cat.devdash import auth, data
+from cat.devdash import auth, data, playground
 from cat.devqueue import CommandError
 
 HERE = Path(__file__).parent
 
-NAV = [("overview", "Overview", "/"), ("ticks", "Ticks", "/ticks")]
+NAV = [("overview", "Overview", "/"), ("ticks", "Ticks", "/ticks"), ("llm", "LLM calls", "/llm"),
+       ("playground", "Playground", "/playground")]
 SECURITY_HEADERS = {"X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
                     "X-Content-Type-Options": "nosniff"}
 
@@ -81,6 +82,43 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             raise HTTPException(404, f"no tick {tick_id}")
         return page(request, "tick.html", "ticks", f"Tick {tick_id}", d=d)
 
+    @app.get("/llm", response_class=HTMLResponse)
+    def llm_page(request: Request, kind: str = "", model: str = "", valid: str = "", errors: int = 0,
+                 slow_ms: int | None = None, tick_id: int | None = None, page_no: int = Query(1, alias="page", ge=1)):
+        f = {"kind": kind, "model": model, "valid": valid, "errors": errors, "slow_ms": slow_ms, "tick_id": tick_id}
+        return page(request, "llm.html", "llm", "LLM calls", t=data.llm_list(cfg, f, page_no), f=f)
+
+    @app.get("/llm/{call_id}", response_class=HTMLResponse)
+    def llm_call_page(request: Request, call_id: int):
+        c = data.llm_detail(cfg, call_id)
+        if c is None:
+            raise HTTPException(404, f"no LLM call {call_id}")
+        return page(request, "llm_call.html", "llm", f"LLM call {call_id}", c=c)
+
+    @app.get("/playground", response_class=HTMLResponse)
+    def playground_page(request: Request, call_id: int | None = None):
+        src = data.llm_detail(cfg, call_id) if call_id is not None else None
+        if call_id is not None and src is None:
+            raise HTTPException(404, f"no LLM call {call_id}")
+        models = [m["name"] for m in data.ollama_info(cfg)["installed"]]
+        return page(request, "playground.html", "playground", "Playground", src=src, models=models,
+                    configured=[cfg.settings[k] for k in ("brain_model", "narrator_model", "sleep_model")],
+                    runs=playground.list_runs(cfg, 15))
+
+    @app.get("/playground/runs", response_class=HTMLResponse)
+    def playground_runs_page(request: Request):
+        return page(request, "playground_runs.html", "playground", "Playground runs", runs=playground.list_runs(cfg, 200))
+
+    @app.get("/playground/groups/{group_id}", response_class=HTMLResponse)
+    def playground_group_page(request: Request, group_id: str):
+        runs = playground.group_runs(cfg, group_id)
+        if not runs:
+            raise HTTPException(404, "no such playground group")
+        src_id = runs[0]["source_call_id"]
+        src = data.llm_detail(cfg, src_id) if src_id else None
+        return page(request, "playground_group.html", "playground", "Playground compare", runs=runs, src=src,
+                    diff=playground.diff_keys)
+
     # ---------- JSON API (/api/dev/...) ----------
     def j(payload: Any, status: int = 200) -> JSONResponse:
         return JSONResponse(payload, status_code=status)
@@ -125,6 +163,55 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         except CommandError as e:
             raise HTTPException(422, str(e))
         return j({"id": cid, "status": "pending"}, 202)
+
+    @app.get("/api/dev/llm")
+    def api_llm(kind: str = "", model: str = "", valid: str = "", errors: int = 0, slow_ms: int | None = None,
+                tick_id: int | None = None, page_no: int = Query(1, alias="page", ge=1), limit: int = Query(50, ge=1, le=500)):
+        f = {"kind": kind, "model": model, "valid": valid, "errors": errors, "slow_ms": slow_ms, "tick_id": tick_id}
+        return j(data.llm_list(cfg, f, page_no, limit))
+
+    @app.get("/api/dev/llm/series")
+    def api_llm_series(kind: str = "", model: str = "", x: str = Query("tick", pattern="^(tick|time)$"),
+                       buckets: int = Query(60, ge=1, le=2000)):
+        return j(data.llm_series(cfg, kind, model, x, buckets))
+
+    @app.get("/api/dev/llm/{call_id}")
+    def api_llm_call(call_id: int):
+        c = data.llm_detail(cfg, call_id)
+        if c is None:
+            raise HTTPException(404, f"no LLM call {call_id}")
+        return j(c)
+
+    @app.get("/api/dev/playground/models")
+    def api_pg_models():
+        info = data.ollama_info(cfg)
+        return j({"reachable": info["reachable"], "models": [m["name"] for m in info["installed"]], "error": info["error"]})
+
+    @app.get("/api/dev/playground/runs")
+    def api_pg_runs(limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)):
+        return j({"items": playground.list_runs(cfg, limit, offset)})
+
+    @app.get("/api/dev/playground/runs/{run_id}")
+    def api_pg_run(run_id: int):
+        r = playground.get_run(cfg, run_id)
+        if r is None:
+            raise HTTPException(404, f"no playground run {run_id}")
+        return j(r)
+
+    @app.post("/api/dev/playground/run")
+    def api_pg_run_post(body: dict):
+        """Replay a prompt on 1-3 models. Never applied to the world; saved to dev.db for comparison."""
+        try:
+            req = playground.validate(body)
+        except playground.PlaygroundError as e:
+            raise HTTPException(422, str(e))
+        if not playground.LOCK.acquire(blocking=False):
+            raise HTTPException(409, "another playground run is in progress (Ollama serves one request at a time)")
+        try:
+            result = playground.run(cfg, req)
+        finally:
+            playground.LOCK.release()
+        return j(result)
 
     return app
 

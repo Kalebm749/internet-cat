@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import block, pill, ms %}
+{% block content %}
+<section class="card">
+  <div class="titlebar">
+    <h2>LLM call #{{ c.id }} {{ pill(c.status, 'ok' if c.status == 'ok' else 'bad') }}</h2>
+    <span class="spacer"></span>
+    {% if c.has_prompts %}<a class="btn" href="/playground?call_id={{ c.id }}">Open in playground</a>
+    {% else %}<span class="dim small">no playground: prompts were not stored (trace_level summary)</span>{% endif %}
+    <a class="btn" href="/llm">all calls</a>
+  </div>
+  <table class="kv">
+    <tr><th>tick</th><td><a href="/ticks/{{ c.tick_id }}">#{{ c.tick_id }}</a></td></tr>
+    <tr><th>kind · model · attempt</th><td><b>{{ c.kind }}</b> · <span class="mono">{{ c.model }}</span> · attempt {{ c.attempt }}{% for s in c.siblings if s.id != c.id %} · <a href="/llm/{{ s.id }}">attempt {{ s.attempt }}</a>{% endfor %}</td></tr>
+    <tr><th>started</th><td>{{ c.started_at }}</td></tr>
+    <tr><th>tokens in / out</th><td>{{ c.prompt_tokens if c.prompt_tokens is not none else '–' }} / {{ c.completion_tokens if c.completion_tokens is not none else '–' }}</td></tr>
+    <tr><th>timings</th><td>load {{ ms(c.load_ms) }} · prompt eval {{ ms(c.prompt_eval_ms) }} · generation {{ ms(c.eval_ms) }} · <b>total {{ ms(c.total_ms) }}</b></td></tr>
+    <tr><th>options</th><td class="mono">{{ c.options|tojson }}</td></tr>
+    {% if c.error %}<tr><th>error</th><td class="bad">{{ c.error }}</td></tr>{% endif %}
+  </table>
+  {{ block('call-sys', 'System prompt', c.system_prompt) }}
+  {{ block('call-user', 'User prompt', c.user_prompt, open=true) }}
+  {{ block('call-schema', 'JSON schema', (c.schema_obj|pretty) if c.schema_obj is not none else none) }}
+  {{ block('call-raw', 'Raw response', c.raw_response, open=true) }}
+  {{ block('call-parsed', 'Parsed JSON', (c.parsed_obj|pretty) if c.parsed_obj is not none else none) }}
+</section>
+{% endblock %}
