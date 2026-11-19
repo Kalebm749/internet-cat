@@ -19,7 +19,7 @@ def test_brain_prompt_has_words_not_numbers(cfg, conn):
     p = brain.situation_prompt(cfg, ctx(cfg, conn, last_outcome="A bird lands.", events=["It rains."],
                                        recent_actions=["nap", "wash"]))
     assert "7:40 pm" in p and "evening" in p and "the living room" in p
-    assert "desperate" in p                           # need 12 -> word
+    assert "running on nothing" in p                  # sustenance 12 -> its empty-band expression
     assert "calm and tired" in p and "tired" in p     # mood, energy words
     assert "the sofa [soft, warm, climbable]" in p
     assert "bold (boldness)" in p and "solitary (sociability)" in p and "neither scruffy nor tidy" in p
@@ -58,7 +58,7 @@ def test_narrator_prompt_lists_ops_ids_and_rules(cfg, conn):
     sysmsg = narrator.system_prompt(cfg)
     for op in narrator.OPS:
         assert op in sysmsg
-    assert "ONLY if the creature eats" in sysmsg and "food" in sysmsg
+    assert "ONLY if the creature eats" in sysmsg and "sustenance" in sysmsg
     assert "personality" in sysmsg
     w = WorldState.seed(conn, cfg, "2026-11-18T19:40")
     d = narrator.describe_world(cfg, "2026-11-18T19:40", "kitchen", "rain", w.here("kitchen"), [])
@@ -74,9 +74,9 @@ def test_narrator_schema_matches_config(cfg):
 
 
 def test_narrator_parse_clamps_and_filters(cfg):
-    out = narrator.parse({"outcome": "x", "gains": {"fun": "++", "bogus": "+", "rest": "+++"},
+    out = narrator.parse({"outcome": "x", "gains": {"joy": "++", "bogus": "+", "rest": "+++"},
                           "effort": "huge", "duration": "9999", "changes": [{"op": "take"}, 5]}, cfg)
-    assert out["gains"] == {"fun": "++"} and out["effort"] == "medium"
+    assert out["gains"] == {"joy": "++"} and out["effort"] == "medium"
     assert out["duration"] == cfg.settings["sim_minutes_max"] and out["changes"] == [{"op": "take"}]
     assert narrator.parse({"outcome": "x", "gains": None, "changes": None, "duration": "a"},
                           cfg)["duration"] == cfg.settings["sim_minutes_per_tick_default"]

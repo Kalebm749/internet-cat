@@ -292,6 +292,10 @@ def tick_detail(cfg: Config, tick_id: int) -> dict | None:
         if tick is None and trace is None:
             return None
         d: dict[str, Any] = {"id": tick_id, "tick": tick, "trace": trace}
+        pr = jload(trace.get("pressing"), None) if trace else None
+        d["pressing"] = pr
+        d["pressing_marks"] = ([r["expression"] for r in pr["rows"] if r["selected"] and r["expression"]]
+                               + ([pr["stale_text"]] if pr.get("stale_text") else [])) if pr else []
         first = clock.parse(db.get_meta(conn, "first_sim_time") or cfg.settings["sim_start"])
         d["prev_id"] = (one(conn, "SELECT MAX(id) m FROM ticks WHERE id<? AND id>0", tick_id) or {}).get("m") if tick_id > 0 else None
         d["next_id"] = (one(conn, "SELECT MIN(id) m FROM ticks WHERE id>?", tick_id) or {}).get("m") if tick_id > 0 else None
@@ -308,10 +312,10 @@ def tick_detail(cfg: Config, tick_id: int) -> dict | None:
                           "area": cfg.world["areas"].get(tick["area"], {}).get("name", tick["area"])}
             for k in ("gains", "changes", "rejected_changes", "needs_after", "mood_after"):
                 tick[k] = jload(tick[k], {} if k in ("gains", "needs_after", "mood_after") else [])
-            na = tick["needs_after"]
-            d["energy"] = character.energy(na, cfg) if na and set(na) >= set(cfg.character["needs"]) else None
-            d["energy_terms"] = [{"need": k, "weight": n["energy_weight"], "value": round(na.get(k, 0), 2)}
-                                 for k, n in cfg.character["needs"].items() if n.get("energy_weight")] if na else []
+            ea = tick.get("energy_after")
+            d["energy"] = round(ea, 2) if ea is not None else None
+            d["energy_effort"] = tick["effort"]
+            d["energy_spent"] = cfg.settings["effort_energy_cost"].get(tick["effort"], 0) if tick["effort"] else 0
         d["events"] = rows(conn, "SELECT * FROM events WHERE tick_id=? ORDER BY id", tick_id)
         d["event_rolls"] = rows(conn, "SELECT * FROM event_rolls WHERE tick_id=? ORDER BY id", tick_id)
         d["llm"] = [_llm_view(c) for c in rows(conn, "SELECT * FROM llm_calls WHERE tick_id=? ORDER BY id", tick_id)]
@@ -648,14 +652,14 @@ def needs_series(cfg: Config, rng: str = "24h") -> dict:
     """Needs, derived energy, valence and arousal over sim time, plus sleep/doze bands and the needs
     that sat at a critical level the longest."""
     rng = rng if rng in RANGES else "24h"
-    crit = cfg.settings["web_ui"]["need_critical_below"]
+    crit = cfg.settings["need_bands"]["empty_below"]       # the empty band is the critical one
     out: dict[str, Any] = {"range": rng, "x": [], "needs": {}, "energy": [], "valence": [], "arousal": [],
                            "bands": [], "critical": [], "critical_below": crit, "from": None, "to": None, "ticks": 0,
                            "labels": {k: character.need_label(k, cfg) for k in cfg.character["needs"]}}
     with game_db(cfg) as conn:
         if conn is None:
             return out
-        recs = rows(conn, "SELECT id, sim_time, kind, duration, needs_after, mood_after FROM ticks "
+        recs = rows(conn, "SELECT id, sim_time, kind, duration, needs_after, mood_after, energy_after FROM ticks "
                           "WHERE needs_after IS NOT NULL ORDER BY id DESC LIMIT 60000")[::-1]
     if not recs:
         return out
@@ -704,8 +708,7 @@ def needs_series(cfg: Config, rng: str = "24h") -> dict:
     out["x"] = [r["_t"] for r in sel]
     out["needs"] = {nid: [round(r["_n"].get(nid), 2) if r["_n"].get(nid) is not None else None for r in sel]
                     for nid in cfg.character["needs"]}
-    full = set(cfg.character["needs"])
-    out["energy"] = [character.energy(r["_n"], cfg) if full <= set(r["_n"]) else None for r in sel]
+    out["energy"] = [r.get("energy_after") for r in sel]
     out["valence"] = [r["_m"].get("valence") for r in sel]
     out["arousal"] = [r["_m"].get("arousal") for r in sel]
     return out
@@ -1002,10 +1005,10 @@ def config_view(cfg: Config) -> dict:
         loaded = q.get_config()
         status = q.get_status()
     files = []
-    for name in ("settings", "character", "world"):
+    for name in ("settings", "character", "world", "prompts"):
         path = Path(cfg.config_dir) / f"{name}.yaml"
         item: dict[str, Any] = {"name": name, "file": f"{name}.yaml", "loaded": None, "loaded_at": None, "disk": None,
-                                "diff": "", "state": "unknown", "error": None, "applies": "live (reload_settings)" if name == "settings" else "on restart"}
+                                "diff": "", "state": "unknown", "error": None, "applies": "live (reload_settings)" if name in ("settings", "prompts") else "on restart"}
         try:
             raw = path.read_bytes()
             item["disk_sha"] = hashlib.sha256(raw).hexdigest()

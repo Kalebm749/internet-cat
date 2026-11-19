@@ -136,7 +136,7 @@ class WorldState:
                 note(ev, roll, False, "rolled too high")
                 continue
             record = {"text": ev["text"], "area": ev.get("area"), "mood": ev.get("mood", 0.0),
-                      "spawned": None}
+                      "spawned": None, "drains": dict(ev.get("drains") or {})}
             if "set_weather" in ev:
                 self.weather = ev["set_weather"]
             if "spawn" in ev:

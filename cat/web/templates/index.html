@@ -61,8 +61,8 @@
       <div class="energy">
         <span class="n-label">energy</span>
         <span class="n-word" data-f="energy.word">{{ s.energy.word }}</span>
-        <div class="bar dusk" id="energy-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
-             aria-valuenow="{{ s.energy.value }}" aria-label="{{ s.energy.aria }}"><i style="width: {{ s.energy.value }}%"></i></div>
+        <div class="bar dusk" id="energy-bar" role="progressbar" aria-valuemin="-50" aria-valuemax="50"
+             aria-valuenow="{{ s.energy.value }}" aria-label="{{ s.energy.aria }}"><i style="width: {{ s.energy.pct }}%"></i></div>
       </div>
     </section>
 

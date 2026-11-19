@@ -13,6 +13,7 @@ from sqlite3 import Connection
 from typing import Any
 
 from cat import clock
+from cat import prompts as P
 from cat.config import Config
 from cat.db import dumps
 from cat.llm import BackendError, LLMBackend, call_json
@@ -196,40 +197,31 @@ def day_log(conn: Connection, cfg: Config) -> tuple[list[str], int]:
 # ---------- prompts ----------
 def _sys(cfg: Config, job: str) -> str:
     c = cfg.character
-    return (f"You are the sleeping mind of {c['name']} "
-            f"(core traits: {', '.join(c['core_traits'])}). {job} Reply with JSON only.")
+    return P.render(cfg, "sleep.system", name=c["name"], core_traits=", ".join(c["core_traits"]),
+                    job=P.render(cfg, "sleep.jobs." + job))
+
+
+def _lines(cfg: Config, items: list[str], none_key: str) -> str:
+    return "\n".join(f"- {t}" for t in items) or P.render(cfg, "sleep." + none_key)
 
 
 def self_image_messages(cfg: Config, summary: str, shorts: list[str], log_lines: list[str],
                         existing: list[dict]) -> list[dict]:
     ex = "\n".join(f"- [{e['id']}] {e['text']} (confidence {e['confidence']:.1f})"
-                   for e in existing) or "(nothing yet)"
+                   for e in existing) or P.render(cfg, "sleep.none_existing_self_image")
     seed = (cfg.character.get("self_image") or {}).get("seed", "")
-    user = (f"Summary of the day: {summary}\n\nToday's short-term memories:\n"
-            + ("\n".join(f"- {t}" for t in shorts) or "(none)")
-            + "\n\nToday's log:\n" + ("\n".join(f"- {t}" for t in log_lines) or "(nothing)")
-            + (f"\n\nA hint you started with: {seed}" if seed else "")
-            + f"\n\nWhat you currently think you are:\n{ex}\n\n"
-              "Did today give you a reason to believe something new about what you are, or about your "
-              "own situation and limits? Propose at most ONE short line in the first person, or return "
-              "an empty list. Only say what today's memories actually support; a tentative line is "
-              "better than a confident one, and \"I don't seem to be able to...\" is as good as "
-              "\"I am...\". Do not invent a form, species or body that nothing today points to. "
-              "confidence: 0 to 1. To revise or contradict a line above, set `replaces` to its id "
-              "(otherwise 0).")
-    return [{"role": "system", "content": _sys(cfg, "You reflect on what you are.")},
+    user = P.render(cfg, "sleep.self_image", summary=summary, shorts=_lines(cfg, shorts, "none_shorts"),
+                    log=_lines(cfg, log_lines, "none_log"), existing=ex,
+                    seed_hint=P.render(cfg, "sleep.seed_hint", seed=seed) if seed else "")
+    return [{"role": "system", "content": _sys(cfg, "self_image")},
             {"role": "user", "content": user}]
 
 
 def consolidate_messages(cfg: Config, shorts: list[str], log_lines: list[str]) -> list[dict]:
-    n = cfg.settings["sleep"]["max_new_memories"]
-    user = ("Today's notable moments:\n" + ("\n".join(f"- {t}" for t in shorts) or "(none)")
-            + "\n\nToday's log:\n" + ("\n".join(f"- {t}" for t in log_lines) or "(nothing)")
-            + f"\n\nWrite: a one or two sentence summary of the day (what {cfg.character['name']} "
-              f"might dream about), and 1 to {n} lasting memories worth keeping, each one short "
-              "plain sentence in the first person. Merge trivial moments; drop the rest. "
-              "importance: low (small thing), medium (meaningful) or high (life-changing).")
-    return [{"role": "system", "content": _sys(cfg, "You sort out the day's memories.")},
+    user = P.render(cfg, "sleep.consolidate", shorts=_lines(cfg, shorts, "none_shorts"),
+                    log=_lines(cfg, log_lines, "none_log"), name=cfg.character["name"],
+                    n=cfg.settings["sleep"]["max_new_memories"])
+    return [{"role": "system", "content": _sys(cfg, "consolidate")},
             {"role": "user", "content": user}]
 
 
@@ -239,25 +231,18 @@ def tendencies_messages(cfg: Config, summary: str, current: dict[str, float]) ->
     for k, v in current.items():
         ends = f" ({labels[k][0]} <-> {labels[k][1]})" if k in labels else ""
         lines.append(f"- {k}: {v:.2f}{ends}")
-    user = (f"Summary of the day: {summary}\n\nCurrent tendencies (0 to 1):\n" + "\n".join(lines)
-            + "\n\nFor each tendency give a number from -1 to 1: how much today nudged it "
-              "(-1 = clearly lower, 0 = no change, 1 = clearly higher). Most should be near 0. "
-              "Core traits never change.")
-    return [{"role": "system", "content": _sys(cfg, "You decide how the day shaped the creature.")},
+    user = P.render(cfg, "sleep.tendencies", summary=summary, tendencies="\n".join(lines))
+    return [{"role": "system", "content": _sys(cfg, "tendencies")},
             {"role": "user", "content": user}]
 
 
 def preferences_messages(cfg: Config, summary: str, log_lines: list[str],
                          existing: dict[str, dict]) -> list[dict]:
-    n = cfg.settings["sleep"]["max_preferences_per_night"]
-    ex = "\n".join(f"- {p['subject']} ({p['valence']:+.1f})" for p in existing.values()) or "(none yet)"
-    user = (f"Summary of the day: {summary}\n\nToday's log:\n"
-            + ("\n".join(f"- {t}" for t in log_lines) or "(nothing)")
-            + f"\n\nExisting likes (+) and dislikes (-):\n{ex}\n\nName up to {n} specific things "
-              "(a place, object, weather, activity) the creature clearly liked or disliked today. "
-              "valence: -1 (strongly dislikes) to 1 (strongly likes). reason: a few words. "
-              "Return an empty list if nothing stood out.")
-    return [{"role": "system", "content": _sys(cfg, "You work out what the creature has come to like or dislike.")},
+    ex = "\n".join(f"- {p['subject']} ({p['valence']:+.1f})" for p in existing.values()) \
+        or P.render(cfg, "sleep.none_existing_preferences")
+    user = P.render(cfg, "sleep.preferences", summary=summary, log=_lines(cfg, log_lines, "none_log"),
+                    existing=ex, n=cfg.settings["sleep"]["max_preferences_per_night"])
+    return [{"role": "system", "content": _sys(cfg, "preferences")},
             {"role": "user", "content": user}]
 
 

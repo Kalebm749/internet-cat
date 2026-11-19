@@ -173,16 +173,44 @@ def test_keepsakes_paging(cfg, seeded):
 
 
 # ---------- words, trends, status ----------
-def test_need_words_labels_and_trend(cfg, seeded):
-    cfg.character["needs"]["food"].update(label="tummy", words={15: "starving", 101: "fed"})
+def test_need_rows_show_the_band_word_and_the_meaning_on_hover(cfg, seeded):
     conn = db.connect(cfg.db_path)
     st = db.get_state(conn)
     needs = views.needs_view(conn, cfg, st)
-    food = next(n for n in needs if n["id"] == "food")
-    assert food["label"] == "tummy" and food["word"] in ("starving", "fed")
+    assert [n["id"] for n in needs] == list(cfg.character["needs"])             # five rows, config order
     for n in needs:
-        assert n["low"] == (n["value"] < 35) and n["critical"] == (n["value"] < 15)
+        spec = cfg.character["needs"][n["id"]]
+        assert n["word"] == n["band"] in ("empty", "low", "okay", "full")
+        assert n["title"] == n["meaning"] == spec["meaning"]                    # hover = the meaning
+        assert n["low"] == (n["band"] in ("low", "empty")) and n["critical"] == (n["band"] == "empty")
+        assert not any(ch.isdigit() for ch in n["aria"])                         # no number in the spoken label
         assert (n["trend"] == "flat") == (abs(n["delta"]) <= cfg.settings["web_ui"]["trend_min_delta"])
+
+
+def test_needs_panel_html_has_five_rows_with_band_words_and_meanings(cfg, seeded):
+    html = client(cfg).get("/").text
+    rows = re.findall(r'<li class="need[^"]*" title="([^"]*)">\s*<span class="n-label">([^<]*)</span>\s*<span class="n-word">([^<]*)</span>',
+                      re.sub(r"<template.*?</template>", "", html, flags=re.S))
+    assert len(rows) == 5
+    for title, label, word in rows:
+        assert title == cfg.character["needs"][label]["meaning"].replace("'", "&#39;") or title == cfg.character["needs"][label]["meaning"]
+        assert word in ("empty", "low", "okay", "full")
+
+
+def test_needs_api_has_band_and_meaning(cfg, seeded):
+    s = client(cfg).get("/api/state").json()
+    for n in s["needs"]:
+        assert {"id", "label", "band", "word", "meaning", "value"} <= set(n)
+
+
+def test_critical_means_the_empty_band(cfg, seeded):
+    conn = db.connect(cfg.db_path)
+    st = db.get_state(conn)
+    st["needs"]["joy"] = cfg.settings["need_bands"]["empty_below"] - 1
+    st["needs"]["peace"] = cfg.settings["need_bands"]["low_below"] - 1
+    byid = {n["id"]: n for n in views.needs_view(conn, cfg, st)}
+    assert byid["joy"]["critical"] and byid["joy"]["low"]
+    assert byid["peace"]["low"] and not byid["peace"]["critical"] and byid["peace"]["cls"] == "low"
 
 
 def test_tendency_previous_comes_from_last_night(cfg, seeded):
@@ -331,19 +359,19 @@ def _presence(cfg, valence, arousal, state):
 
 
 def test_presence_colour_follows_valence(cfg):
-    low, mid, high = (_presence(cfg, v, 0.5, "awake")["hue"] for v in (-1, 0, 1))
+    low, mid, high = (_presence(cfg, v, 0, "awake")["hue"] for v in (-50, 0, 50))
     p = cfg.settings["web_ui"]["presence"]
     assert low == p["hue_low_valence"] and high == p["hue_high_valence"] and high < mid < low
 
 
 def test_presence_motion_follows_arousal(cfg):
-    calm, lively = (_presence(cfg, 0, a, "awake")["pulse_seconds"] for a in (0, 1))
+    calm, lively = (_presence(cfg, 0, a, "awake")["pulse_seconds"] for a in (-50, 50))
     p = cfg.settings["web_ui"]["presence"]
     assert calm == p["pulse_seconds_calm"] and lively == p["pulse_seconds_aroused"] and lively < calm
 
 
 def test_presence_dims_asleep_and_desaturates_dozing(cfg):
-    awake, asleep, dozing = (_presence(cfg, 0.2, 0.4, s) for s in ("awake", "asleep", "dozing"))
+    awake, asleep, dozing = (_presence(cfg, 10, 5, s) for s in ("awake", "asleep", "dozing"))
     assert asleep["lightness"] < awake["lightness"] and asleep["saturation"] == awake["saturation"]
     assert dozing["saturation"] < awake["saturation"] and dozing["lightness"] < awake["lightness"]
 

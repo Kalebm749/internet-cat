@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from cat import clock
+from cat import character, clock
+from cat import prompts as P
 from cat.config import Config
 from cat.llm import BackendError, LLMBackend, call_json
 
@@ -45,41 +46,23 @@ def system_prompt(cfg: Config) -> str:
     s = cfg.settings
     needs = []
     for k, n in cfg.character["needs"].items():
-        note = " (rises ONLY if the creature eats something edible: use consume)" \
-            if n.get("requires_consume") else ""
+        note = P.render(cfg, "narrator.need_consume_note") if k == s["sustenance_need"] else ""
         needs.append(f"  - {k}{note}")
-    return (
-        "You are the narrator of a small simulated world. A creature tries an action and you say "
-        "what actually happens. You are neutral and fair; you have no personality of your own. "
-        "The creature may try anything, but you must respect the world as given below: do not "
-        "invent objects, exits or abilities that are not there. If the action can't work, say "
-        "so and what happens instead. Bad luck (a slip, getting wet) is allowed in the "
-        "story.\n\n"
-        "Reply with JSON only:\n"
-        "- outcome: 1-2 sentences, what actually happened\n"
-        "- gains: for each need the action helped, \"+\" (a little) or \"++\" (a lot). Omit or "
-        "use \"0\" for needs it did not help. Never give negative values.\n"
-        + "\n".join(needs) + "\n"
-        "- effort: low, medium or high (physical exertion)\n"
-        f"- duration: minutes it took, {s['sim_minutes_min']} to {s['sim_minutes_max']}\n"
-        "- changes: the ONLY way the saved world may change. Use only these ops, and only the "
-        "ids shown in the world description:\n"
-        "  - move_self {area}: the creature goes to a connected area (see Exits)\n"
-        "  - move_object {object_id, area}: a movable object, here or carried, goes to here or an "
-        "adjacent area\n"
-        "  - take {object_id}: pick up a movable object that is here\n"
-        "  - drop {object_id}: put down something carried\n"
-        "  - consume {object_id}: eat/use up an edible object. It is destroyed\n"
-        "  - set_state {object_id, key, value}: change an object's state (e.g. open -> true)\n"
-        f"  - create {{name, tags, area}}: something newly made, in the current area. Tags from: "
-        f"{', '.join(s['allowed_tags'])}\n"
-        "Only list a change if the story really requires it. If nothing changes, use an empty "
-        "list. If your outcome text says the creature picked something up, ate it, moved, or "
-        "built something, include the matching change.")
+    return P.render(cfg, "narrator.system", needs_list="\n".join(needs),
+                    sim_minutes_min=s["sim_minutes_min"], sim_minutes_max=s["sim_minutes_max"],
+                    allowed_tags=", ".join(s["allowed_tags"]))
+
+
+def describe_needs(cfg: Config, needs: dict[str, float]) -> str:
+    """Each need's meaning and its current band as a word (never a number)."""
+    lines = [P.render(cfg, "narrator.need_line", need=k, meaning=spec["meaning"],
+                      band=character.need_band(float(needs[k]), cfg))
+             for k, spec in cfg.character["needs"].items()]
+    return P.render(cfg, "narrator.needs_heading") + "\n" + "\n".join(lines)
 
 
 def describe_world(cfg: Config, sim_time: str, area_id: str, weather: str,
-                   here: list[dict], inventory: list[dict]) -> str:
+                   here: list[dict], inventory: list[dict], needs: dict[str, float] | None = None) -> str:
     areas = cfg.world["areas"]
     dt = clock.parse(sim_time)
 
@@ -88,15 +71,18 @@ def describe_world(cfg: Config, sim_time: str, area_id: str, weather: str,
         return f"- {o['id']}: {o['name']} | tags: {', '.join(o['tags']) or 'none'} | state: {state}"
 
     exits = "; ".join(f"{a} ({areas[a]['name']})" for a in areas[area_id]["exits"])
-    return (f"Location: {area_id} ({areas[area_id]['name']}): {areas[area_id]['description']}. "
+    text = (f"Location: {area_id} ({areas[area_id]['name']}): {areas[area_id]['description']}. "
             f"Time: {clock.time_label(dt)}. Weather: {weather}.\n"
             f"Exits: {exits}\nObjects here:\n" + "\n".join([fmt(o) for o in here] or ["(nothing)"])
             + "\nInventory:\n" + "\n".join([fmt(o) for o in inventory] or ["(empty)"]))
+    if needs is not None:
+        text += "\n" + describe_needs(cfg, needs)
+    return text
 
 
 def build_messages(cfg: Config, action: str, context: str) -> list[dict]:
     return [{"role": "system", "content": system_prompt(cfg)},
-            {"role": "user", "content": f"{context}\n\nThe creature does: {action}"}]
+            {"role": "user", "content": P.render(cfg, "narrator.user", context=context, action=action)}]
 
 
 def parse(raw: dict, cfg: Config) -> dict[str, Any]:

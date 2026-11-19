@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,7 @@ class Config:
     settings: dict[str, Any]
     character: dict[str, Any]
     world: dict[str, Any]
+    prompts: dict[str, Any] = field(default_factory=dict)   # config/prompts.yaml: every fixed prompt text
     root: Path = ROOT
     config_dir: Path = CONFIG_DIR           # where the YAML was loaded from (for reload_settings)
     overrides: dict | None = None           # CLI overrides applied on top of settings.yaml
@@ -64,9 +65,9 @@ REQUIRED_SETTINGS = [
     "db_path", "tick_interval_seconds", "sim_start", "sim_minutes_per_tick_default",
     "sim_minutes_min", "sim_minutes_max", "phases", "gain_values", "effort_energy_cost",
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
-    "sleep", "recall", "notable", "default_need_words", "energy_words",
+    "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -76,12 +77,12 @@ REQUIRED_SETTINGS = [
 
 
 CHARACTER_FIELDS = {"name", "pronoun", "core_traits", "tendencies", "tendency_labels", "needs",
-                    "start_area", "voice", "backstory", "self_image"}
+                    "start_area", "voice", "backstory", "self_image", "stale_here"}
 WORLD_FIELDS = {"areas", "objects", "weather", "events"}
-NEED_FIELDS = {"start", "decay", "label", "words", "requires_consume", "energy_weight",
-               "effort_drain", "sleep_restore"}
-NEED_FLAGS = {"requires_consume", "effort_drain", "sleep_restore"}   # boolean behaviour flags
-EVENT_FIELDS = {"text", "chance", "area", "hours", "only_weather", "set_weather", "mood", "spawn", "needs"}
+NEED_FIELDS = {"start", "decay_per_hour", "meaning", "expressions"}
+BANDS = ("empty", "low", "okay", "full")            # ascending; the band names the brain's prompt uses
+REQUIRED_BANDS = ("empty", "low", "full")           # `okay` may be null
+EVENT_FIELDS = {"text", "chance", "area", "hours", "only_weather", "set_weather", "mood", "spawn", "drains"}
 
 
 def _num(v: Any) -> bool:
@@ -119,6 +120,25 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
         for b in ("0", "+", "++"):
             if b not in {str(k) for k in st["gain_values"]}:
                 errs.append(f"settings.yaml gain_values: missing bucket '{b}'")
+    nb = st.get("need_bands")
+    if isinstance(nb, dict):
+        keys = ("empty_below", "low_below", "okay_below")
+        if set(nb) != set(keys) or not all(_num(nb.get(k)) for k in keys):
+            errs.append("settings.yaml need_bands: must be numbers for empty_below, low_below, okay_below")
+        else:
+            vals = [nb[k] for k in keys]
+            if not all(0 <= v <= 100 for v in vals):
+                errs.append("settings.yaml need_bands: thresholds must be 0..100")
+            if not (vals[0] < vals[1] < vals[2]):
+                errs.append("settings.yaml need_bands: thresholds must ascend "
+                            "(empty_below < low_below < okay_below)")
+    elif "need_bands" in st:
+        errs.append("settings.yaml need_bands: must be a mapping")
+    for k, lo in (("max_pressing_needs", 1), ("stale_after_ticks", 0)):
+        if k in st and (isinstance(st[k], bool) or not isinstance(st[k], int) or st[k] < lo):
+            errs.append(f"settings.yaml {k}: must be an integer >= {lo}")
+    if "energy_start" in st and (not _num(st["energy_start"]) or not -50 <= st["energy_start"] <= 50):
+        errs.append("settings.yaml energy_start: must be a number -50..50")
     ui = st.get("web_ui")
     if isinstance(ui, dict):
         pres = ui.get("presence")
@@ -204,11 +224,16 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             sp = ev["spawn"]
             if isinstance(sp, dict) and "area" in sp and sp["area"] not in areas and sp["area"] != "inventory":
                 errs.append(f"{where} spawn: unknown area '{sp['area']}'")
-        if "needs" in ev:    # effects on needs: every id must be a real need
-            eff = ev["needs"]
-            for nid in (eff if isinstance(eff, (dict, list)) else []):
-                if nid not in need_ids:
-                    errs.append(f"{where}: effect references unknown need '{nid}'")
+        if "drains" in ev:   # points taken from needs when the event fires: every id must be a real need
+            dr = ev["drains"]
+            if not isinstance(dr, dict):
+                errs.append(f"{where}: drains must be a mapping of need id -> points")
+            else:
+                for nid, pts in dr.items():
+                    if nid not in need_ids:
+                        errs.append(f"{where}: drains references unknown need '{nid}'")
+                    if not _num(pts) or pts < 0:
+                        errs.append(f"{where}: drains '{nid}' must be a number >= 0")
         for k in sorted(set(ev) - EVENT_FIELDS):
             warns.append(f"{where}: unknown field '{k}' (ignored)")
 
@@ -221,31 +246,107 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             errs.append("character.yaml: needs must not be empty")
             needs = {}
         if "energy" in needs:
-            errs.append("character.yaml: 'energy' is derived, not a need; "
-                        "use energy_weight on needs (e.g. a 'rest' need)")
+            errs.append("character.yaml: 'energy' is not a need: it is a separate resource "
+                        "(effort spends it, sleep restores it)")
         for nid, n in needs.items():
             w = f"character.yaml need '{nid}'"
-            if not req(n, ["start", "decay"], w):
+            if not req(n, ["start", "decay_per_hour", "meaning", "expressions"], w):
                 continue
             if not _num(n["start"]) or not 0 <= n["start"] <= 100:
                 errs.append(f"{w}: start must be 0..100")
-            if not _num(n["decay"]) or n["decay"] < 0:
-                errs.append(f"{w}: decay must be a number >= 0")
-            if "energy_weight" in n and (not _num(n["energy_weight"]) or n["energy_weight"] < 0):
-                errs.append(f"{w}: energy_weight must be a number >= 0")
-            for flag in NEED_FLAGS:
-                if flag in n and not isinstance(n[flag], bool):
-                    errs.append(f"{w}: {flag} must be true or false")
+            if not _num(n["decay_per_hour"]) or n["decay_per_hour"] < 0:
+                errs.append(f"{w}: decay_per_hour must be a number >= 0")
+            if not isinstance(n["meaning"], str) or not n["meaning"].strip():
+                errs.append(f"{w}: meaning must be non-empty text")
+            ex = n["expressions"]
+            if not isinstance(ex, dict):
+                errs.append(f"{w}: expressions must be a mapping of band -> text")
+                ex = {}
+            for band in REQUIRED_BANDS:
+                if not isinstance(ex.get(band), str) or not ex[band].strip():
+                    errs.append(f"{w}: expressions.{band} is required and must be non-empty text")
+            if "okay" in ex and ex["okay"] is not None and (not isinstance(ex["okay"], str) or not ex["okay"].strip()):
+                errs.append(f"{w}: expressions.okay must be null or non-empty text")
+            for band in sorted(set(ex) - set(BANDS)):
+                errs.append(f"{w}: unknown band '{band}' in expressions (use {', '.join(BANDS)})")
             for k in sorted(set(n) - NEED_FIELDS):
-                errs.append(f"{w}: unknown behaviour flag or field '{k}'")
-        for flag in ("effort_drain", "sleep_restore"):
-            flagged = [k for k, n in needs.items() if isinstance(n, dict) and n.get(flag)]
-            if len(flagged) != 1:
-                errs.append(f"character.yaml: exactly one need must set {flag}: true (found {flagged})")
-        if needs and not any(_num(n.get("energy_weight")) and n["energy_weight"] > 0
-                             for n in needs.values() if isinstance(n, dict)):
-            errs.append("character.yaml: at least one need needs energy_weight > 0 "
-                        "(energy is derived from the needs)")
+                errs.append(f"{w}: unknown field '{k}'")
+        for key, where in (("sustenance_need", "settings.yaml sustenance_need"),):
+            if needs and st.get(key) not in needs:
+                errs.append(f"{where}: '{st.get(key)}' is not a need in character.yaml")
+        rp = st.get("repetition_penalty")
+        if isinstance(rp, dict) and needs:
+            rn = rp.get("needs")
+            if not isinstance(rn, list) or not all(isinstance(x, str) for x in rn):
+                errs.append("settings.yaml repetition_penalty.needs: must be a list of need ids")
+            else:
+                for x in rn:
+                    if x not in needs:
+                        errs.append(f"settings.yaml repetition_penalty.needs: '{x}' is not a need")
+        md = st.get("mood")
+        if isinstance(md, dict):
+            vb = md.get("valence_bands")
+            if not isinstance(vb, dict):
+                errs.append("settings.yaml mood.valence_bands: must be a mapping of need id -> {band: points}")
+            else:
+                for nid, table in vb.items():
+                    if needs and nid not in needs:
+                        errs.append(f"settings.yaml mood.valence_bands: '{nid}' is not a need")
+                    if not isinstance(table, dict):
+                        errs.append(f"settings.yaml mood.valence_bands.{nid}: must be a mapping of band -> points")
+                        continue
+                    for band, pts in table.items():
+                        if band not in BANDS:
+                            errs.append(f"settings.yaml mood.valence_bands.{nid}: unknown band '{band}'")
+                        if not _num(pts) or not -50 <= pts <= 50:
+                            errs.append(f"settings.yaml mood.valence_bands.{nid}.{band}: must be a number -50..50")
+            rules = md.get("arousal_rules")
+            if not isinstance(rules, list):
+                errs.append("settings.yaml mood.arousal_rules: must be a list")
+            else:
+                for i, r in enumerate(rules):
+                    w = f"settings.yaml mood.arousal_rules[{i}]"
+                    if not isinstance(r, dict) or not isinstance(r.get("when"), dict) or not r["when"]:
+                        errs.append(f"{w}: needs a non-empty `when` mapping of need id -> [bands]")
+                        continue
+                    if not _num(r.get("add")) or not -50 <= r["add"] <= 50:
+                        errs.append(f"{w}: add must be a number -50..50")
+                    for nid, allowed in r["when"].items():
+                        if needs and nid not in needs:
+                            errs.append(f"{w}: '{nid}' is not a need")
+                        if not isinstance(allowed, list) or not allowed or any(b not in BANDS for b in allowed):
+                            errs.append(f"{w}: {nid} must be a non-empty list of bands ({', '.join(BANDS)})")
+            for k in ("arousal_base", "arousal_energy_weight", "event_points"):
+                if not _num(md.get(k)):
+                    errs.append(f"settings.yaml mood.{k}: must be a number")
+            if not _num(md.get("event_decay")) or not 0 <= md["event_decay"] <= 1:
+                errs.append("settings.yaml mood.event_decay: must be a number 0..1")
+            if not _num(md.get("word_threshold")) or not 0 <= md["word_threshold"] <= 50:
+                errs.append("settings.yaml mood.word_threshold: must be a number 0..50")
+            if not _num(md.get("arousal_high")) or not -50 <= md["arousal_high"] <= 50:
+                errs.append("settings.yaml mood.arousal_high: must be a number -50..50")
+            fv = md.get("feeling_values")
+            if not isinstance(fv, dict) or not all(_num(v) and -50 <= v <= 50 for v in fv.values()):
+                errs.append("settings.yaml mood.feeling_values: must map feelings to numbers -50..50")
+        dd = st.get("dislike_drain")
+        if isinstance(dd, dict):
+            dn = dd.get("needs")
+            if not isinstance(dn, list) or not all(isinstance(x, str) for x in dn):
+                errs.append("settings.yaml dislike_drain.needs: must be a list of need ids")
+            else:
+                for x in dn:
+                    if needs and x not in needs:
+                        errs.append(f"settings.yaml dislike_drain.needs: '{x}' is not a need")
+            if not _num(dd.get("points_per_hour")) or dd["points_per_hour"] < 0:
+                errs.append("settings.yaml dislike_drain.points_per_hour: must be a number >= 0")
+            mm = dd.get("max_matches")
+            if isinstance(mm, bool) or not isinstance(mm, int) or mm < 1:
+                errs.append("settings.yaml dislike_drain.max_matches: must be an integer >= 1")
+        elif "dislike_drain" in st:
+            errs.append("settings.yaml dislike_drain: must be a mapping")
+        if "stale_here" in character and (not isinstance(character["stale_here"], str)
+                                          or not character["stale_here"].strip()):
+            errs.append("character.yaml: stale_here must be non-empty text")
         if not isinstance(tend, dict):
             errs.append("character.yaml: tendencies must be a mapping")
             tend = {}
@@ -278,9 +379,14 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
     return errs, warns
 
 
-def validate(settings: dict, character: dict, world: dict) -> list[str]:
+def validate(settings: dict, character: dict, world: dict, prompts: dict | None = None) -> list[str]:
     """Raise one ConfigError listing every problem; return the warnings."""
     errs, warns = check(settings, character, world)
+    if prompts is not None:
+        from cat import prompts as P
+        pe, pw = P.check(prompts)
+        errs += pe
+        warns += pw
     if errs:
         raise ConfigError(f"{len(errs)} config problem{'s' if len(errs) != 1 else ''}:\n  - "
                           + "\n  - ".join(errs))
@@ -302,9 +408,10 @@ def load_config(config_dir: Path | str | None = None, overrides: dict | None = N
         settings.update(overrides)
     character = _load_yaml(d / "character.yaml")
     world = _load_yaml(d / "world.yaml")
-    for w in validate(settings, character, world):
+    prompts = _load_yaml(d / "prompts.yaml")
+    for w in validate(settings, character, world, prompts):
         logging.getLogger("cat.config").warning("%s", w)
     # YAML may parse bucket keys as strings already ("0"); normalise
     settings["gain_values"] = {str(k): v for k, v in settings["gain_values"].items()}
-    return Config(settings, character, world, root=d.resolve().parent, config_dir=d.resolve(),
+    return Config(settings, character, world, prompts, root=d.resolve().parent, config_dir=d.resolve(),
                   overrides=dict(overrides) if overrides else None)

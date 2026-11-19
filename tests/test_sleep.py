@@ -22,11 +22,12 @@ def quiet_brain(b, wants_sleep=False, action="sit"):
                                            "duration": 10, "changes": []}
 
 
-def set_time(e, t, **needs):
+def set_time(e, t, energy=None, **needs):
+    """Set the clock, optionally energy (-50..50) and need levels."""
     e.state["sim_time"] = t
     e.state["needs"].update({k: float(v) for k, v in needs.items()})
-    from cat import character
-    e.state["energy"] = character.energy(e.state["needs"], e.cfg)
+    if energy is not None:
+        e.state["energy"] = float(energy)
     e.world.events = None
 
 
@@ -89,7 +90,7 @@ def test_parse_consolidation(cfg):
 # ---------- engine: falling asleep ----------
 def test_exhausted_at_night_falls_asleep_without_brain(cfg):
     e, b = make(cfg)
-    set_time(e, "2026-11-18T23:00", rest=5, food=5)
+    set_time(e, "2026-11-18T23:00", energy=-45)
     info = e.tick()
     assert info["kind"] == "asleep" and e.state["is_asleep"]
     assert not any(t == "brain" for t, _ in b.calls)
@@ -98,24 +99,24 @@ def test_exhausted_at_night_falls_asleep_without_brain(cfg):
 
 def test_exhausted_by_day_does_not_force_sleep(cfg):
     e, b = make(cfg)
-    set_time(e, "2026-11-18T12:00", rest=5, food=5)
+    set_time(e, "2026-11-18T12:00", energy=-45)
     assert e.tick()["kind"] == "tick"
 
 
 def test_brain_can_choose_sleep_when_tired_or_night(cfg):
     e, b = make(cfg)
     quiet_brain(b, wants_sleep=True)
-    set_time(e, "2026-11-18T14:00", rest=20, food=20)          # tired by day
+    set_time(e, "2026-11-18T14:00", energy=-30)          # tired by day
     e.tick()
     assert e.state["is_asleep"]
     e2, b2 = make(cfg, seed=2)
     quiet_brain(b2, wants_sleep=True)
-    set_time(e2, "2026-11-18T12:00", rest=100, food=100)       # not tired, daytime: ignored
+    set_time(e2, "2026-11-18T12:00", energy=50)       # not tired, daytime: ignored
     e2.tick()
     assert not e2.state["is_asleep"]
     e3, b3 = make(cfg, seed=3)
     quiet_brain(b3, wants_sleep=True)
-    set_time(e3, "2026-11-18T22:00", rest=100, food=100)       # night: honoured
+    set_time(e3, "2026-11-18T22:00", energy=50)       # night: honoured
     e3.tick()
     assert e3.state["is_asleep"]
 
@@ -131,13 +132,13 @@ def run_until(e, pred, limit=40):
 
 def test_sleep_restores_rest_and_wakes_in_the_morning(cfg):
     e, b = make(cfg)
-    set_time(e, "2026-11-18T22:00", rest=5, food=60)
+    set_time(e, "2026-11-18T22:00", energy=-45)
     e.tick()
     assert e.state["is_asleep"]
     seen = []
     info = run_until(e, lambda i: (seen.append(i), i["outcome"].startswith("wakes"))[1])
     st = db.get_state(e.conn)
-    assert not st["is_asleep"] and st["needs"]["rest"] >= cfg.settings["sleep"]["wake_rest_at_least"]
+    assert not st["is_asleep"] and st["energy"] >= cfg.settings["sleep"]["wake_energy_at_least"]
     t = clock.parse(st["sim_time"])
     assert t.hour >= cfg.settings["sleep"]["wake_not_before_hour"]
     assert all(i["kind"] == "asleep" for i in seen)
@@ -146,12 +147,12 @@ def test_sleep_restores_rest_and_wakes_in_the_morning(cfg):
 
 def test_does_not_wake_before_morning_even_if_rested(cfg):
     e, b = make(cfg)
-    set_time(e, "2026-11-18T21:30", rest=50, food=60)
+    set_time(e, "2026-11-18T21:30", energy=0)
     e.state["is_asleep"] = True
     db.set_meta(e.conn, "sleep_started", e.state["sim_time"])
     for _ in range(3):
         e.tick()
-        assert e.state["needs"]["rest"] <= 100
+        assert e.state["energy"] <= 50
     assert clock.parse(e.state["sim_time"]).hour < 6 or clock.parse(e.state["sim_time"]).day == 19
     assert e.state["is_asleep"] or clock.parse(e.state["sim_time"]).hour >= 6
 
@@ -159,7 +160,7 @@ def test_does_not_wake_before_morning_even_if_rested(cfg):
 def test_max_sleep_hours_cap(cfg):
     cfg.settings["sleep"]["restore_per_sim_hour"] = 0          # never gets rested
     e, b = make(cfg)
-    set_time(e, "2026-11-18T22:00", rest=5, food=60)
+    set_time(e, "2026-11-18T22:00", energy=-45)
     e.tick()
     info = run_until(e, lambda i: i["outcome"].startswith("wakes"), limit=20)
     assert not e.state["is_asleep"]
@@ -167,11 +168,11 @@ def test_max_sleep_hours_cap(cfg):
 
 def test_sleep_decay_is_slower(cfg):
     e, b = make(cfg)
-    set_time(e, "2026-11-18T22:00", rest=5, fun=80, food=80)
-    f0 = e.state["needs"]["fun"]
+    set_time(e, "2026-11-18T22:00", energy=-45)
+    f0 = e.state["needs"]["joy"]
     e.tick()
-    drop = f0 - e.state["needs"]["fun"]
-    full = cfg.character["needs"]["fun"]["decay"] * cfg.settings["sleep"]["sim_minutes_per_tick"] / 60
+    drop = f0 - e.state["needs"]["joy"]
+    full = cfg.character["needs"]["joy"]["decay_per_hour"] * cfg.settings["sleep"]["sim_minutes_per_tick"] / 60
     assert drop == pytest.approx(full * cfg.settings["sleep"]["decay_multiplier"])
 
 
@@ -180,7 +181,7 @@ def seed_day(e, b):
     """A day with a few notable moments."""
     b.handlers["brain"] = lambda m, s: {"reaction": "wow!", "thought": "", "action": "watch the sunset",
                                         "intent": "", "feeling": "positive", "wants_sleep": False}
-    b.handlers["narrator"] = lambda m, s: {"outcome": "It was beautiful.", "gains": {"fun": "++"},
+    b.handlers["narrator"] = lambda m, s: {"outcome": "It was beautiful.", "gains": {"joy": "++"},
                                            "effort": "low", "duration": 20, "changes": []}
     for _ in range(4):
         e.tick()
@@ -197,7 +198,7 @@ def test_full_cycle_consolidates_drifts_and_logs(cfg):
     b.handlers["preferences"] = lambda m, s: {"preferences": [
         {"subject": "sunsets", "valence": 1.0, "reason": "so pretty"}]}
     before = dict(e.state["tendencies"])
-    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    set_time(e, "2026-11-18T23:00", energy=-45)
     e.tick()                                                   # onset => cycle runs now
     st = db.get_state(e.conn)
     step = cfg.settings["sleep"]["tendency_max_step"]
@@ -222,7 +223,7 @@ def test_core_traits_never_change(cfg):
     e, b = make(cfg)
     traits = list(cfg.character["core_traits"])
     b.handlers["tendencies"] = lambda m, s: {"changes": {"curious": 1, "core_traits": 1, "boldness": 1}}
-    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    set_time(e, "2026-11-18T23:00", energy=-45)
     e.tick()
     assert set(e.state["tendencies"]) == set(cfg.character["tendencies"])
     assert cfg.character["core_traits"] == traits
@@ -233,7 +234,7 @@ def test_offline_sleep_postpones_and_recovers_without_losing_memories(cfg):
     seed_day(e, b)
     shorts = len(e.memory.all_short())
     b.handlers.pop("brain"); b.handlers.pop("narrator")
-    set_time(e, "2026-11-18T22:00", rest=5, food=60)
+    set_time(e, "2026-11-18T22:00", energy=-45)
     b.online = False
     e.tick(); e.tick()
     assert e.state["is_asleep"] and db.get_meta(e.conn, "sleep_pending") == "1"
@@ -256,7 +257,7 @@ def test_failed_llm_call_mid_cycle_writes_nothing(cfg):
     def boom(m, s):
         raise BackendError("ollama fell over")
     b.handlers["preferences"] = boom                           # 3rd call fails
-    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    set_time(e, "2026-11-18T23:00", energy=-45)
     e.tick()
     assert db.get_meta(e.conn, "sleep_pending") == "1"
     assert len(e.memory.all_short()) == shorts and e.state["tendencies"] == tend
@@ -271,12 +272,12 @@ def test_second_night_only_sees_the_new_day(cfg):
     seen = []
     b.handlers["consolidate"] = lambda m, s: (seen.append(m[-1]["content"]), {
         "summary": "x", "memories": []})[1]
-    set_time(e, "2026-11-18T12:00", rest=100, food=100)
+    set_time(e, "2026-11-18T12:00", energy=50)
     quiet_brain(b, action="first-day-thing")
     e.tick()
     b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "second-day-thing",
                                         "intent": "", "feeling": "neutral", "wants_sleep": True}
-    set_time(e, "2026-11-18T22:00", rest=100, food=100)
+    set_time(e, "2026-11-18T22:00", energy=50)
     e.tick()                                                   # wants_sleep at night -> cycle 1
     assert "first-day-thing" in seen[0]
     # wake, second day
@@ -284,7 +285,7 @@ def test_second_night_only_sees_the_new_day(cfg):
     b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "second-day-thing",
                                         "intent": "", "feeling": "neutral", "wants_sleep": False}
     e.tick()
-    set_time(e, "2026-11-19T23:00", rest=5, food=5)
+    set_time(e, "2026-11-19T23:00", energy=-45)
     e.tick()
     assert "second-day-thing" in seen[1] and "first-day-thing" not in seen[1]
 
@@ -317,7 +318,7 @@ def test_1000_mock_ticks_with_sleep(cfg):
     for r in e.conn.execute("SELECT tendency_changes FROM sleep_log"):
         for ch in json.loads(r[0]).values():
             assert abs(ch["to"] - ch["from"]) <= step + 1e-9
-    assert all(0 <= r[0] <= 100 for r in e.conn.execute("SELECT json_extract(needs_after,'$.rest') FROM ticks"))
+    assert all(-50 <= r[0] <= 50 for r in e.conn.execute("SELECT energy_after FROM ticks"))
 
 
 # ---------- self-image ----------
@@ -381,7 +382,7 @@ def test_sleep_stores_the_line_and_the_brain_sees_it(cfg):
     b.handlers.pop("brain"); b.handlers.pop("narrator")
     b.handlers["self_image"] = lambda m, s: {"self_image": [{"text": "I tire when I climb.",
                                                              "confidence": 0.6, "replaces": 0}]}
-    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    set_time(e, "2026-11-18T23:00", energy=-45)
     e.tick()
     r = e.conn.execute("SELECT * FROM self_image").fetchall()
     assert [(x["text"], x["confidence"], x["formed_day"]) for x in r] == [("I tire when I climb.", 0.6, "2026-11-18")]
@@ -398,7 +399,7 @@ def test_sleep_revises_a_line_and_respects_the_cap(cfg):
     old_id = e.conn.execute("SELECT id FROM self_image").fetchone()["id"]
     b.handlers["self_image"] = lambda m, s: {"self_image": [{"text": "I may not be small.", "confidence": 0.7,
                                                              "replaces": old_id}]}
-    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    set_time(e, "2026-11-18T23:00", energy=-45)
     e.tick()
     assert [x["text"] for x in e.conn.execute("SELECT text FROM self_image")] == ["I may not be small."]
 
@@ -409,7 +410,7 @@ def test_sleep_trace_logs_every_proposal_and_outcome(cfg):
     seed_day(e, b)
     b.handlers.pop("brain"); b.handlers.pop("narrator")
     b.handlers["self_image"] = lambda m, s: {"self_image": [{"text": "a", "confidence": 0.01}]}   # too weak
-    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    set_time(e, "2026-11-18T23:00", energy=-45)
     e.tick()
     t = e.conn.execute("SELECT * FROM sleep_traces WHERE step='self_image'").fetchone()
     assert _j.loads(t["proposed"])[0]["text"] == "a"
@@ -424,7 +425,7 @@ def test_self_image_failure_postpones_the_whole_night(cfg):
     def boom(m, s): raise BackendError("down")
     b.handlers["self_image"] = boom
     shorts = len(e.memory.all_short())
-    set_time(e, "2026-11-18T23:00", rest=5, food=60)
+    set_time(e, "2026-11-18T23:00", energy=-45)
     e.tick()
     assert len(e.memory.all_short()) == shorts and e.conn.execute("SELECT COUNT(*) FROM sleep_log").fetchone()[0] == 0
 

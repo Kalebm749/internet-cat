@@ -25,9 +25,9 @@ def add_long(M, text, importance=0.5, sim=T0, embed=True):
 
 # ---- notability ----
 def test_notable_reasons(cfg):
-    b = {"food": 50.0, "fun": 50.0}
+    b = {"sustenance": 50.0, "joy": 50.0}
     assert mem.notable_reasons(cfg, b, dict(b), "neutral", [], []) == []
-    assert "big change" in mem.notable_reasons(cfg, b, {"food": 75.0, "fun": 50.0}, "neutral", [], [])[0]
+    assert "big change" in mem.notable_reasons(cfg, b, {"sustenance": 75.0, "joy": 50.0}, "neutral", [], [])[0]
     assert mem.notable_reasons(cfg, b, b, "positive", [], []) == ["felt positive"]
     assert mem.notable_reasons(cfg, b, b, "neutral", [{"op": "create"}], []) == ["something new appeared"]
     assert mem.notable_reasons(cfg, b, b, "neutral", [], [{"reason": "x"}]) == ["odd outcome"]

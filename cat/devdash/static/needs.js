@@ -20,9 +20,9 @@
           { series: series, scales: { x: { time: true }, y: { range: [0, 100] } } }, data,
           Object.assign({}, ex, { hooks: [L.lineHook(d.critical_below, crit)] })));
         plots.push(L.make(document.getElementById("chart-energy"),
-          { series: [{ label: "sim time" }, L.line("energy (derived)", L.PALETTE[2])], scales: { x: { time: true }, y: { range: [0, 100] } } }, [d.x, d.energy], ex));
+          { series: [{ label: "sim time" }, L.line("energy", L.PALETTE[2])], scales: { x: { time: true }, y: { range: [-50, 50] } } }, [d.x, d.energy], ex));
         plots.push(L.make(document.getElementById("chart-mood"),
-          { series: [{ label: "sim time" }, L.line("valence", L.PALETTE[0]), L.line("arousal", L.PALETTE[3])], scales: { x: { time: true }, y: { range: [-1, 1] } } },
+          { series: [{ label: "sim time" }, L.line("valence", L.PALETTE[0]), L.line("arousal", L.PALETTE[3])], scales: { x: { time: true }, y: { range: [-50, 50] } } },
           [d.x, d.valence, d.arousal], ex));
       });
   }

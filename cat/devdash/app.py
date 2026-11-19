@@ -41,6 +41,15 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     app.state.cfg = cfg
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
+    def _mark(text, phrases):
+        """Escape `text` and wrap each phrase in <mark> (the selected need expressions)."""
+        from markupsafe import Markup, escape
+        out = escape(text or "")
+        for ph in phrases or []:
+            if ph:
+                out = out.replace(escape(ph), Markup("<mark>") + escape(ph) + Markup("</mark>"))
+        return out
+    templates.env.filters["mark"] = _mark
     templates.env.filters["pretty"] = lambda v: json.dumps(v, indent=2, ensure_ascii=False, default=str)
     templates.env.globals["nav"] = NAV
 

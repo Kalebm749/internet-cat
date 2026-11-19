@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS memories(
   last_recalled TEXT, embedding BLOB, embed_model TEXT);
 
 CREATE TABLE IF NOT EXISTS preferences(
-  id INTEGER PRIMARY KEY, subject TEXT, valence REAL,  -- -1..1
+  id INTEGER PRIMARY KEY, subject TEXT, valence REAL,  -- -1..1 (a like is +, a dislike -)
   reason TEXT, updated_at TEXT);
 
 -- what the entity currently thinks it is: short text lines, learned during sleep, revisable
@@ -131,6 +131,10 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) ->
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _add_column(conn, "tick_traces", "pressing", "JSON")   # the brain prompt's need selection and why
+    _add_column(conn, "need_math", "dislike_drain", "REAL")  # points a disliked thing being present drained
+    _add_column(conn, "need_math", "event_drain", "REAL")   # points an event drained from this need
+    _add_column(conn, "ticks", "energy_after", "REAL")  # energy is a separate resource, -50..50
     _add_column(conn, "memories", "tick_id", "INT")      # which tick wrote this memory (for tracing)
     if get_meta(conn, "schema_version") is None:
         set_meta(conn, "schema_version", SCHEMA_VERSION)

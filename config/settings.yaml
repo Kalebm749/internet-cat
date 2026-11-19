@@ -72,46 +72,70 @@ catch_up_decay_multiplier: 1.0  # catch_up only: need decay during the gap (1.0 
 
 # --- needs, effects ---
 gain_values: {"0": 0, "+": 15, "++": 30}
-effort_energy_cost: {low: 2, medium: 6, high: 12}   # applied to the need flagged effort_drain
-repetition_penalty: {window: 6, similarity_threshold: 0.85, multiplier: 0.4}
+effort_energy_cost: {low: 2, medium: 6, high: 12}   # energy points an action's effort spends
+repetition_penalty:
+  window: 6
+  similarity_threshold: 0.85
+  multiplier: 0.4
+  needs: [wonder, curiosity]   # only these needs' gains shrink when an action repeats
 create_limit_per_tick: 1
 max_changes_per_tick: 6        # extra narrator changes beyond this are rejected
 inventory_max: 3
 name_max_length: 40            # created object names / set_state keys
-consume_min_gain: "+"          # eating an edible guarantees at least this bucket on requires_consume needs
+consume_min_gain: "+"          # eating an edible guarantees at least this bucket on the sustenance need
+sustenance_need: sustenance    # the one need that only rises when an edible object is consumed this tick
+
+# --- need bands: a level becomes a band; the brain sees words, never numbers ---
+need_bands: {empty_below: 15, low_below: 40, okay_below: 75}   # below empty_below => empty; ... ; else full
+max_pressing_needs: 2          # the brain's prompt shows the expressions of at most this many needs
+stale_after_ticks: 3           # ticks in one area before the prompt adds character.yaml stale_here
+
+# --- drains from the world: dislikes. While something it dislikes is present (the area, an object here,
+#     the weather, or its own action), the world drains these needs. The narrator never drains. ---
+dislike_drain:
+  needs: [peace, joy]
+  points_per_hour: 4           # per matching dislike, scaled by how strong the dislike is (|valence|)
+  max_matches: 2               # at most this many dislikes count in one tick (the strongest)
+
+# --- energy: a separate resource, -50..50. Effort spends it, sleep restores it ---
+energy_start: 30
 events_max_per_tick: 2
 max_objects_per_area: 12       # event spawns are skipped when the area is this full
 allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet]
 state_value_max_length: 40
 
-# --- mood ---
+# --- mood: two numbers, valence (unpleasant..pleasant) and arousal (calm..lively), each -50..50 ---
+# Computed from need BANDS (never raw levels). Valence = the points below for each need's band
+# + event nudge + the brain's own feeling. Needs not listed here add nothing.
 mood:
-  w_level: 0.4
-  w_trend: 0.6
-  w_event: 0.3
-  w_reaction: 0.2              # how much the brain's own `feeling` is blended in
+  valence_bands:               # points added to valence by a need's band (a missing band adds 0)
+    sustenance: {empty: -20, low: -6}                  # sustenance empty lowers valence
+    joy:        {empty: -15, low: -6, okay: 4, full: 15}   # joy and peace raise valence
+    peace:      {empty: -12, low: -5, okay: 3, full: 12}
+  arousal_base: -10
+  arousal_energy_weight: 0.4   # arousal points per point of energy (-50..50)
+  arousal_rules:               # when every listed need is in one of its bands, add points to arousal
+    - {when: {curiosity: [full], peace: [low, empty]}, add: 25}    # curious and unsettled: lively
+  event_points: 20             # valence points per unit of an event's mood nudge (events say -1..1)
   event_decay: 0.7             # per-tick decay of the event nudge
-  feeling_values: {negative: -0.5, neutral: 0.0, positive: 0.5}
-  trend_scale: 20              # need change per tick that counts as a "full" trend
-  word_threshold: 0.25         # |valence| above this picks a happy/low word instead of calm
-  arousal_high: 0.5            # arousal at/above this => excited/tense instead of content/low
-  low_need_below: 35           # description mentions the lowest need when under this
+  feeling_values: {negative: -10, neutral: 0, positive: 10}   # the brain's own `feeling`, in valence points
+  word_threshold: 12           # |valence| above this picks a happy/low word instead of calm
+  arousal_high: 5              # arousal at/above this => excited/tense instead of content/low
 
 # --- words (value is below the key => that word; first match wins) ---
-default_need_words: {15: desperate, 35: low, 70: okay, 101: content}
-energy_words: {25: exhausted, 50: tired, 75: fine, 101: wide awake}
+energy_words: {-25: exhausted, 0: tired, 25: fine, 51: wide awake}   # energy is -50..50
 
 # --- doze / sleep ---
 doze:
-  energy_restore: 2            # points of the sleep_restore need per dozing tick
+  energy_restore: 2            # energy points restored per dozing tick
   sim_minutes: 20
 sleep:
-  fall_asleep_energy_below: 25     # at night, energy below this => falls asleep (no brain call)
-  wants_sleep_energy_below: 60     # brain's wants_sleep honoured below this (or at night)
-  wake_rest_at_least: 90           # wakes when the sleep_restore need reaches this ...
+  fall_asleep_energy_below: -25    # at night, energy below this => falls asleep (no brain call)
+  wants_sleep_energy_below: 10     # brain's wants_sleep honoured below this (or at night)
+  wake_energy_at_least: 40         # wakes when energy reaches this ...
   wake_not_before_hour: 6          # ... and it is past this hour and not night
   max_hours: 12                    # safety cap on one sleep (sim hours)
-  restore_per_sim_hour: 12         # sleep_restore need points per sim hour asleep
+  restore_per_sim_hour: 12         # energy points restored per sim hour asleep
   decay_multiplier: 0.5            # needs decay this much slower while asleep
   sim_minutes_per_tick: 60
   tendency_max_step: 0.05          # max drift per tendency per night; LLM gives -1..1, scaled by this
@@ -152,8 +176,6 @@ keepsakes_first_page: 6
 
 web_ui:
   poll_seconds: 10
-  need_low_below: 35
-  need_critical_below: 15
   trend_min_delta: 2           # trend arrow only if a need moved more than this since last tick
   chip_min_delta: 5            # diary need chips (up/down) only for moves at least this big
   keepsake_dots: [0.4, 0.7]    # importance below the 1st => 1 dot, below the 2nd => 2, else 3

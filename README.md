@@ -133,7 +133,7 @@ docker compose start engine web
 **Start the creature's life over:** stop `engine` and `web`, move `data/cat.db` (and its `-wal`/`-shm`) away, start again.
 
 **Editing the character or world.**
-- Changing `settings.yaml`, tendencies, needs or areas is picked up on restart. If you add or remove a need or tendency, the saved state is adjusted at startup (a new need starts at its `start` value; a creature in a removed area goes back to the start area).
+- Changing `settings.yaml`, `prompts.yaml`, tendencies, needs or areas is picked up on restart (settings and prompts can also be reloaded live from the dev dashboard). If you add or remove a need or tendency, the saved state is adjusted at startup (a new need starts at its `start` value; a creature in a removed area goes back to the start area).
 - World **objects** are seeded once, on the first start. Edits to the object list in `world.yaml` don't change an existing world: reset (above) to re-seed it.
 
 **Downtime** (the laptop was off, or the engine stopped). `downtime_policy` in `settings.yaml`:
@@ -185,10 +185,10 @@ another machine without exposing it, tunnel: `ssh -L 8090:127.0.0.1:8090 <laptop
 |---|---|
 | **Overview** | engine state (running / paused / dozing / not running), current tick, sim time, interval, last tick duration, brain online; Ollama reachability, loaded models + VRAM, installed model versions; service health; last 24 h: ticks, doze ticks, errors, invalid-JSON rate, rejected-effect rate, brain/narrator latency (mean, p95), tokens per tick; the dev controls and recent commands |
 | **Ticks** | every tick; filter by status, kind, area, action text, has rejections, has errors, slow ms |
-| **Tick detail** | one tick as a timeline: stage timing bar → the numbers the public site shows (each links to its math) → event rolls (chance vs roll, or why filtered) → recall (every candidate memory with recency / importance / relevance / score) → brain call → narrator call (exact system prompt, user prompt, schema, raw response, parsed JSON, tokens, timings, retries; each with a copy button) → effects (accepted ✓ / rejected ✗ with reason) → need math (before − decay + gain × repetition − effort + clamp = after) → mood math → memory writes and embedding calls → sleep cycle |
+| **Tick detail** | one tick as a timeline (including which need expressions the brain prompt used, and why): stage timing bar → the numbers the public site shows (each links to its math) → event rolls (chance vs roll, or why filtered) → recall (every candidate memory with recency / importance / relevance / score) → brain call → narrator call (exact system prompt, user prompt, schema, raw response, parsed JSON, tokens, timings, retries; each with a copy button) → effects (accepted ✓ / rejected ✗ with reason) → need math (before − decay + gain × repetition − effort + clamp = after) → mood math → memory writes and embedding calls → sleep cycle |
 | **LLM calls** | every attempt, filterable by kind, model, validity, errors, latency; charts of latency p50/p95, tokens in/out and invalid-JSON rate over ticks or real time; each call has **Open in playground** |
 | **Memory** | long- and short-term memories with times recalled; recall stats (most recalled, never recalled); a 2D PCA **embedding map** (colour = kind, size = importance, fainter = older); a **search box** that embeds your text and scores every memory exactly as the engine's recall would |
-| **Needs & mood** | every need, derived energy, valence and arousal over sim time (24 h / 7 d / all) with sleep and doze periods shaded; the needs that sat at a critical level the longest |
+| **Needs & mood** | every need, the energy (a separate resource), valence and arousal (each −50..50) over sim time (24 h / 7 d / all) with sleep and doze periods shaded; the needs that sat at a critical level the longest |
 | **Behaviour** | action variety per day, top repeated actions, repetition-penalty hits, time per area, effect ops histogram, rejection reasons |
 | **Sleep** | each night: inputs, raw LLM outputs, **proposed vs clamped** tendency changes, new memories, preference changes; tendency history chart |
 | **World** | areas, objects (tags, state, who made them), inventory, and each object's history (created / moved / eaten, by which tick) |

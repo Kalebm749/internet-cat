@@ -97,7 +97,22 @@
 
 {% set brain = d.llm | selectattr('kind', 'equalto', 'brain') | list %}
 {% set narrator = d.llm | selectattr('kind', 'equalto', 'narrator') | list %}
-{% if brain %}<section class="card" id="brain"><h2>3 · Brain call</h2>{% for c in brain %}{{ llm_call(c) }}{% endfor %}</section>{% endif %}
+{% if brain %}<section class="card" id="brain"><h2>3 · Brain call</h2>
+  {% if d.pressing %}
+  <h3>What's pulling at it <span class="dim small">(which need expressions went into the prompt, and why; never numbers, never actions)</span></h3>
+  <table class="data" id="pressing">
+    <tr><th>need</th><th>band</th><th>expression</th><th>in the prompt?</th><th>why</th></tr>
+    {% for r in d.pressing.rows %}
+    <tr class="{{ 'sel' if r.selected else '' }}"><td>{{ d.need_labels.get(r.need, r.need) }}</td><td>{{ r.band }}</td>
+      <td>{{ r.expression if r.expression else '–' }}</td><td>{{ pill('selected', 'ok') if r.selected else pill('no') }}</td><td class="dim">{{ r.reason }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="dim small">At most {{ d.pressing.max }} are shown, from the lowest bands, ties by config order.
+    stale_here: <b>{{ 'on' if d.pressing.stale_here else 'off' }}</b> ({{ d.pressing.ticks_in_area }} ticks in this area; on after {{ d.pressing.stale_after_ticks }}).</p>
+  {% set b0 = brain[0] %}
+  {% if b0.user_prompt %}<details class="blk" open><summary>User prompt, selected expressions highlighted</summary><pre>{{ b0.user_prompt|mark(d.pressing_marks) }}</pre></details>{% endif %}
+  {% endif %}
+  {% for c in brain %}{{ llm_call(c) }}{% endfor %}</section>{% endif %}
 {% if narrator %}<section class="card" id="narrator"><h2>4 · Narrator call</h2>{% for c in narrator %}{{ llm_call(c) }}{% endfor %}</section>{% endif %}
 
 <section class="card" id="effects">
@@ -113,16 +128,16 @@
 <section class="card" id="needmath">
   <h2>6 · Need math</h2>
   <table class="data num">
-    <tr><th>need</th><th>before</th><th>− decay</th><th>bucket</th><th>+ gain (raw)</th><th>× repetition</th><th>− effort</th><th>clamp</th><th>= after</th><th>site shows</th></tr>
+    <tr><th>need</th><th>before</th><th>− decay</th><th>bucket</th><th>+ gain (raw)</th><th>× repetition</th><th>− event drain</th><th>− dislike drain</th><th>clamp</th><th>= after</th><th>site shows</th></tr>
     {% for n in d.need_math %}
     <tr id="need-{{ n.need }}"><td>{{ d.need_labels.get(n.need, n.need) }}</td><td>{{ n.before }}</td><td>{{ n.decay }}</td><td>{{ n.bucket or '–' }}</td><td>{{ n.gain_raw }}</td>
-        <td class="{{ 'warn' if n.repetition_mult < 1 else '' }}">{{ n.repetition_mult }}</td><td>{{ n.effort_cost }}</td><td>{{ n.clamp_adjust }}</td><td><b>{{ n.after }}</b></td>
+        <td class="{{ 'warn' if n.repetition_mult < 1 else '' }}">{{ n.repetition_mult }}</td><td>{{ n.event_drain or 0 }}</td><td>{{ n.dislike_drain or 0 }}</td><td>{{ n.clamp_adjust }}</td><td><b>{{ n.after }}</b></td>
         <td>{% if d.public %}{% for p in d.public.needs if p.id == n.need %}{{ p.value }} ({{ p.word }}){% endfor %}{% endif %}</td></tr>
-    {% else %}<tr><td colspan="10" class="dim">no need math stored</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="11" class="dim">no need math stored</td></tr>{% endfor %}
   </table>
-  <p class="dim small">after = before − decay + raw gain × repetition − effort + clamp. Gains come from the narrator's buckets ({{ cfg.settings.gain_values|tojson }}); repetition &lt; 1 means the action was too similar to a recent one.</p>
-  {% if d.energy_terms %}
-  <p id="energy"><b>Energy</b> (derived, never set directly) = weighted average of: {% for x in d.energy_terms %}{{ d.need_labels.get(x.need, x.need) }} {{ x.value }} × {{ x.weight }}{{ ' + ' if not loop.last }}{% endfor %} = <b>{{ d.energy }}</b></p>
+  <p class="dim small">after = before − decay − event drain − dislike drain + raw gain × repetition + clamp. Only the world drains (decay, events); the narrator only adds. Gains come from the narrator's buckets ({{ cfg.settings.gain_values|tojson }}); repetition &lt; 1 means the action was too similar to a recent one.</p>
+  {% if d.energy is not none %}
+  <p id="energy"><b>Energy</b> (a separate resource, −50..50: effort spends it, sleep restores it) = <b>{{ d.energy }}</b>{% if d.energy_effort %}; this action's effort was <i>{{ d.energy_effort }}</i> ({{ d.energy_spent }} points spent){% endif %}</p>
   {% endif %}
 </section>
 
@@ -130,15 +145,19 @@
 {% set m = d.mood_math %}{% set i = m.inputs %}
 <section class="card" id="mood">
   <h2>7 · Mood math</h2>
+  <p class="dim small">Mood is two numbers, valence and arousal, each −50..50. It is worked out from need <b>bands</b> (never raw levels), the event nudge, the brain's own feeling and the energy.</p>
   <table class="data num">
-    <tr><th>input</th><th>value</th><th>weight</th><th>term</th></tr>
-    <tr><td>need levels (mean {{ i.mean_need }} → −1..1)</td><td>{{ i.level }}</td><td>{{ i.weights.w_level }}</td><td>{{ i.terms.level }}</td></tr>
-    <tr><td>need trend (change this tick)</td><td>{{ i.trend }}</td><td>{{ i.weights.w_trend }}</td><td>{{ i.terms.trend }}</td></tr>
-    <tr><td>event nudge (decaying)</td><td>{{ i.event_nudge }}</td><td>{{ i.weights.w_event }}</td><td>{{ i.terms.event }}</td></tr>
-    <tr><td>brain's own feeling: <b>{{ i.feeling }}</b></td><td>{{ i.feeling_value }}</td><td>{{ i.weights.w_reaction }}</td><td>{{ i.terms.reaction }}</td></tr>
-    <tr><td colspan="3"><b>valence</b> = sum of terms, clamped to −1..1</td><td><b>{{ i.valence_unclamped }} → {{ m.valence }}</b></td></tr>
-    <tr><td colspan="3"><b>arousal</b> = {{ i.arousal_formula }} (energy {{ i.energy }})</td><td><b>{{ m.arousal }}</b></td></tr>
-    <tr><td colspan="3"><b>word</b> (|valence| &gt; {{ i.thresholds.word_threshold }}; arousal ≥ {{ i.thresholds.arousal_high }} is lively)</td><td><b>{{ m.word }}</b></td></tr>
+    <tr><th>valence input</th><th>band / value</th><th>points</th></tr>
+    {% for nid, pts in i.valence_terms.items() %}<tr><td>{{ d.need_labels.get(nid, nid) }}</td><td>{{ i.bands[nid] }}</td><td>{{ pts }}</td></tr>{% endfor %}
+    <tr><td>event nudge (decaying)</td><td>{{ i.event_nudge }}</td><td>{{ i.event_points }}</td></tr>
+    <tr><td>brain's own feeling: <b>{{ i.feeling }}</b></td><td></td><td>{{ i.feeling_points }}</td></tr>
+    <tr><td colspan="2"><b>valence</b> = sum, clamped to −50..50</td><td><b>{{ i.valence_unclamped }} → {{ m.valence }}</b></td></tr>
+    <tr><th>arousal input</th><th>band / value</th><th>points</th></tr>
+    <tr><td>base</td><td></td><td>{{ i.arousal_terms.base }}</td></tr>
+    <tr><td>energy</td><td>{{ i.energy }}</td><td>{{ i.arousal_terms.energy }}</td></tr>
+    {% for r in i.arousal_terms.rules %}<tr><td>rule: {% for nid, bs in r.when.items() %}{{ nid }} {{ bs|join('/') }}{{ ' and ' if not loop.last }}{% endfor %}</td><td></td><td>{{ r.add }}</td></tr>{% endfor %}
+    <tr><td colspan="2"><b>arousal</b> = sum, clamped to −50..50</td><td><b>{{ i.arousal_unclamped }} → {{ m.arousal }}</b></td></tr>
+    <tr><td colspan="2"><b>word</b> (|valence| &gt; {{ i.thresholds.word_threshold }}; arousal ≥ {{ i.thresholds.arousal_high }} is lively)</td><td><b>{{ m.word }}</b></td></tr>
   </table>
 </section>
 {% endif %}

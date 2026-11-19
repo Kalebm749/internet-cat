@@ -123,7 +123,9 @@ async function load(url, { confirmAnswers = [], promptAnswers = [], clip = [] } 
 
     // ---------- Tick detail: copy buttons ----------
     const clip = [];
-    dom = await load("/ticks/30", { clip }); w = dom.window; d = w.document;
+    // a real action tick (brain + narrator calls): which id that is depends on when the seed run slept
+    const tid = py("-c", "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute(\"SELECT id FROM ticks WHERE kind='tick' ORDER BY id LIMIT 1 OFFSET 20\").fetchone()[0])", DB).trim();
+    dom = await load(`/ticks/${tid}`, { clip }); w = dom.window; d = w.document;
     await t("copy buttons copy the exact text of their block", async () => {
       const btns = [...d.querySelectorAll("button.copy")];
       assert.ok(btns.length >= 8);

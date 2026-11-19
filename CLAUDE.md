@@ -13,11 +13,13 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 - `creature-architecture.md` — concepts (background)
 - `server-architecture.md` — how it is built and deployed, incl. host setup (wins for implementation)
 - `web-gui.md` — the website (wins for the web)
-- `config-reference.md` — every config field
+- `config-reference.md` — every config field (`settings.yaml`, `character.yaml`, `world.yaml`, `prompts.yaml`)
 - `phase-2-docker-and-devdash.md` — the plan for the Docker Compose deployment (part A, done) and the dev dashboard (part B, done)
 
-Decided: "open actions, closed effects" (server-architecture §9). Energy is **derived** from needs
-(`energy_weight`), never a need itself.
+Decided: "open actions, closed effects" (server-architecture §9). Need levels shape the brain's prompt
+(band words for the most pressing needs), never its choices: code never picks, suggests or ranks actions
+by need. Energy is a **separate resource** (-50..50: effort spends it, sleep restores it), never a need.
+Mood is two numbers (valence, arousal), each -50..50, computed from need bands.
 
 ## Commands
 ```
@@ -66,7 +68,8 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 - Each tick's apply+record step is one DB transaction (`db.transaction`); LLM calls happen outside it.
 - The engine is the only writer of game state; `cat/web` is read-only and never calls the LLM.
 - Everything must run and be tested with `MockBackend`; never require Ollama in tests.
-- Tick order: events roll at tick start; the action's duration then advances the clock and decays needs in the apply step.
+- Tick order: events roll at tick start; the action's duration then advances the clock and decays needs in the apply step (event and dislike drains, then the narrator's gains, which only add).
+- Fixed prompt text lives in `config/prompts.yaml`, never in code; entries and their `{placeholders}` are declared in `cat/prompts.py` and validated at startup.
 - Placeholder content in `config/character.yaml` / `world.yaml` — the engine must work with any valid config.
 - Don't run docker, sudo or deploy commands for the user; write the files and document the steps.
 - No config field, prompt or doc may state what the entity is. Self-image lines (table `self_image`) are written only by the sleep cycle (`cat/sleep.py`), capped by `sleep.max_self_image_lines`; the web only reads them. The config validator (`cat/config.py`) reports every problem at once and refuses to start.

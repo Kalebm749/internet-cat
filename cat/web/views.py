@@ -41,7 +41,7 @@ def _state_row(conn, cfg: Config) -> dict:
     needs = character.initial_needs(cfg)   # first boot: the creature hasn't woken up yet
     return {"sim_time": cfg.settings["sim_start"], "area": cfg.character["start_area"],
             "needs": needs, "mood": character.initial_mood(needs, cfg),
-            "energy": character.energy(needs, cfg), "weather": "clear",
+            "energy": float(cfg.settings["energy_start"]), "weather": "clear",
             "tendencies": dict(cfg.character["tendencies"]), "is_asleep": 0, "brain_online": 1}
 
 
@@ -60,9 +60,10 @@ def _real_label(iso: str | None) -> str | None:
     return t if d.date() == datetime.now().date() else f"{d.strftime('%b')} {d.day}, {t}"
 
 
-def _need_word_cls(value: float, cfg: Config) -> tuple[bool, bool]:
-    ui = _ui(cfg)
-    return value < ui["need_low_below"], value < ui["need_critical_below"]
+def _need_band_cls(value: float, cfg: Config) -> tuple[bool, bool]:
+    """(low, critical) from the need's band: low or empty is low; empty is critical."""
+    band = character.need_band(value, cfg)
+    return band in ("low", "empty"), band == "empty"
 
 
 # ---------- panels ----------
@@ -75,16 +76,18 @@ def needs_view(conn, cfg: Config, st: dict) -> list[dict]:
     for nid in cfg.character["needs"]:
         v = float(st["needs"][nid])
         delta = round(float(cur.get(nid, v)) - float(prev.get(nid, v)), 1)
-        low, critical = _need_word_cls(v, cfg)
+        band = character.need_band(v, cfg)
+        low, critical = _need_band_cls(v, cfg)
         trend = "flat" if abs(delta) <= _ui(cfg)["trend_min_delta"] else ("up" if delta > 0 else "down")
         out.append({
             "id": nid, "label": character.need_label(nid, cfg), "value": round(v),
-            "word": character.need_word(nid, v, cfg), "delta": delta, "low": low,
+            "band": band, "word": band, "meaning": cfg.character["needs"][nid]["meaning"],
+            "delta": delta, "low": low,
             "critical": critical, "trend": trend, "trend_symbol": ARROWS[trend],
             "cls": "critical" if critical else "low" if low else "",
-            "title": f"{v:.0f} / 100, {delta:+.0f} since last tick",
-            "aria": f"{character.need_label(nid, cfg)}: {character.need_word(nid, v, cfg)}, "
-                    f"{v:.0f} out of 100"})
+            "title": cfg.character["needs"][nid]["meaning"],
+            "aria": f"{character.need_label(nid, cfg)}: {band}. "
+                    f"{cfg.character['needs'][nid]['meaning']}"})
     return out
 
 
@@ -140,8 +143,8 @@ def presence_view(cfg: Config, mood: dict, state: str, name: str) -> dict:
     """The abstract presence: colour follows valence, motion follows arousal, it dims when
     asleep and desaturates when dozing. All numbers come from settings.yaml web_ui.presence."""
     p = _ui(cfg)["presence"]
-    v = max(-1.0, min(1.0, float(mood["valence"])))
-    a = max(0.0, min(1.0, float(mood["arousal"])))
+    v = max(-1.0, min(1.0, float(mood["valence"]) / character.MOOD_MAX))      # mood is -50..50
+    a = max(0.0, min(1.0, (float(mood["arousal"]) - character.MOOD_MIN) / (character.MOOD_MAX - character.MOOD_MIN)))
     hue = round(p["hue_low_valence"] + (p["hue_high_valence"] - p["hue_low_valence"]) * (v + 1) / 2)
     sat = p["saturation_dozing"] if state == "dozing" else p["saturation_awake"]
     light = {"awake": p["lightness_awake"], "asleep": p["lightness_asleep"],
@@ -320,7 +323,8 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
     diary, next_before = diary_view(conn, cfg)
     keepsakes, more = keepsakes_view(conn, cfg)
     mood = st["mood"]
-    pad_x, pad_y = (mood["valence"] + 1) / 2 * 100, (1 - mood["arousal"]) * 100
+    pad_x = (mood["valence"] - character.MOOD_MIN) / (character.MOOD_MAX - character.MOOD_MIN) * 100
+    pad_y = (character.MOOD_MAX - mood["arousal"]) / (character.MOOD_MAX - character.MOOD_MIN) * 100
     return {
         "creature": {"name": ch["name"], "core_traits": ch["core_traits"],
                      "pronoun": ch.get("pronoun", "they")},
@@ -340,10 +344,11 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
                  "valence": mood["valence"], "arousal": mood["arousal"],
                  "pad_x": round(pad_x, 1), "pad_y": round(pad_y, 1),
                  "aria": f"Mood map: {mood['word']}, leaning "
-                         f"{'pleasant' if mood['valence'] > 0.25 else 'unpleasant' if mood['valence'] < -0.25 else 'neutral'} "
-                         f"and {'lively' if mood['arousal'] >= 0.5 else 'quiet'}"},
-        "energy": {"value": round(energy), "word": character.energy_word(energy, cfg),
-                   "aria": f"energy: {character.energy_word(energy, cfg)}, {energy:.0f} out of 100"},
+                         f"{'pleasant' if mood['valence'] > cfg.settings['mood']['word_threshold'] else 'unpleasant' if mood['valence'] < -cfg.settings['mood']['word_threshold'] else 'neutral'} "
+                         f"and {'lively' if mood['arousal'] >= cfg.settings['mood']['arousal_high'] else 'quiet'}"},
+        "energy": {"value": round(energy), "pct": round(energy - character.ENERGY_MIN),
+                   "word": character.energy_word(energy, cfg),
+                   "aria": f"energy: {character.energy_word(energy, cfg)}, {energy:.0f} on a scale from -50 to 50"},
         "needs": needs_view(conn, cfg, st),
         "tendencies": tendencies_view(conn, cfg, st),
         "preferences": preferences_view(conn, cfg),

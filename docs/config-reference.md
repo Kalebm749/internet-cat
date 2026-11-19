@@ -1,6 +1,9 @@
 # Config reference
 
-Three files in `config/`. Loaded and validated by `cat/config.py`. The validator collects **every** problem and refuses to start, printing them all (need ids in event effects exist, `tendency_labels` match `tendencies`, `start_area` exists, need flags are known, numeric ranges are valid, `self_image` is text only). Unknown top-level fields in `character.yaml` and `world.yaml` only produce a warning (e.g. a leftover `species`).
+Four files in `config/`: `settings.yaml`, `character.yaml`, `world.yaml` and `prompts.yaml`. Loaded and validated by `cat/config.py`. The validator collects **every** problem and refuses to start, printing them all (need ids in event effects exist, `tendency_labels` match `tendencies`, `start_area` exists, need flags are known, numeric ranges are valid, `self_image` is text only). Unknown top-level fields in `character.yaml` and `world.yaml` only produce a warning (e.g. a leftover `species`).
+
+## prompts.yaml
+Every fixed piece of prompt text the LLMs see: the brain's system prompt and the headings and sentences of its situation prompt, the narrator's system prompt and user message, and the sleep cycle's system prompt and four step prompts. Edit it to change how the entity, narrator and sleeping mind are instructed. Each entry lists in a comment the `{placeholders}` the engine fills in (`cat/prompts.py` `SPEC` is the authoritative list). The validator refuses to start on a missing or empty entry or an unknown placeholder, and warns on unknown top-level keys. A literal brace is written `{{` or `}}`. Text edits are applied live by the dev dashboard's `reload_settings`; no restart needed. Prompts never carry need numbers, and must not tell the brain which action to take.
 
 ## character.yaml
 | Field | Req | Meaning |
@@ -15,19 +18,19 @@ Three files in `config/`. Loaded and validated by `cat/config.py`. The validator
 | `start_area` | ✔ | Area id the creature starts in. |
 | `needs` | ✔ | `{id: {...}}`, see below. Order is display order. |
 
+| `stale_here` | | Text added to the brain's prompt once it has spent `stale_after_ticks` ticks in one area. A flag only: it changes no need value. |
+
 ### Need fields
 | Field | Meaning |
 |---|---|
 | `start` ✔ | Initial value 0..100. |
-| `decay` ✔ | Points lost per sim hour. |
-| `label` | Display name (default: id). |
-| `words` | `{upper_bound: word}`; first bound the value is below wins, e.g. `{15: starving, 35: peckish, 101: full}`. Default: <15 desperate, <35 low, <70 okay, else content. |
-| `requires_consume` | If true, gains only apply when an `edible` object was consumed that tick. |
-| `energy_weight` | Weight in the derived **energy** (weighted average of needs). At least one need needs a weight > 0. |
-| `effort_drain` | Exactly one need: effort cost (`effort_energy_cost`) is subtracted from it. |
-| `sleep_restore` | Exactly one need: sleeping and dozing restore it. |
+| `decay_per_hour` ✔ | Points lost per sim hour. |
+| `meaning` ✔ | One sentence saying what the need is. Shown to the narrator, and on hover in the website's Needs panel. |
+| `expressions` ✔ | `{full, okay, low, empty}`: text for each band. `empty`, `low` and `full` are required and non-empty; `okay` may be null. The brain sees the expressions of the most pressing needs (in words, never numbers). |
 
-`energy` is not a valid need id: energy is derived and cached in `state.energy`.
+There are no behaviour flags. The sustenance need (`settings.yaml` `sustenance_need`) only rises when an edible object is consumed. `energy` is not a valid need id: energy is a separate resource (see below).
+
+A level becomes a band by `settings.yaml` `need_bands`: below `empty_below` is `empty`, below `low_below` is `low`, below `okay_below` is `okay`, otherwise `full` (thresholds must ascend).
 
 ## world.yaml
 | Field | Meaning |
@@ -35,20 +38,22 @@ Three files in `config/`. Loaded and validated by `cat/config.py`. The validator
 | `areas` ✔ | `{id: {name, description, exits: [area ids]}}`. Exits must be mirrored. |
 | `objects` ✔ | List of `{id, name, area, tags, state}`. `area` may be `inventory`. Tags are free strings; `movable` and `edible` have rules (server-architecture §9). |
 | `weather` | List of weather names; the first is the starting weather. Default `[clear]`. |
-| `events` | List of `{text, chance (0..1 per tick), area?, hours? [from, to), only_weather?, set_weather?, mood? (float nudge to mood, decays), spawn?: {name, tags, area}}`. An event with `area` only fires while the creature is in that area (it must perceive it); `spawn.area` is where the object appears. Spawns are skipped when the area holds `max_objects_per_area` objects. |
+| `events` | List of `{text, chance (0..1 per tick), area?, hours? [from, to), only_weather?, set_weather?, drains? ({need id: points} the world takes from needs when it fires), mood? (float nudge to mood -1..1, decays), spawn?: {name, tags, area}}`. An event with `area` only fires while the creature is in that area (it must perceive it); `spawn.area` is where the object appears. Spawns are skipped when the area holds `max_objects_per_area` objects. |
 
 ## settings.yaml
 Every tuning number. Groups:
 - **LLM**: `ollama_host` defaults to `http://ollama:11434` (the Compose service name; use `http://127.0.0.1:11434` or `--ollama-host` when running outside Docker). `llm_temperature` (per task), `llm_num_ctx`, `tendency_words`, `preferences_shown`, `brain_model`, `narrator_model`, `sleep_model`, `embed_model`, `ollama_think`, `llm_timeout_seconds`, `health_timeout_seconds`, `llm_retries`.
 - **Pacing**: `tick_interval_seconds` (real), `sim_start`, `sim_minutes_per_tick_default`, `sim_minutes_min/max` (narrator duration clamp), `phases` (start hour of dawn/day/dusk/night).
-- **Effects**: `gain_values`, `effort_energy_cost`, `repetition_penalty`, `create_limit_per_tick`, `allowed_tags`, `state_value_max_length`.
-- **Mood**: `mood.*` weights, `feeling_values`, word thresholds. `default_need_words` / `energy_words` map values to words. `events_max_per_tick`, `max_objects_per_area` cap events.
+- **Effects**: `gain_values`, `effort_energy_cost` (energy points an action's effort spends), `repetition_penalty` (`window`, `similarity_threshold`, `multiplier` and `needs`: the needs whose gains shrink for a repeated action in the same place), `create_limit_per_tick`, `allowed_tags`, `state_value_max_length`, `consume_min_gain`, `sustenance_need`.
+- **Needs and prompts**: `need_bands` (`empty_below`, `low_below`, `okay_below`, ascending), `max_pressing_needs` (how many need expressions the brain's prompt shows, default 2), `stale_after_ticks` (ticks in one area before `stale_here` is added; 0 turns it off, default 3), `dislike_drain` (`needs`, `points_per_hour`, `max_matches`: needs the world drains while something disliked is present).
+- **Energy**: a separate resource from −50 to 50. `energy_start`, `energy_words` (value → word, below the key), and in `sleep.*` / `doze.*` the thresholds (`fall_asleep_energy_below`, `wants_sleep_energy_below`, `wake_energy_at_least`) and restore rates.
+- **Mood**: two numbers, valence and arousal, each −50..50, from need bands. `mood.valence_bands` (`{need: {band: points}}`; joy and peace raise valence, sustenance `empty` lowers it), `arousal_base`, `arousal_energy_weight`, `arousal_rules` (`when: {need: [bands]}`, `add`), `event_points`, `event_decay`, `feeling_values`, `word_threshold`, `arousal_high`. `events_max_per_tick`, `max_objects_per_area` cap events.
 - **Tracing & logs**: `trace_enabled`, `trace_level` (`full` | `summary`), `trace_retention_days`, `trace_recall_candidates`, `log_dir`, `log_level`, `log_max_bytes`, `log_backup_count`, `log_tick_events`.
 - **Dev tools**: `dev_db_path`, `dev_commands_enabled`, `dev_poll_seconds`, `paused_alive_seconds`, `devdash.*`.
 - **Downtime**: `downtime_policy` (`pause` | `catch_up`), `max_catch_up_hours`, `catch_up_min_gap_ticks`, `catch_up_decay_multiplier`.
 - **Doze/sleep**: `doze.*`, `sleep.*` (thresholds, restore rate, `tendency_max_step`).
 - **Memory**: `notable.*` (what counts as a notable tick, importance of short-term memories), `recall`, `recency_half_life_sim_hours`, `short_term_shown`, `notable`, `long_term_cap`.
-- **Web**: `web_port`, `diary_page_size`, `keepsakes_first_page`, and `web_ui.*` (poll interval, when a need counts as low/critical, trend and chip thresholds, keepsake dot thresholds, page-size limits).
+- **Web**: `web_port`, `diary_page_size`, `keepsakes_first_page`, and `web_ui.*` (poll interval, trend and chip thresholds, keepsake dot thresholds, page-size limits).
 - `db_path`, `backup_keep` (also read by `deploy/backup.sh`).
 - **Deployment**: `heartbeat_file` (written by the engine each loop), `healthcheck.engine_max_age_seconds` (the engine is unhealthy when its heartbeat is older than this or 3x the tick interval) and `healthcheck.http_timeout_seconds`, `health_require_models` (brain is online only if all configured models are pulled), `pull_timeout_seconds`.
 - `CAT_CONFIG_DIR` (env) selects the config directory (set to `/app/config` in the containers); relative paths such as `data/cat.db` resolve against its parent.
@@ -58,7 +63,7 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 - Objects are referenced by `object_id`; a unique exact name is accepted as a fallback.
 - `create`: tags not in `allowed_tags` are stripped (recorded as `dropped_tags`); at most `create_limit_per_tick` per tick; area must be the current one.
 - Caps: `max_changes_per_tick`, `inventory_max`, `max_objects_per_area`, `name_max_length`, `state_value_max_length`.
-- `consume` of an edible is the only thing that lets `requires_consume` needs rise; `consume_min_gain` is the minimum bucket granted if the narrator forgot to score it. Those needs are never repetition-penalised.
+- `consume` of an edible is the only thing that lets the sustenance need (`sustenance_need`) rise; `consume_min_gain` is the minimum bucket granted if the narrator forgot to score it. The sustenance need is never repetition-penalised, and only the needs in `repetition_penalty.needs` are.
 - Objects spawned by world events are recorded in the tick's `changes` as `{"op": "create", "source": "event"}`, so every object appearance or disappearance is auditable.
 
 ## Memory (`cat/memory.py`)
@@ -69,14 +74,14 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 
 ## Sleep (`cat/sleep.py`, settings `sleep.*`)
 - **Falls asleep** when it is night and energy < `fall_asleep_energy_below` (no brain call), or the brain's `wants_sleep` is true and energy < `wants_sleep_energy_below` (or it is night).
-- **Asleep ticks** (`ticks.kind = 'asleep'`) skip the brain/narrator, restore the `sleep_restore` need by `restore_per_sim_hour`, and decay needs at `decay_multiplier` speed. It **wakes** when that need reaches `wake_rest_at_least`, it is past `wake_not_before_hour` and not night, or after `max_hours`.
+- **Asleep ticks** (`ticks.kind = 'asleep'`) skip the brain/narrator, restore **energy** by `restore_per_sim_hour`, and decay needs at `decay_multiplier` speed. It **wakes** when energy reaches `wake_energy_at_least`, it is past `wake_not_before_hour` and not night, or after `max_hours`.
 - **The cycle** runs when sleep begins and makes 4 LLM calls (consolidate, tendencies, preferences, self-image). Nothing is written unless all succeed; if the brain is offline it stays pending (`meta.sleep_pending`) and retries on every sleeping tick. Short-term memories are kept until then.
 - LLM output is turned into numbers by code: memory importance is `low|medium|high` -> `importance_values`; tendency proposals are -1..1, scaled by `tendency_max_step` and clamped to 0..1 (core traits are never touched); preference valences are blended with the existing value (`preference_blend`), so new likes start weak and strengthen by repetition. Weak ones (< `preference_min_abs`) are forgotten and the total is capped.
 - Self-image: after preferences, one call may propose a single line `{text, confidence 0..1, replaces?}`. `max_self_image_lines` caps the lines kept (least confident forgotten first), `self_image_min_confidence` rejects weak proposals, `max_self_image_length` truncates text. Lines are stored like preferences (table `self_image`) and logged with their outcome in the sleep trace.
 - `sleep_log.sim_date` is the date the sleep began.
 
 ## Brain offline (`cat/engine.py`)
-- Each tick starts with `GET /api/tags` (`health_timeout_seconds`), cached for that tick. If it fails, or the brain/narrator call still fails after `llm_retries` retries, the tick is a **doze**: events, clock and decay still run, `doze.energy_restore` is added to the sleep_restore need, the tick is stored with `kind='doze'`, `outcome='dozing'`, and `state.brain_online=0`. No LLM calls are made.
+- Each tick starts with `GET /api/tags` (`health_timeout_seconds`), cached for that tick. If it fails, or the brain/narrator call still fails after `llm_retries` retries, the tick is a **doze**: events, clock and decay still run, `doze.energy_restore` is added to energy, the tick is stored with `kind='doze'`, `outcome='dozing'`, and `state.brain_online=0`. No LLM calls are made.
 - When the brain returns, the first prompt says the creature just came round from a doze (and omits the stale "last outcome").
 - A creature that is exhausted at night still falls asleep while the brain is offline; the sleep cycle waits (see Sleep).
 - If a tick raises an unexpected error, the state is reloaded from the DB and the loop waits at least `error_backoff_seconds` before the next one.
