@@ -1,8 +1,8 @@
-# Web GUI Spec: The Creature's Journal
+# Web GUI Spec: {Name}'s Journal
 
 Spec for the website. Read `server-architecture.md` (§13) for where this sits: a FastAPI service in Docker Compose on the host laptop, read-only, served on the home network.
 
-**Feel:** cozy storybook, like opening the creature's own journal. Warm paper, ink, soft colours, hand-made touches.
+**Feel:** cozy storybook, like opening the entity's own journal. Warm paper, ink, soft colours, hand-made touches.
 **Target:** desktop first (≥1200px wide), still usable on a narrow screen.
 **Mode:** read-only. Visitors watch and can't interact (yet).
 
@@ -26,8 +26,9 @@ Spec for the website. Read `server-architecture.md` (§13) for where this sits: 
 ├───────────────────┬──────────────────────────────────┬───────────────────────┤
 │ LEFT  (≈300px)    │ CENTRE  (flex, ≥520px)           │ RIGHT  (≈320px)       │
 │                   │                                  │                       │
-│ Portrait (cat)    │ Diary                            │ About Mochi           │
+│ Presence (frame)  │ Diary                            │ About Mochi           │
 │                   │  ─ entries, newest first ─       │  Core traits (chips)  │
+│                   │                                  │  What it thinks it is │
 │ Mood + energy     │  ─ "last night" sleep card ─     │  Tendencies (sliders) │
 │                   │  [ read older pages ]            │  Loves / dislikes     │
 │ Needs (bars)      │                                  │                       │
@@ -39,7 +40,7 @@ Spec for the website. Read `server-architecture.md` (§13) for where this sits: 
 - Max content width ~1400px, centred. Columns are CSS grid: `300px minmax(520px, 1fr) 320px`, gap 28px.
 - Left and right columns are `position: sticky` (top: 24px) so they stay visible while the diary scrolls.
 - **Under 1100px:** two columns (left + centre). The right column's sections move below the left column's.
-- **Under 720px:** one column, in this order: header → portrait → mood/energy → needs → diary → about → keepsakes.
+- **Under 720px:** one column, in this order: header → presence → mood/energy → needs → diary → about → keepsakes.
 
 ---
 
@@ -91,12 +92,15 @@ Put the font files in `static/fonts/` as `.woff2` files with `font-display: swap
   - `dozing` (honey dot, shown when the brain is offline)
 - Far right: a small brain indicator: "brain: connected / last seen 6:02 pm". Hover shows the model name.
 
-### 4.2 Portrait
-- Framed image of the cat (`static/img/cat.png`, a render of the 3D model), inside an oval or arched "photo frame" border.
-- **Asleep:** image at 70% brightness + a small animated "z z z" drifting up (CSS, reduced-motion safe). Optional `cat-asleep.png` swaps in if it exists.
-- **Dozing:** the same dimming, plus a caption "dozing… (brain offline)".
-- Caption under the frame: species + current area ("a small grey cat, in the bookshop").
-- Later: replace the `<img>` with `<model-viewer>` + `.glb`. Keep the frame element, so only the inner element changes.
+### 4.2 Presence (the portrait frame)
+- The frame stays: an oval or arched "photo frame" border, now holding an **abstract presence** instead of a picture: soft concentric rings around a core, drawn as inline SVG (`#presence`). **No figure, no silhouette, no body.** Nothing in it suggests what the entity is.
+- **Colour follows valence:** hue runs from blue (valence −1) to amber (+1).
+- **Motion follows arousal:** the rings breathe; one breath takes ~7s when calm and ~1.4s when highly aroused. No motion under `prefers-reduced-motion`.
+- **Asleep:** the presence dims (lower lightness) and a small animated "z z z" drifts up (CSS, reduced-motion safe).
+- **Dozing:** the presence desaturates and dims slightly, plus a caption "dozing… (brain offline)".
+- The server computes the values (`views.presence_view`, tuned by `web_ui.presence` in `settings.yaml`) and sends them as CSS variables (`--pv-h`, `--pv-s`, `--pv-l`, `--pv-t`) on the SVG, so the first paint is right without JS. `journal.js` updates the same variables.
+- Caption under the frame: the entity's name and the current area ("Mochi, in the bookshop").
+- Hook for later: an optional `portrait_model` could replace the SVG inside the frame. Nothing in the code reads it today, and no model loader exists. (The paused cat render and `.glb` plan are not part of this design.)
 
 ### 4.3 Mood and energy
 - **Mood:** a large word (Fraunces 22px, `--honey` underline), e.g. *content*, plus a one-line description from the engine ("tired but glowing after the sunset").
@@ -117,9 +121,9 @@ Each **tick entry**:
 ```
 7:20 pm · the park                                       ⟵ small, ink-soft
 climbs the old oak to watch the sunset                   ⟵ action, Lora italic
-She scrambles up, scraping a paw, and the sky turns      ⟵ outcome (narrator), Lora
+She scrambles up, slipping once, and the sky turns      ⟵ outcome (narrator), Lora
 orange over the rooftops.
-  "worth the scrape. the sky looked like a sardine."     ⟵ reaction, Caveat, --ink
+  "worth the slip. the sky looked like a sardine."     ⟵ reaction, Caveat, --ink
   fun ▲  energy ▼                                        ⟵ need changes, small chips
 ```
 - **World events** that happened that tick show as a margin note above the entry: small italic, a leaf/dot marker, e.g. *It starts to drizzle.*
@@ -132,6 +136,7 @@ orange over the rooftops.
 ### 4.6 About (right)
 - **Core traits:** chips (pill, `--rule` border, Lora 14px). Static, from config.
 - **Tendencies:** one row per tendency, drawn as a slider: a track with labelled ends (e.g. *timid* ↔ *bold*) and a dot at the value. If last night changed it, show a faint ghost dot at the old position and a ▲/▼. End labels come from config (`tendency_labels`), defaulting to `low ↔ high`.
+- **What it thinks it is:** the entity's current self-image lines (learned during sleep; see `creature-architecture.md` §7), one per row in italics, oldest first. Hover shows how sure it is and the day it was formed. If there are none, the section says *still figuring that out*. The entity starts with no self-image; a line may also come from an optional `character.yaml` `self_image.seed` hint.
 - **Loves / dislikes:** two short lists, top 5 each by |valence|. Small heart / cross marks drawn as inline SVG (no emoji). Hover shows the reason ("keeps coming back here at dusk").
 
 ### 4.7 Keepsakes (long-term memories)
@@ -153,7 +158,7 @@ All JSON, read-only, served by `cat/web/app.py`.
 Polled every 10s. Everything except old diary pages.
 ```json
 {
-  "creature": {"name": "Mochi", "species": "small grey cat",
+  "creature": {"name": "Mochi", "pronoun": "she",
                "core_traits": ["curious", "dramatic", "secretly sentimental"]},
   "time": {"sim_time": "2026-11-30T19:40", "day_number": 12,
            "label": "Wednesday, Day 12 · 7:40 pm", "phase": "dusk"},
@@ -167,6 +172,12 @@ Polled every 10s. Everything except old diary pages.
              "delta": 8, "low": false, "critical": false}],
   "tendencies": [{"id": "boldness", "low_label": "timid", "high_label": "bold",
                   "value": 0.55, "previous": 0.50}],
+  "presence": {"hue": 120, "saturation": 70, "lightness": 58, "pulse_seconds": 5.2,
+               "style": "--pv-h:120;--pv-s:70%;--pv-l:58%;--pv-t:5.2s",
+               "aria": "A soft glow for Mochi: ...", "caption": "Mochi, in the bookshop"},
+  "self_image": {"lines": [{"text": "I seem to tire when I climb.",
+                            "title": "formed on day 3, 60% sure"}],
+                 "empty": false, "empty_text": "still figuring that out"},
   "preferences": {"loves": [{"subject": "the old oak", "valence": 0.8, "reason": "..."}],
                   "dislikes": [{"subject": "rain", "valence": -0.6, "reason": "..."}]},
   "latest_tick_id": 4821,
@@ -208,7 +219,7 @@ cat/web/
     css/site.css              # tokens, layout, components
     js/journal.js             # polling, rendering new entries, load-more
     fonts/                    # Fraunces, Lora, Caveat (.woff2)
-    img/cat.png               # portrait (+ optional cat-asleep.png)
+    img/                      # paper.png texture (img/cat*.png are paused, unused assets)
     img/paper.png             # optional texture
 ```
 
@@ -230,8 +241,11 @@ tendency_labels:
   boldness: [timid, bold]
   sociability: [solitary, social]
   tidiness: [scruffy, tidy]
-portrait: img/cat.png
+self_image:
+  seed: ""        # optional text hint; empty by default
 ```
+
+In `settings.yaml`, `web_ui.presence` holds the presence's tuning (hue range, saturation and lightness per state, pulse seconds).
 
 ---
 
@@ -248,7 +262,7 @@ portrait: img/cat.png
 
 1. On a 1440px screen, all 9 panels are visible without scrolling except the diary and keepsakes.
 2. A new tick shows up in the diary within ~10s without a page reload, and without jumping the page if the reader has scrolled down.
-3. Asleep, dozing and awake each look visibly different (status pill + portrait).
+3. Asleep, dozing and awake each look visibly different (status pill + presence).
 4. Night-time sim hours switch to the night palette.
 5. The page loads in <1s on the LAN and works with JS disabled (static snapshot).
 6. With an empty database the page shows the empty states, not errors.

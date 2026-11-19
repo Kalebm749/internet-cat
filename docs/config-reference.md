@@ -82,7 +82,7 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 - If a tick raises an unexpected error, the state is reloaded from the DB and the loop waits at least `error_backoff_seconds` before the next one.
 
 ## Website (`cat/web/`)
-- `character.yaml` optional fields used by the page: `portrait` (default `img/cat.png`; `<name>-asleep.<ext>` next to it is swapped in while asleep/dozing if the file exists), per-need `label` and `words`, `tendency_labels`, `pronoun`.
+- `character.yaml` optional fields used by the page: `self_image.seed` (shown as a first self-image line), per-need `label` and `words`, `tendency_labels`, `pronoun`. The portrait frame shows an abstract presence tuned by `settings.yaml` `web_ui.presence` (colour from valence, breathing from arousal, dimmer asleep, desaturated dozing). The About panel lists the learned self-image lines (`self_image` in `/api/state`).
 - `GET /` is a complete server-rendered snapshot (works without JS; "read older pages" and "more keepsakes" are plain links). `journal.js` polls `GET /api/state` every `web_ui.poll_seconds` and adds only new entries. `GET /api/diary?before=<tick id>&limit=` and `GET /api/keepsakes?offset=&limit=` page through history.
 - Diary entries are keyed (`t<tick id>`, `d<first doze tick id>`, `s<sleep_log id>`). Consecutive dozing ticks collapse into one entry; asleep ticks are hidden (the "Last night…" card stands for them). `sleep_log.tick_id` is the tick where the sleep began, which is where the card sits.
 - With an empty or missing database the page shows the empty states, built from the config.

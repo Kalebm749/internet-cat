@@ -277,7 +277,7 @@ def test_no_external_urls_anywhere():
 
 def test_static_assets_served(cfg):
     c = client(cfg)
-    for p in ("css/site.css", "js/journal.js", "img/cat.png", "img/cat-asleep.png", "fonts/Fraunces-500.woff2",
+    for p in ("css/site.css", "js/journal.js", "fonts/Fraunces-500.woff2",
               "fonts/Lora-400.woff2", "fonts/Lora-400-italic.woff2", "fonts/Caveat-500.woff2"):
         assert c.get(f"/static/{p}").status_code == 200, p
     assert c.get("/static/fonts/Lora-400.woff2").content[:4] == b"wOF2"
@@ -323,3 +323,100 @@ def test_readonly_connection_cannot_write(cfg, seeded):
     conn = db.connect(cfg.db_path, readonly=True)
     with pytest.raises(Exception):
         conn.execute("DELETE FROM ticks")
+
+
+# ---------- abstract presence and self-image (revised design) ----------
+def _presence(cfg, valence, arousal, state):
+    return views.presence_view(cfg, {"valence": valence, "arousal": arousal}, state, "Gregorovitch")
+
+
+def test_presence_colour_follows_valence(cfg):
+    low, mid, high = (_presence(cfg, v, 0.5, "awake")["hue"] for v in (-1, 0, 1))
+    p = cfg.settings["web_ui"]["presence"]
+    assert low == p["hue_low_valence"] and high == p["hue_high_valence"] and high < mid < low
+
+
+def test_presence_motion_follows_arousal(cfg):
+    calm, lively = (_presence(cfg, 0, a, "awake")["pulse_seconds"] for a in (0, 1))
+    p = cfg.settings["web_ui"]["presence"]
+    assert calm == p["pulse_seconds_calm"] and lively == p["pulse_seconds_aroused"] and lively < calm
+
+
+def test_presence_dims_asleep_and_desaturates_dozing(cfg):
+    awake, asleep, dozing = (_presence(cfg, 0.2, 0.4, s) for s in ("awake", "asleep", "dozing"))
+    assert asleep["lightness"] < awake["lightness"] and asleep["saturation"] == awake["saturation"]
+    assert dozing["saturation"] < awake["saturation"] and dozing["lightness"] < awake["lightness"]
+
+
+def test_page_has_presence_not_a_portrait_image(cfg, seeded):
+    html = client(cfg).get("/").text
+    assert 'id="presence"' in html and 'class="frame"' in html and 'class="zzz"' in html
+    assert "<img" not in html and "portrait-img" not in html and ".glb" not in html
+    assert "--pv-h:" in html and "dozing… (brain offline)" in html
+
+
+def test_caption_is_name_and_current_area(cfg, seeded):
+    s = client(cfg).get("/api/state").json()
+    assert s["presence"]["caption"] == f"Gregorovitch, in {s['location']['name']}"
+    assert "portrait" not in s and "species" not in s["creature"]
+
+
+def test_state_classes_for_presence_follow_status(cfg, seeded):
+    conn = db.connect(cfg.db_path)
+    conn.execute("UPDATE state SET is_asleep=1")
+    conn.commit()
+    s = client(cfg).get("/api/state").json()
+    p = cfg.settings["web_ui"]["presence"]
+    assert s["status"]["state"] == "asleep" and s["presence"]["lightness"] == p["lightness_asleep"]
+
+
+def _clear_self_image(cfg):
+    conn = db.connect(cfg.db_path)
+    conn.execute("DELETE FROM self_image")
+    conn.commit()
+
+
+def test_self_image_empty_says_still_figuring_it_out(cfg, seeded):
+    _clear_self_image(cfg)
+    c = client(cfg)
+    s = c.get("/api/state").json()
+    assert s["self_image"] == {"lines": [], "empty": True, "empty_text": "still figuring that out"}
+    html = c.get("/").text
+    assert "What it thinks it is" in html and "still figuring that out" in html
+    assert not re.search(r'id="self-image-empty"[^>]*\bhidden', html)
+
+
+def test_self_image_lines_are_shown_in_the_about_panel(cfg, seeded):
+    _clear_self_image(cfg)
+    conn = db.connect(cfg.db_path)
+    conn.execute("INSERT INTO self_image(text,confidence,formed_day,updated_at) VALUES"
+                 "('I seem to tire when I climb.',0.6,'2026-11-19','x')")
+    conn.commit()
+    c = client(cfg)
+    s = c.get("/api/state").json()
+    assert s["self_image"]["empty"] is False
+    line = s["self_image"]["lines"][0]
+    assert line["text"] == "I seem to tire when I climb." and "60% sure" in line["title"]
+    html = c.get("/").text
+    assert "I seem to tire when I climb." in html
+    assert re.search(r'id="self-image-empty"[^>]*\bhidden', html)
+
+
+def test_self_image_seed_hint_is_listed(cfg, seeded):
+    _clear_self_image(cfg)
+    cfg.character["self_image"] = {"seed": "Something quiet."}
+    s = client(cfg).get("/api/state").json()
+    assert [l["text"] for l in s["self_image"]["lines"]] == ["Something quiet."]
+
+
+def test_self_image_survives_an_old_db_without_the_table(cfg, seeded):
+    conn = db.connect(cfg.db_path)
+    conn.execute("DROP TABLE self_image")
+    conn.commit()
+    assert client(cfg).get("/api/state").json()["self_image"]["empty"] is True
+
+
+def test_web_assets_have_no_glb_or_species(cfg):
+    for f in ("templates/index.html", "static/js/journal.js", "static/css/site.css", "views.py"):
+        text = (WEB / f).read_text().lower()
+        assert "glb" not in text and "model-viewer" not in text and "species" not in text, f

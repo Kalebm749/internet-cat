@@ -119,6 +119,25 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
         for b in ("0", "+", "++"):
             if b not in {str(k) for k in st["gain_values"]}:
                 errs.append(f"settings.yaml gain_values: missing bucket '{b}'")
+    ui = st.get("web_ui")
+    if isinstance(ui, dict):
+        pres = ui.get("presence")
+        pkeys = ("hue_low_valence", "hue_high_valence", "saturation_awake", "saturation_dozing",
+                 "lightness_awake", "lightness_asleep", "lightness_dozing",
+                 "pulse_seconds_calm", "pulse_seconds_aroused")
+        if not isinstance(pres, dict):
+            errs.append("settings.yaml web_ui: missing required field 'presence'")
+        else:
+            for k in pkeys:
+                if not _num(pres.get(k)):
+                    errs.append(f"settings.yaml web_ui.presence.{k}: must be a number")
+            for k in ("saturation_awake", "saturation_dozing", "lightness_awake",
+                      "lightness_asleep", "lightness_dozing"):
+                if _num(pres.get(k)) and not 0 <= pres[k] <= 100:
+                    errs.append(f"settings.yaml web_ui.presence.{k}: must be 0..100")
+            for k in ("pulse_seconds_calm", "pulse_seconds_aroused"):
+                if _num(pres.get(k)) and pres[k] <= 0:
+                    errs.append(f"settings.yaml web_ui.presence.{k}: must be > 0")
     sl = st.get("sleep")
     if isinstance(sl, dict):
         for k in ("max_self_image_lines", "self_image_min_confidence", "max_self_image_length"):

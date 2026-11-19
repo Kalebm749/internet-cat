@@ -160,6 +160,16 @@ web_ui:
   preferences_shown: 5         # loves / dislikes each
   max_page_size: 100
   keepsakes_all_limit: 200
+  presence:                    # the abstract presence in the portrait frame (no figure, no body)
+    hue_low_valence: 220       # colour follows valence: this hue at -1 (blue) ...
+    hue_high_valence: 40       # ... to this hue at +1 (amber)
+    saturation_awake: 70       # % ; also used while asleep
+    saturation_dozing: 12      # desaturated while dozing (brain offline)
+    lightness_awake: 58        # % ; dims while asleep or dozing
+    lightness_asleep: 28
+    lightness_dozing: 48
+    pulse_seconds_calm: 7.0    # motion follows arousal: one breath takes this long at arousal 0 ...
+    pulse_seconds_aroused: 1.4 # ... and this long at arousal 1
 
 # --- backup (deploy/backup.sh reads these via env, kept here for reference) ---
 backup_keep: 14                # deploy/backup.sh reads this line
