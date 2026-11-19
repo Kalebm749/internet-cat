@@ -59,7 +59,7 @@
     {% if p.world_changes %}<tr><th>world changes</th><td>{{ p.world_changes|join(', ') }} <a href="#effects">(effects)</a></td></tr>{% endif %}
     <tr><th>needs</th><td>{% for n in p.needs %}<a href="#need-{{ n.id }}">{{ n.label }} {{ n.value }} <span class="dim">({{ n.word }})</span></a>{{ ' · ' if not loop.last }}{% endfor %}</td></tr>
     <tr><th>energy</th><td>{% if p.energy.value is not none %}<a href="#energy">{{ p.energy.value }} ({{ p.energy.word }})</a>{% else %}–{% endif %}</td></tr>
-    <tr><th>mood</th><td>{% if p.mood %}<a href="#mood">{{ p.mood.word }} · “{{ p.mood.description }}” · valence {{ p.mood.valence }} · arousal {{ p.mood.arousal }}</a>{% endif %}</td></tr>
+    <tr><th>mood</th><td>{% if p.mood %}<a href="#mood">{{ p.mood.word }} · “{{ p.mood.description }}” · mood {{ p.mood.value }}</a>{% endif %}</td></tr>
   </table>
 </section>
 {% endif %}
@@ -141,23 +141,53 @@
   {% endif %}
 </section>
 
+{% if d.director %}
+{% set w = d.director %}
+<section class="card" id="director">
+  <h2>World director <span class="dim small">(an LLM proposes a small happening; code validates it; it never sees needs or mood)</span></h2>
+  <table class="data">
+    <tr><th>ran because</th><td>{{ w.trigger }} ({{ w.gap }} action ticks since last run)</td></tr>
+    <tr><th>outcome</th><td>{{ pill(w.action, 'ok' if w.action == 'happened' else ('bad' if w.action in ('failed', 'rejected') else '')) }}{% if w.reason %} <span class="dim">{{ w.reason }}</span>{% endif %}</td></tr>
+    {% if w.action == 'happened' %}
+    <tr><th>happening</th><td>{{ w.text }}</td></tr>
+    <tr><th>effects</th><td>mood nudge {{ w.mood }}{% if w.weather %} · weather → {{ w.weather }}{% endif %}{% if w.spawn %} · object: {{ w.spawn.name }}{% endif %}{% if w.drains %} · drains {{ w.drains|tojson }}{% endif %}</td></tr>
+    {% if w.notes %}<tr><th>ignored or clamped</th><td class="dim">{{ w.notes|join('; ') }}</td></tr>{% endif %}
+    {% endif %}
+  </table>
+</section>
+{% endif %}
+
+{% if d.project %}
+{% set j = d.project %}
+<section class="card" id="project">
+  <h2>Project work <span class="dim small">(the narrator's report, and what code did with it)</span></h2>
+  {% if not j.ok %}
+  <p class="bad">Rejected: {{ j.reason }}. Nothing changed.</p>
+  {% else %}
+  <table class="data num">
+    <tr><th>project</th><td>#{{ j.id }} {{ j.title }}</td></tr>
+    <tr><th>narrator's advance</th><td>{{ j.bucket }} → {{ j.gained }} points (bucket × (1 − taper × progress/100))</td></tr>
+    <tr><th>progress</th><td>{{ j.progress_before }} → <b>{{ j.progress_after }}</b>{% if j.milestones %} · milestone {{ j.milestones|join(', ') }}{% endif %}{% if j.completed %} · <b>completed</b>{% endif %}</td></tr>
+    <tr><th>repetition penalty</th><td>{{ pill('exempt', 'ok') if j.repetition_exempt else 'applies (this report moved nothing)' }}</td></tr>
+    <tr><th>note kept</th><td>{{ j.note or '–' }}</td></tr>
+    {% if j.artifact %}<tr><th>artifact</th><td>{{ j.artifact.kind }}: <b>{{ j.artifact.title }}</b> (saved{% if j.artifact_id %} as #{{ j.artifact_id }}{% endif %})</td></tr>{% endif %}
+  </table>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if d.mood_math %}
 {% set m = d.mood_math %}{% set i = m.inputs %}
 <section class="card" id="mood">
   <h2>7 · Mood math</h2>
-  <p class="dim small">Mood is two numbers, valence and arousal, each −50..50. It is worked out from need <b>bands</b> (never raw levels), the event nudge, the brain's own feeling and the energy.</p>
+  <p class="dim small">Mood is one number, a slider from −50 (negative) to 50 (positive). It is worked out from need <b>bands</b> (never raw levels), the event nudge and the brain's own feeling.</p>
   <table class="data num">
-    <tr><th>valence input</th><th>band / value</th><th>points</th></tr>
-    {% for nid, pts in i.valence_terms.items() %}<tr><td>{{ d.need_labels.get(nid, nid) }}</td><td>{{ i.bands[nid] }}</td><td>{{ pts }}</td></tr>{% endfor %}
+    <tr><th>input</th><th>band / value</th><th>points</th></tr>
+    {% for nid, pts in i.terms.items() %}<tr><td>{{ d.need_labels.get(nid, nid) }}</td><td>{{ i.bands[nid] }}</td><td>{{ pts }}</td></tr>{% endfor %}
     <tr><td>event nudge (decaying)</td><td>{{ i.event_nudge }}</td><td>{{ i.event_points }}</td></tr>
     <tr><td>brain's own feeling: <b>{{ i.feeling }}</b></td><td></td><td>{{ i.feeling_points }}</td></tr>
-    <tr><td colspan="2"><b>valence</b> = sum, clamped to −50..50</td><td><b>{{ i.valence_unclamped }} → {{ m.valence }}</b></td></tr>
-    <tr><th>arousal input</th><th>band / value</th><th>points</th></tr>
-    <tr><td>base</td><td></td><td>{{ i.arousal_terms.base }}</td></tr>
-    <tr><td>energy</td><td>{{ i.energy }}</td><td>{{ i.arousal_terms.energy }}</td></tr>
-    {% for r in i.arousal_terms.rules %}<tr><td>rule: {% for nid, bs in r.when.items() %}{{ nid }} {{ bs|join('/') }}{{ ' and ' if not loop.last }}{% endfor %}</td><td></td><td>{{ r.add }}</td></tr>{% endfor %}
-    <tr><td colspan="2"><b>arousal</b> = sum, clamped to −50..50</td><td><b>{{ i.arousal_unclamped }} → {{ m.arousal }}</b></td></tr>
-    <tr><td colspan="2"><b>word</b> (|valence| &gt; {{ i.thresholds.word_threshold }}; arousal ≥ {{ i.thresholds.arousal_high }} is lively)</td><td><b>{{ m.word }}</b></td></tr>
+    <tr><td colspan="2"><b>mood</b> = sum, clamped to −50..50</td><td><b>{{ i.unclamped }} → {{ m.value if m.value is not none else m.valence }}</b></td></tr>
+    <tr><td colspan="2"><b>word</b> (above {{ i.thresholds.word_threshold }}: content; below −{{ i.thresholds.word_threshold }}: low; otherwise calm)</td><td><b>{{ m.word }}</b></td></tr>
   </table>
 </section>
 {% endif %}

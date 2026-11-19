@@ -67,7 +67,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "dislike_drain", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "projects", "director", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -144,7 +144,7 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
         pres = ui.get("presence")
         pkeys = ("hue_low_valence", "hue_high_valence", "saturation_awake", "saturation_dozing",
                  "lightness_awake", "lightness_asleep", "lightness_dozing",
-                 "pulse_seconds_calm", "pulse_seconds_aroused")
+                 "pulse_seconds_tired", "pulse_seconds_energetic")
         if not isinstance(pres, dict):
             errs.append("settings.yaml web_ui: missing required field 'presence'")
         else:
@@ -155,7 +155,7 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                       "lightness_asleep", "lightness_dozing"):
                 if _num(pres.get(k)) and not 0 <= pres[k] <= 100:
                     errs.append(f"settings.yaml web_ui.presence.{k}: must be 0..100")
-            for k in ("pulse_seconds_calm", "pulse_seconds_aroused"):
+            for k in ("pulse_seconds_tired", "pulse_seconds_energetic"):
                 if _num(pres.get(k)) and pres[k] <= 0:
                     errs.append(f"settings.yaml web_ui.presence.{k}: must be > 0")
     sl = st.get("sleep")
@@ -285,49 +285,84 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                         errs.append(f"settings.yaml repetition_penalty.needs: '{x}' is not a need")
         md = st.get("mood")
         if isinstance(md, dict):
-            vb = md.get("valence_bands")
+            vb = md.get("bands")
             if not isinstance(vb, dict):
-                errs.append("settings.yaml mood.valence_bands: must be a mapping of need id -> {band: points}")
+                errs.append("settings.yaml mood.bands: must be a mapping of need id -> {band: points}")
             else:
                 for nid, table in vb.items():
                     if needs and nid not in needs:
-                        errs.append(f"settings.yaml mood.valence_bands: '{nid}' is not a need")
+                        errs.append(f"settings.yaml mood.bands: '{nid}' is not a need")
                     if not isinstance(table, dict):
-                        errs.append(f"settings.yaml mood.valence_bands.{nid}: must be a mapping of band -> points")
+                        errs.append(f"settings.yaml mood.bands.{nid}: must be a mapping of band -> points")
                         continue
                     for band, pts in table.items():
                         if band not in BANDS:
-                            errs.append(f"settings.yaml mood.valence_bands.{nid}: unknown band '{band}'")
+                            errs.append(f"settings.yaml mood.bands.{nid}: unknown band '{band}'")
                         if not _num(pts) or not -50 <= pts <= 50:
-                            errs.append(f"settings.yaml mood.valence_bands.{nid}.{band}: must be a number -50..50")
-            rules = md.get("arousal_rules")
-            if not isinstance(rules, list):
-                errs.append("settings.yaml mood.arousal_rules: must be a list")
-            else:
-                for i, r in enumerate(rules):
-                    w = f"settings.yaml mood.arousal_rules[{i}]"
-                    if not isinstance(r, dict) or not isinstance(r.get("when"), dict) or not r["when"]:
-                        errs.append(f"{w}: needs a non-empty `when` mapping of need id -> [bands]")
-                        continue
-                    if not _num(r.get("add")) or not -50 <= r["add"] <= 50:
-                        errs.append(f"{w}: add must be a number -50..50")
-                    for nid, allowed in r["when"].items():
-                        if needs and nid not in needs:
-                            errs.append(f"{w}: '{nid}' is not a need")
-                        if not isinstance(allowed, list) or not allowed or any(b not in BANDS for b in allowed):
-                            errs.append(f"{w}: {nid} must be a non-empty list of bands ({', '.join(BANDS)})")
-            for k in ("arousal_base", "arousal_energy_weight", "event_points"):
-                if not _num(md.get(k)):
-                    errs.append(f"settings.yaml mood.{k}: must be a number")
+                            errs.append(f"settings.yaml mood.bands.{nid}.{band}: must be a number -50..50")
+            if not _num(md.get("event_points")):
+                errs.append("settings.yaml mood.event_points: must be a number")
             if not _num(md.get("event_decay")) or not 0 <= md["event_decay"] <= 1:
                 errs.append("settings.yaml mood.event_decay: must be a number 0..1")
             if not _num(md.get("word_threshold")) or not 0 <= md["word_threshold"] <= 50:
                 errs.append("settings.yaml mood.word_threshold: must be a number 0..50")
-            if not _num(md.get("arousal_high")) or not -50 <= md["arousal_high"] <= 50:
-                errs.append("settings.yaml mood.arousal_high: must be a number -50..50")
             fv = md.get("feeling_values")
             if not isinstance(fv, dict) or not all(_num(v) and -50 <= v <= 50 for v in fv.values()):
                 errs.append("settings.yaml mood.feeling_values: must map feelings to numbers -50..50")
+        dr_ = st.get("director")
+        if isinstance(dr_, dict):
+            if not isinstance(dr_.get("enabled"), bool):
+                errs.append("settings.yaml director.enabled: must be true or false")
+            for k, lo in (("every_ticks", 1), ("stale_every_ticks", 1), ("text_max_length", 1),
+                          ("max_drain_needs", 1), ("avoid_repeat", 0), ("recent_actions_shown", 0)):
+                v = dr_.get(k)
+                if isinstance(v, bool) or not isinstance(v, int) or v < lo:
+                    errs.append(f"settings.yaml director.{k}: must be an integer >= {lo}")
+            if not _num(dr_.get("max_mood")) or not 0 <= dr_["max_mood"] <= 1:
+                errs.append("settings.yaml director.max_mood: must be a number 0..1")
+            if not _num(dr_.get("max_drain_points")) or dr_["max_drain_points"] < 0:
+                errs.append("settings.yaml director.max_drain_points: must be a number >= 0")
+            if isinstance(dr_.get("every_ticks"), int) and isinstance(dr_.get("stale_every_ticks"), int) \
+                    and dr_["stale_every_ticks"] > dr_["every_ticks"]:
+                errs.append("settings.yaml director.stale_every_ticks: must not exceed every_ticks")
+        elif "director" in st:
+            errs.append("settings.yaml director: must be a mapping")
+        pj = st.get("projects")
+        if isinstance(pj, dict):
+            for k, lo in (("max_active", 1), ("milestone_every", 1), ("title_max_length", 1), ("why_max_length", 1),
+                          ("note_max_length", 1), ("artifact_max_length", 1), ("artifacts_shown", 1),
+                          ("pause_after_idle_nights", 0)):
+                v = pj.get(k)
+                if isinstance(v, bool) or not isinstance(v, int) or v < lo:
+                    errs.append(f"settings.yaml projects.{k}: must be an integer >= {lo}")
+            if not _num(pj.get("idle_hours_note")) or pj["idle_hours_note"] < 0:
+                errs.append("settings.yaml projects.idle_hours_note: must be a number >= 0")
+            if not _num(pj.get("taper")) or not 0 <= pj["taper"] <= 1:
+                errs.append("settings.yaml projects.taper: must be a number 0..1")
+            pv = pj.get("progress_values")
+            if not isinstance(pv, dict) or not pv or not all(_num(v) and 0 < v <= 100 for v in pv.values()):
+                errs.append("settings.yaml projects.progress_values: must map buckets to numbers 0..100 (> 0)")
+            elif isinstance(st.get("gain_values"), dict):
+                for b in pv:
+                    if str(b) not in {str(k) for k in st["gain_values"]}:
+                        errs.append(f"settings.yaml projects.progress_values: bucket '{b}' is not in gain_values")
+            cg = pj.get("completion_gains")
+            if not isinstance(cg, dict):
+                errs.append("settings.yaml projects.completion_gains: must be a mapping of need id -> points")
+            else:
+                for nid, pts in cg.items():
+                    if needs and nid not in needs:
+                        errs.append(f"settings.yaml projects.completion_gains: '{nid}' is not a need")
+                    if not _num(pts) or pts < 0:
+                        errs.append(f"settings.yaml projects.completion_gains.{nid}: must be a number >= 0")
+            stg = pj.get("stages")
+            if not isinstance(stg, dict) or not stg or not all(_num(k) for k in stg) \
+                    or not all(isinstance(v, str) and v.strip() for v in stg.values()):
+                errs.append("settings.yaml projects.stages: must map ascending progress bounds to non-empty words")
+            elif max(stg) < 100.0001:
+                errs.append("settings.yaml projects.stages: needs a bound above 100 so every progress has a word")
+        elif "projects" in st:
+            errs.append("settings.yaml projects: must be a mapping")
         dd = st.get("dislike_drain")
         if isinstance(dd, dict):
             dn = dd.get("needs")

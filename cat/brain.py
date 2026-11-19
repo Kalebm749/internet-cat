@@ -48,6 +48,7 @@ class BrainContext:
     just_woke_from_doze: bool = False
     self_image: list[str] = field(default_factory=list)          # what it currently thinks it is (text only)
     stale_here: bool = False                                     # it has stayed in this area for a while
+    projects: list[dict] = field(default_factory=list)           # active projects (words only, see projects.brain_view)
 
 
 PRESSING_BANDS = ("empty", "low")      # the bands that pull at the entity, most pressing first
@@ -170,6 +171,15 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     L.append(R("feeling", mood=ctx.mood["description"], energy=character.energy_word(ctx.energy, cfg)))
 
     L.append("\n" + "\n".join(pulling_section(cfg, ctx.needs, ctx.stale_here)))
+
+    if ctx.projects:
+        L.append("\n" + R("heading_project"))
+        for pr in ctx.projects:
+            L.append(R("project", title=pr["title"],
+                       why=R("project_why", why=pr["why"]) if pr["why"] else "", stage=pr["stage"],
+                       note=R("project_note", note=pr["note"]) if pr["note"] else "",
+                       idle=(R("project_new") if pr.get("untouched") and not pr["idle"] else
+                             R("project_idle", ago=pr["idle"]) if pr["idle"] else "")))
 
     L.append("\n" + R("heading_around"))
     L.append(R("here", items="; ".join(_obj(o) for o in ctx.objects_here) or R("here_nothing")))

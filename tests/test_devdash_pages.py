@@ -47,7 +47,7 @@ def tick(conn, i, sim, kind="tick", dur=30, needs=None, mood=None, area="living_
     conn.execute("INSERT INTO ticks(id,kind,sim_time,real_time,area,action,outcome,duration,changes,rejected_changes,needs_after,mood_after,energy_after,gains) "
                  "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'{}')",
                  (i, kind, sim, "2026-11-18T10:00:00", area, action, outcome, dur, json.dumps(list(changes)), json.dumps(list(rejected)),
-                  json.dumps(needs), json.dumps(mood or {"valence": 0.1, "arousal": 0.4, "word": "calm"}), energy))
+                  json.dumps(needs), json.dumps(mood or {"value": 5.0, "word": "calm"}), energy))
 
 
 # =============================== needs & mood ===============================
@@ -58,7 +58,7 @@ def synthetic_needs_run(cfg):
         food = 10.0 if 3 <= i <= 6 else 60.0         # critical (<15) for ticks 3..6 = 4 x 30 min
         kind = "asleep" if i in (7, 8) else ("doze" if i == 9 else "tick")
         tick(conn, i + 1, t, kind=kind, needs={"sustenance": food, "wonder": 80, "joy": 40, "peace": 90, "curiosity": 20},
-             mood={"valence": 0.1 * i, "arousal": 0.5, "word": "calm"})
+             mood={"value": 4.0 * i, "word": "calm"})
     return conn
 
 
@@ -69,7 +69,7 @@ def test_needs_series_shapes_values_and_stored_energy(cfg):
     assert s["x"] == sorted(s["x"]) and s["x"][1] - s["x"][0] == 30 * 60                   # epoch seconds, 30 sim minutes apart
     assert s["x"][0] == 1_795_000_000 + (s["x"][0] - 1_795_000_000) and s["from"] == "2026-11-18T08:00"
     assert s["needs"]["sustenance"][3] == 10.0 and s["needs"]["sustenance"][0] == 60.0
-    assert s["valence"] == pytest.approx([0.1 * i for i in range(10)]) and s["arousal"] == [0.5] * 10
+    assert s["mood"] == pytest.approx([4.0 * i for i in range(10)]) and "arousal" not in s
     assert s["energy"] == [20.0] * 10                                                    # stored per tick, not derived
     assert set(s["labels"]) == set(cfg.character["needs"])
 
@@ -257,7 +257,7 @@ def test_sleep_nights_show_inputs_outputs_proposed_vs_clamped(cfg):
     s = data.sleep_nights(cfg)
     assert s["total"] == 3 and len(s["nights"]) == 3 and s["nights"][0]["id"] > s["nights"][-1]["id"]
     night = s["nights"][0]
-    assert night["tick_id"] and night["summary"] and set(night["traces"]) == {"consolidate", "tendencies", "preferences", "self_image"}
+    assert night["tick_id"] and night["summary"] and set(night["traces"]) == {"consolidate", "tendencies", "preferences", "self_image", "projects"}
     step = cfg.settings["sleep"]["tendency_max_step"]
     t = {x["id"]: x for x in night["tendency_table"]}
     assert t["boldness"]["proposed"] == 1 and t["boldness"]["applied"] == pytest.approx(step) and not t["boldness"]["clamped"]
@@ -266,7 +266,7 @@ def test_sleep_nights_show_inputs_outputs_proposed_vs_clamped(cfg):
     assert t["tidiness"]["applied"] == pytest.approx(0.2 * step)
     assert night["traces"]["consolidate"]["input"]["day_log"] and night["traces"]["consolidate"]["output"]["memories"]
     assert night["new_memories"] and night["pref_table"][0]["subject"] == "the rain"
-    assert [c["kind"] for c in night["calls"]] == ["sleep_consolidate", "sleep_tendencies", "sleep_preferences", "sleep_self_image"]
+    assert [c["kind"] for c in night["calls"]] == ["sleep_consolidate", "sleep_tendencies", "sleep_preferences", "sleep_self_image", "sleep_projects"]
     assert s["nights"][-1]["pref_table"][0]["previous"] is None                             # the first night it is liked
     assert s["nights"][0]["pref_table"][0]["previous"] == s["nights"][1]["pref_table"][0]["valence"]   # blended with last night
 

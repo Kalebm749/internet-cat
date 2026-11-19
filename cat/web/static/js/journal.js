@@ -78,7 +78,7 @@
     body.className = keep.join(" ");
 
     // mood pad + energy
-    var dot = $("#pad-dot"); dot.style.left = s.mood.pad_x + "%"; dot.style.top = s.mood.pad_y + "%";
+    $("#mood-dot").style.left = s.mood.slider_pct + "%";
     var eb = $("#energy-bar");
     eb.setAttribute("aria-valuenow", s.energy.value); eb.setAttribute("aria-label", s.energy.aria);
     eb.firstElementChild.style.width = s.energy.pct + "%";
@@ -95,6 +95,12 @@
       setList($("#self-image"), "tpl-self-image", s.self_image.lines);
       $("#self-image-empty").hidden = !s.self_image.empty;
       $("#self-image-empty").textContent = s.self_image.empty_text;
+    }
+    if (changed("projects", s.projects)) {
+      setList($("#projects"), "tpl-project", s.projects.rows);
+      setList($("#artifacts"), "tpl-artifact", s.projects.artifacts);
+      $("#projects-empty").hidden = !s.projects.empty;
+      $("#artifacts-empty").hidden = !s.projects.artifacts_empty;
     }
     if (changed("keepsakes", s.keepsakes)) {
       setList($("#keepsakes"), "tpl-keepsake", s.keepsakes);

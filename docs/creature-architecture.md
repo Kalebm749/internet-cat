@@ -43,15 +43,16 @@ Related docs: `server-architecture.md` (how it is built and deployed, including 
 - **Self-image:** what it currently thinks it is, as a few short text lines (each with a confidence and the day it was formed). It starts empty, is learned and revised during sleep (§7), and may stay empty or never mention a form. An optional text hint can be set in `character.yaml` (`self_image.seed`, empty by default).
 - **Core traits:** a few defining traits ("curious", "sentimental"). Never change. They keep the creature recognisably itself.
 - **Tendencies:** traits that can drift, stored as numbers from 0 to 1 (e.g. boldness, sociability, love of rain). They change a little during sleep.
+- **Projects:** long-term things it keeps coming back to (researching, drawing, writing, making music...). Formed during sleep from an enjoyed, repeated activity; advanced by the narrator's reports; each has a title, a reason, a stage, a running note and the artifacts it has made (§5, §7). They give the entity continuity across ticks: without one, every tick's action is chosen fresh.
 - **Preferences:** learned likes and dislikes ("the oak tree in the park"). Formed during sleep.
 - **Needs:** five in the placeholder character: sustenance, wonder, joy, peace and curiosity. Each runs 0–100 and has a `decay_per_hour`, a **meaning** (a sentence saying what the need is) and text **expressions** for four bands: `full`, `okay` (may be null), `low` and `empty`. A level becomes a band by thresholds in `settings.yaml` (`need_bands`). Which needs exist is set per character. There are no per-need flags: the only special rule is that the sustenance need only rises when an edible object is consumed.
 - **Energy:** a separate resource, one number from −50 to 50. Effort spends it; sleep (and dozing) restore it. It is not a need and is never derived from the needs.
-- **Mood:** two numbers, valence (unpleasant to pleasant) and arousal (calm to lively), each from −50 to 50, worked out from need **bands**, events and the brain's own feeling (see §5). Never set directly.
+- **Mood:** one number, a simple slider from −50 (negative) to 50 (positive), worked out from need **bands**, events and the brain's own feeling (see §5). Never set directly.
 
 ### World model
 - **Areas:** description and which areas connect to which. v1 uses a fixed, hand-written map in config.
 - **Objects:** each has a name, a location (an area, or the creature's inventory), **tags** (`edible`, `climbable`, `warm`, `movable`, `fragile`…) and simple **state** (`full/empty`, `open/closed`). Objects define what's possible. Actions don't. Objects can be added at runtime by events or by the creature (`create`).
-- **Events:** the world changes on its own (weather, things dropped, deliveries, seasons), so the creature always has something new to react to.
+- **Events:** the world changes on its own (weather, things dropped, deliveries, seasons), from two sources: a hand-written table in `world.yaml` (seeds and fallback) and **the world director**, an LLM role that proposes at most one small happening every few ticks (sooner when the entity is stuck in one place). The director never sees needs or mood, and code validates and applies its proposal as an event. So the creature always has something new to react to.
 
 ---
 
@@ -80,8 +81,9 @@ The brain gets an overview of its situation, not a list of options. Contents:
 4. **What's pulling at it:** the band expressions of only the most pressing needs (see below), in words. Never numbers, never a list of suggested actions.
 5. **Objects in this area:** what's actually here (name, tags, state), plus the inventory
 6. **What just happened:** the narrator's account of the last action
-7. **Recent actions:** the last few ticks
-8. **Memories:** relevant long-term memories + today's short-term memories
+7. **What it is in the middle of:** its active projects: title, why, stage in words, where it got to, and how long since it last worked on them
+8. **Recent actions:** the last few ticks
+9. **Memories:** relevant long-term memories + today's short-term memories
 
 ### What's pulling at you right now
 Need levels shape the prompt, not the choice. Each need's level becomes a band (`full`, `okay`, `low`, `empty`). The prompt shows the expression text of at most `max_pressing_needs` (default 2) needs, taken from the lowest bands (`empty` before `low`), ties broken by config order. If nothing is in the `low` or `empty` band the prompt says nothing in particular is pulling, and may show one `full` expression instead. After `stale_after_ticks` ticks in one place the `stale_here` sentence from `character.yaml` is added; that flag changes no need value. The brain still does anything it likes: code never picks, suggests or ranks actions by need. The dev dashboard shows, per tick, which expressions were selected and why.
@@ -104,6 +106,7 @@ The action, the creature's location, the area's objects (with tags and state), t
 ### Narrator output
 - `outcome`: 1–2 sentences of what actually happened (can include bad luck, like getting wet or a slip)
 - `gains`: for each need the action helped, a bucket `0`, `+` or `++`. The narrator only ever adds.
+- `project` (optional): only when the action really worked on one of the entity's projects: `{id, advance (+/++), note, artifact?}`. Code validates it against the active projects and sizes the step; the narrator cannot set progress, status or needs from it.
 - `effort`: `low`, `medium` or `high`
 - `duration`: minutes
 - `changes`: a list of world changes, using only these types (full validation rules in `server-architecture.md` §9):
@@ -119,15 +122,12 @@ The action, the creature's location, the area's objects (with tags and state), t
 - **Buckets become numbers:** `+` ≈ +15, `++` ≈ +30 (to be tuned). Effort becomes an **energy** cost (energy is separate from the needs).
 - **Drains come from the world, never the narrator.** Needs decay per sim hour; world events can carry `drains`; and while something the entity dislikes is present (the area, an object here, the weather or its own action) the world drains configured needs. Bad outcomes are story only.
 - **Sustenance depends on the world.** It only goes up when an `edible` object is actually consumed this tick. Every other need can be helped by almost anything the narrator judges helped it.
+- **Project work is exempt from repetition.** An action that moves a project forward skips the repetition penalty; the project's own progress, which tapers as it nears the end, replaces it. Finishing a project pays `projects.completion_gains` (code, not the narrator).
 - **Repetition pays less.** The gains of the needs listed in `repetition_penalty.needs` (wonder and curiosity) are reduced when the action is similar to a recent one taken in the same place (measured with embeddings). This stops loops and encourages variety.
 - **Clamp everything:** needs to 0–100, energy and mood to −50–50.
 
 ### Mood calculation
-Mood is two numbers, **valence** and **arousal**, each from −50 to 50, computed from need **bands** using a mapping in `settings.yaml` (`mood`):
-- **Valence:** points per band for the needs listed (joy and peace raise it, sustenance `empty` lowers it), plus a decaying nudge from world events and the brain's own `feeling`, so mood isn't purely mechanical.
-- **Arousal:** a base, plus the energy, plus rules over bands (curiosity `full` with peace `low` or `empty` raises it).
-
-Raw levels never enter the mood. Mood is turned into words before it goes into the brain prompt.
+Mood is **one number**, a slider from −50 (negative) to 50 (positive), computed from need **bands** using a mapping in `settings.yaml` (`mood.bands`): points per band for the needs listed (joy and peace raise it, sustenance `empty` lowers it), plus a decaying nudge from world events and the brain's own `feeling`, so mood isn't purely mechanical. Raw levels never enter the mood. Mood is turned into words before it goes into the brain prompt.
 
 ---
 
@@ -151,7 +151,8 @@ Sleep is a real state: it restores energy, and the creature chooses when to slee
 2. **Adjust tendencies.** Based on the day, nudge drifting traits. Each trait can move at most a small step per night (e.g. ±0.05). Core traits never change.
 3. **Learn preferences.** Repeated good experiences become likes, repeated bad ones become dislikes.
 4. **Update the self-image.** One call reads the day's short-term memories and proposes **at most one** new self-image line, or none. A line has text, a confidence (0..1) and the day it was formed. Stored like preferences, so a later line can revise or contradict an earlier one. The number of lines kept is capped in `settings.yaml` (least confident forgotten first) and every proposal and its outcome is logged in the sleep trace. Nothing in the config says what the entity is; the self-image is the only place a form can appear, and only if the entity's own days support it.
-5. **Learn habits (optional).** Actions the creature keeps coming back to can be noted as habits and suggested in future prompts.
+5. **Form or tend a project.** One call looks at the day's log and the entity's likes. If it returned again and again to one activity it seemed to enjoy, it may start **one** long-term project from it (or pause, resume or drop one). At most one change a night; limits and duplicates are enforced in code; a project untouched for several nights is paused.
+6. **Learn habits (optional).** Actions the creature keeps coming back to can be noted as habits and suggested in future prompts.
 
 ---
 

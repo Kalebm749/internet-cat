@@ -218,10 +218,10 @@ def test_force_sleep_runs_the_cycle_and_attaches_it_to_the_latest_tick(cfg):
     assert len(log) == nights_before + 1 and log[0]["tick_id"] == last
     assert e.conn.execute("SELECT COUNT(*) FROM memories WHERE kind='short'").fetchone()[0] == 0
     kinds = {r[0] for r in e.conn.execute("SELECT kind FROM llm_calls WHERE tick_id=?", (last,))}
-    assert {"sleep_consolidate", "sleep_tendencies", "sleep_preferences", "sleep_self_image"} <= kinds
+    assert {"sleep_consolidate", "sleep_tendencies", "sleep_preferences", "sleep_self_image", "sleep_projects"} <= kinds
     stages = json.loads(e.conn.execute("SELECT stage_timings FROM tick_traces WHERE tick_id=?", (last,)).fetchone()[0])
     assert "sleep" in stages and "brain" in stages
-    assert e.conn.execute("SELECT COUNT(*) FROM sleep_traces WHERE sleep_log_id=?", (log[0]["id"],)).fetchone()[0] == 4
+    assert e.conn.execute("SELECT COUNT(*) FROM sleep_traces WHERE sleep_log_id=?", (log[0]["id"],)).fetchone()[0] == 5
 
 
 def test_force_sleep_fails_clearly_when_offline_or_empty(cfg):

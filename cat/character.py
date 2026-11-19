@@ -59,6 +59,15 @@ def apply_drains(needs: dict[str, float], drains: dict[str, float] | None) -> di
     return {k: clamp(v - (drains or {}).get(k, 0.0)) for k, v in needs.items()}
 
 
+def add_points(needs: dict[str, float], points: dict[str, float]) -> dict[str, float]:
+    """Code-side additions (e.g. finishing a project), clamped 0..100. Unknown need ids are ignored."""
+    out = dict(needs)
+    for nid, pts in (points or {}).items():
+        if nid in out:
+            out[nid] = clamp(out[nid] + max(0.0, float(pts)))
+    return out
+
+
 def spend_energy(energy: float, effort: str | None, cfg: Config) -> float:
     """Effort spends energy (a separate resource, -50..50)."""
     return clamp_energy(energy - cfg.settings["effort_energy_cost"].get(effort, 0))
@@ -181,42 +190,30 @@ def clamp_mood(v: float) -> float:
 
 def compute_mood(needs: dict[str, float], event_nudge: float, feeling: str | None, energy: float,
                  cfg: Config, trace: dict | None = None) -> dict[str, Any]:
-    """Mood is two numbers, valence and arousal, each -50..50. Valence comes from the BANDS of the
-    needs listed in settings mood.valence_bands, plus the decaying event nudge and the brain's own
-    `feeling`. Arousal comes from a base, the energy, and rules over bands (e.g. curiosity full with
-    peace low). Raw levels never enter: only bands."""
+    """Mood is ONE number, a slider from -50 (negative) to 50 (positive). It is the sum of the
+    points settings mood.bands gives each listed need for its BAND, the decaying event nudge, and
+    the brain's own `feeling`. Raw levels never enter. `energy` is only used for the description."""
     m = cfg.settings["mood"]
     bands = {nid: need_band(float(v), cfg) for nid, v in needs.items()}
-    vterms = {nid: float(table.get(bands.get(nid), 0)) for nid, table in m["valence_bands"].items()
-              if nid in bands}
+    terms = {nid: float(table.get(bands.get(nid), 0)) for nid, table in m["bands"].items() if nid in bands}
     event_pts = m["event_points"] * event_nudge
     feel = m["feeling_values"].get(feeling or "neutral", 0.0)
-    v_raw = sum(vterms.values()) + event_pts + feel
-    valence = clamp_mood(v_raw)
-
-    energy_pts = m["arousal_energy_weight"] * energy
-    fired = [{"when": r["when"], "add": r["add"]} for r in m["arousal_rules"]
-             if all(bands.get(nid) in allowed for nid, allowed in r["when"].items())]
-    a_raw = m["arousal_base"] + energy_pts + sum(r["add"] for r in fired)
-    arousal = clamp_mood(a_raw)
+    raw = sum(terms.values()) + event_pts + feel
+    value = clamp_mood(raw)
 
     if trace is not None:   # dev dashboard: every input and intermediate value
         trace.update({
             "range": [MOOD_MIN, MOOD_MAX], "bands": bands,
-            "valence_terms": {k: round(v, 3) for k, v in vterms.items()},
+            "terms": {k: round(v, 3) for k, v in terms.items()},
             "event_nudge": round(event_nudge, 4), "event_points": round(event_pts, 3),
             "feeling": feeling or "neutral", "feeling_points": feel,
-            "valence_unclamped": round(v_raw, 3),
-            "arousal_terms": {"base": m["arousal_base"], "energy": round(energy_pts, 3), "rules": fired},
-            "arousal_unclamped": round(a_raw, 3), "energy": energy,
-            "thresholds": {"word_threshold": m["word_threshold"], "arousal_high": m["arousal_high"]}})
-    hi = arousal >= m["arousal_high"]
-    if valence > m["word_threshold"]:
-        word = "excited" if hi else "content"
-    elif valence < -m["word_threshold"]:
-        word = "tense" if hi else "low"
+            "unclamped": round(raw, 3), "thresholds": {"word_threshold": m["word_threshold"]}})
+    if value > m["word_threshold"]:
+        word = "content"
+    elif value < -m["word_threshold"]:
+        word = "low"
     else:
-        word = "restless" if hi else "calm"
+        word = "calm"
 
     pressing = sorted((nid for nid, b in bands.items() if b in ("empty", "low")),
                       key=lambda nid: (BANDS.index(bands[nid]), list(needs).index(nid)))
@@ -224,8 +221,8 @@ def compute_mood(needs: dict[str, float], event_nudge: float, feeling: str | Non
         desc = f"{word}, though {need_label(pressing[0], cfg)} is {bands[pressing[0]]}"
     else:
         desc = f"{word} and {energy_word(energy, cfg)}"
-    return {"valence": round(valence, 1), "arousal": round(arousal, 1), "word": word,
-            "description": desc, "event_nudge": round(event_nudge, 3)}
+    return {"value": round(value, 1), "word": word, "description": desc,
+            "event_nudge": round(event_nudge, 3)}
 
 
 def initial_mood(needs: dict[str, float], cfg: Config) -> dict[str, Any]:

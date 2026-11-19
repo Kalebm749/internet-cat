@@ -140,15 +140,13 @@ def test_tick_detail_explains_every_diary_entry_the_public_site_shows(world):
         for m in d["need_math"]:
             delta = m["after"] - m["before"]
             assert (m["need"] in chips) == (abs(delta) >= cfg.settings["web_ui"]["chip_min_delta"])
-        # mood word/valence/arousal and every term of the formula
+        # mood word/value and every term of the formula
         mm = d["mood_math"]
-        assert (mm["word"], mm["valence"], mm["arousal"]) == (t["mood_after"]["word"], t["mood_after"]["valence"], t["mood_after"]["arousal"])
+        assert (mm["word"], mm["value"]) == (t["mood_after"]["word"], t["mood_after"]["value"])
         i = mm["inputs"]
-        assert max(-50, min(50, i["valence_unclamped"])) == pytest.approx(mm["valence"], abs=0.06)
-        assert (sum(i["valence_terms"].values()) + i["event_points"] + i["feeling_points"]
-                == pytest.approx(i["valence_unclamped"], abs=2e-3))
-        assert (i["arousal_terms"]["base"] + i["arousal_terms"]["energy"] + sum(r["add"] for r in i["arousal_terms"]["rules"])
-                == pytest.approx(i["arousal_unclamped"], abs=2e-3))
+        assert max(-50, min(50, i["unclamped"])) == pytest.approx(mm["value"], abs=0.06)
+        assert (sum(i["terms"].values()) + i["event_points"] + i["feeling_points"]
+                == pytest.approx(i["unclamped"], abs=2e-3))
         # world changes tags come from the effects that were accepted (plus event spawns)
         accepted = [x for x in d["effects"] if x["accepted"]]
         site_ops = {w["op"] for w in e["world_changes"]}

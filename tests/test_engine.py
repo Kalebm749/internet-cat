@@ -37,7 +37,7 @@ def test_1000_ticks_no_errors_and_invariants(cfg):
     assert e.conn.execute("SELECT COUNT(*) FROM ticks").fetchone()[0] == 1000
     st = db.get_state(e.conn)
     assert all(0 <= v <= 100 for v in st["needs"].values())
-    assert -50 <= st["mood"]["valence"] <= 50 and -50 <= st["mood"]["arousal"] <= 50
+    assert -50 <= st["mood"]["value"] <= 50 and "arousal" not in st["mood"]
     # every tick row has bounded needs and a positive duration
     for r in e.conn.execute("SELECT needs_after, duration FROM ticks"):
         assert all(0 <= v <= 100 for v in json.loads(r["needs_after"]).values())

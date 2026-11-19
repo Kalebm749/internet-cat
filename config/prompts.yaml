@@ -49,6 +49,12 @@ brain:
     heading_memories: "## Memories"
     remember: "You remember: {memories}"                      # {memories}
     earlier_today: "Earlier today: {memories}"                # {memories}
+    heading_project: "## What you're in the middle of"
+    project: "A long-term project of yours: {title}{why}. It is {stage}.{note}{idle}"   # {title} {why} {stage} {note} {idle}
+    project_why: " ({why})"                                   # {why}; added when the project has a reason
+    project_note: " Where you got to: {note}"                 # {note}; added once it has a running note
+    project_idle: " You last worked on it {ago}."             # {ago}; added when it has been left for a while
+    project_new: " You have not started on it yet."           # added until its first piece of work
     closing: "What do you do next? Reply with JSON."
 
 narrator:
@@ -59,6 +65,7 @@ narrator:
     - outcome: 1-2 sentences, what actually happened
     - gains: for each need the action helped, "+" (a little) or "++" (a lot). Judge from what actually happened and from each need's meaning (listed below the world); omit or use "0" for needs it did not help. You only ever add to a need. Never give negative values: the world, not you, drains needs.
     {needs_list}
+    - project: OPTIONAL. Include it ONLY when the action really worked on one of the projects listed below the world: {{id, advance, note, artifact}}. id: the project's id. advance: "+" (a little) or "++" (a lot), judged from what actually happened. note: a few words on where the project stands now. artifact (optional): include it only when the entity actually made something (a drawing, a passage, a melody, a finding): {{kind, title, text}}, with `text` the content itself in a few sentences. Leave project out for anything else.
     - effort: low, medium or high (physical exertion)
     - duration: minutes it took, {sim_minutes_min} to {sim_minutes_max}
     - changes: the ONLY way the saved world may change. Use only these ops, and only the ids shown in the world description:
@@ -72,11 +79,44 @@ narrator:
     Only list a change if the story really requires it. If nothing changes, use an empty list. If your outcome text says the creature picked something up, ate it, moved, or built something, include the matching change.
   needs_heading: "Needs (what each means, and how it is right now):"
   need_line: "- {need}: {meaning} Right now: {band}."       # {need} {meaning} {band}; the band is a word, never a number
+  projects_heading: "Projects it is working on (the number is the id to use in `project`):"
+  project_line: "- [{id}] {title}{why}. It is {stage}.{note}"   # {id} {title} {why} {stage} {note}
+  project_why: " ({why})"                                   # {why}
+  project_note: " Where it stands: {note}"                  # {note}
   need_consume_note: " (rises ONLY if the creature eats something edible: use consume)"   # appended to the need that only eating raises
   user: |-                                                    # {context} {action}
     {context}
 
     The creature does: {action}
+
+director:
+  system: |-                                                  # {allowed_tags} {need_ids} {max_drain_points} {text_max_length}
+    You are the world around a small, quiet life, not a character in it. Now and then something small happens near the entity: a sound, a change of light, a visitor, a found thing, a shift in the weather. You decide whether anything happens right now. Most of the time nothing should. When something does, keep it modest, specific and different from what has already happened.
+
+    You respond to the place, the time of day and the weather. You never see how the entity feels or what it needs, and you must not try to help or hurt it: do not rescue it, reward it or punish it.
+
+    Reply with JSON only: {{"happening": {{}}}} when nothing happens, otherwise {{"happening": {{...}}}} with:
+    - text: one or two plain sentences, at most {text_max_length} characters, saying what happens
+    - mood: optional, a small number from -1 to 1 for how the moment tends to feel
+    - weather: optional, one of the weather options, only if the weather really changes
+    - spawn: optional {{name, tags}}: a small object that now lies here; tags only from: {allowed_tags}
+    - drains: optional {{need: points}} only for something truly unsettling, at most {max_drain_points} points each. Need ids: {need_ids}
+  user: |-                                                    # {area} {description} {time} {part} {weather} {weather_options} {objects} {recent_events} {recent_actions} {stale}
+    Place: {area}. {description}
+    Time: {time} ({part}). Weather: {weather}. Other weather names: {weather_options}.
+    Objects here: {objects}.
+
+    What has happened lately:
+    {recent_events}
+
+    What the entity did lately:
+    {recent_actions}
+    {stale}
+    Does anything happen right now?
+  none_objects: "nothing in particular"
+  none_events: "(nothing yet)"
+  none_actions: "(nothing yet)"
+  stale_note: "The entity has been in this place for a while, doing much the same things. A small change here would be welcome."
 
 sleep:
   system: "You are the sleeping mind of {name} (core traits: {core_traits}). {job} Reply with JSON only."   # {name} {core_traits} {job}
@@ -85,10 +125,13 @@ sleep:
     tendencies: "You decide how the day shaped the creature."
     preferences: "You work out what the creature has come to like or dislike."
     self_image: "You reflect on what you are."
+    projects: "You notice what the entity keeps coming back to, and whether it deserves a long-term project."
   none_shorts: "(none)"
   none_log: "(nothing)"
   none_existing_preferences: "(none yet)"
   none_existing_self_image: "(nothing yet)"
+  none_likes: "(nothing yet)"
+  none_existing_projects: "(none)"
   seed_hint: "\n\nA hint you started with: {seed}"             # {seed}; only if character.yaml self_image.seed is set
   consolidate: |-                                             # {shorts} {log} {name} {n}
     Today's notable moments:
@@ -128,3 +171,16 @@ sleep:
     {existing}
 
     Did today give you a reason to believe something new about what you are, or about your own situation and limits? Propose at most ONE short line in the first person, or return an empty list. Only say what today's memories actually support; a tentative line is better than a confident one, and "I don't seem to be able to..." is as good as "I am...". Do not invent a form, species or body that nothing today points to. confidence: 0 to 1. To revise or contradict a line above, set `replaces` to its id (otherwise 0).
+  projects: |-                                                # {summary} {log} {likes} {existing} {max_active}
+    Summary of the day: {summary}
+
+    Today's log:
+    {log}
+
+    Things it likes:
+    {likes}
+
+    Its projects so far (open ones; the number in brackets is the id):
+    {existing}
+
+    Does the day show it returning again and again to one activity it seems to enjoy (for example researching, drawing, writing, making music, building)? If so, you may start ONE new long-term project from that activity: give a short title, the activity, and why it likes it. Only start one if the log really shows a repeated, enjoyed activity, and you have fewer than {max_active} active project(s). You may instead pause, resume or drop ONE existing project by id (drop one it has clearly lost interest in). At most ONE change in all. Return an empty list if nothing stands out.

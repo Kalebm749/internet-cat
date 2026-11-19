@@ -13,6 +13,7 @@ from sqlite3 import Connection
 from typing import Any
 
 from cat import clock
+from cat import projects as PJ
 from cat import prompts as P
 from cat.config import Config
 from cat.db import dumps
@@ -72,6 +73,8 @@ class SleepPlan:
     tendency_changes: dict[str, dict] = field(default_factory=dict)  # {name: {from, to}}
     preferences: list[dict] = field(default_factory=list)       # {subject, valence, reason, previous}
     self_image: dict = field(default_factory=lambda: {"action": "none"})   # see decide_self_image()
+    project_op: dict = field(default_factory=lambda: {"action": "none"})   # see projects.decide_ops()
+    project_upkeep: list[dict] = field(default_factory=list)               # see projects.idle_upkeep()
     last_tick_id: int = 0
     trace_steps: list[dict] = field(default_factory=list)   # for the dev dashboard (sleep_traces)
 
@@ -217,6 +220,16 @@ def self_image_messages(cfg: Config, summary: str, shorts: list[str], log_lines:
             {"role": "user", "content": user}]
 
 
+def projects_messages(cfg: Config, summary: str, log_lines: list[str], likes: list[str],
+                      existing: list[dict]) -> list[dict]:
+    ex = "\n".join(f"- [{e['id']}] {e['title']} ({e['status']}, {PJ.stage_word(e['progress'], cfg)}): {e['why']}"
+                   for e in existing) or P.render(cfg, "sleep.none_existing_projects")
+    lk = "\n".join(f"- {t}" for t in likes) or P.render(cfg, "sleep.none_likes")
+    user = P.render(cfg, "sleep.projects", summary=summary, log=_lines(cfg, log_lines, "none_log"),
+                    likes=lk, existing=ex, max_active=cfg.settings["projects"]["max_active"])
+    return [{"role": "system", "content": _sys(cfg, "projects")}, {"role": "user", "content": user}]
+
+
 def consolidate_messages(cfg: Config, shorts: list[str], log_lines: list[str]) -> list[dict]:
     user = P.render(cfg, "sleep.consolidate", shorts=_lines(cfg, shorts, "none_shorts"),
                     log=_lines(cfg, log_lines, "none_log"), name=cfg.character["name"],
@@ -302,6 +315,17 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
     si = decide_self_image(cfg, si_rows, raw_s, day)
     log.info("self-image proposal: %s", si["action"], extra={"event": "self_image", "extra": si})
 
+    open_rows = PJ.open_projects(conn)
+    likes = [r["subject"] for r in conn.execute(
+        "SELECT subject FROM preferences WHERE valence>0 ORDER BY valence DESC LIMIT ?",
+        (s["preferences_shown"],))]
+    raw_pj = call_json(backend, "projects", model,
+                       projects_messages(cfg, summary, lines, likes, open_rows),
+                       PJ.OPS_SCHEMA, lambda r: r.get("projects"), retries)
+    upkeep = PJ.idle_upkeep(cfg, open_rows)
+    pj_op = PJ.decide_ops(cfg, open_rows, raw_pj, day)
+    log.info("project proposal: %s", pj_op["action"], extra={"event": "projects", "extra": pj_op})
+
     prepared = [memory.prepare(text, imp, sim_time) for text, imp in mems]   # embeddings
     steps = [
         {"step": "consolidate", "input": {"short_memories": shorts, "day_log": lines},
@@ -318,8 +342,10 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
         {"step": "self_image", "input": {"summary": summary, "short_memories": shorts,
                                          "existing": si_rows},
          "output": raw_s, "proposed": raw_s, "clamped": si},
+        {"step": "projects", "input": {"summary": summary, "likes": likes, "open": open_rows},
+         "output": raw_pj, "proposed": raw_pj, "clamped": {"op": pj_op, "idle_upkeep": upkeep}},
     ]
-    return SleepPlan(summary, prepared, new_t, t_changes, prefs, si, top_id, steps)
+    return SleepPlan(summary, prepared, new_t, t_changes, prefs, si, pj_op, upkeep, top_id, steps)
 
 
 def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time: str,
@@ -355,6 +381,7 @@ def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time
                      (si["text"], si["confidence"], si["formed_day"], sim_time))
         for d in si["dropped"]:
             conn.execute("DELETE FROM self_image WHERE id=?", (d["id"],))
+    PJ.commit_sleep(conn, p.project_upkeep, p.project_op, sim_time)
     cur = conn.execute(
         "INSERT INTO sleep_log(sim_date,summary,tick_id,tendency_changes,new_memories,"
         "new_preferences) VALUES(?,?,?,?,?,?)",

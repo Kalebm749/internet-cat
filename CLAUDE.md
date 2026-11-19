@@ -20,7 +20,7 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 Decided: "open actions, closed effects" (server-architecture §9). Need levels shape the brain's prompt
 (band words for the most pressing needs), never its choices: code never picks, suggests or ranks actions
 by need. Energy is a **separate resource** (-50..50: effort spends it, sleep restores it), never a need.
-Mood is two numbers (valence, arousal), each -50..50, computed from need bands.
+Mood is one number, a slider from -50 (negative) to 50 (positive), computed from need bands.
 
 ## Commands
 ```
@@ -70,6 +70,8 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 - The engine is the only writer of game state; `cat/web` is read-only and never calls the LLM.
 - Everything must run and be tested with `MockBackend`; never require Ollama in tests.
 - Tick order: events roll at tick start; the action's duration then advances the clock and decays needs in the apply step (event and dislike drains, then the narrator's gains, which only add).
+- Projects (`cat/projects.py`, tables `projects` and `artifacts`) are formed only by the sleep cycle and advanced only by the narrator's validated `project` report; code owns the numbers (a tapering step, milestones, completion gains), and project work is exempt from the repetition penalty. Nothing in a project picks or ranks actions.
+- The world director (`cat/director.py`) proposes at most one happening every few ticks; it must never be shown needs or mood, and code validates and applies its proposal as an event (`events_max_per_tick`, area cap, known weather, capped drains). Hand-written events in `world.yaml` stay as seeds and fallback.
 - Fixed prompt text lives in `config/prompts.yaml`, never in code; entries and their `{placeholders}` are declared in `cat/prompts.py` and validated at startup.
 - Placeholder content in `config/character.yaml` / `world.yaml` — the engine must work with any valid config.
 - Don't run docker, sudo or deploy commands for the user; write the files and document the steps.

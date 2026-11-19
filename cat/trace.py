@@ -23,7 +23,7 @@ log = logging.getLogger("cat.trace")
 
 KIND = {"brain": "brain", "narrator": "narrator", "consolidate": "sleep_consolidate",
         "tendencies": "sleep_tendencies", "preferences": "sleep_preferences",
-        "self_image": "sleep_self_image"}
+        "self_image": "sleep_self_image", "projects": "sleep_projects", "director": "director"}
 
 
 def _now() -> str:
@@ -55,6 +55,8 @@ class Tracer:
         self.effects: list[dict] = []
         self.need_math: list[dict] = []
         self.mood: dict | None = None
+        self.director: dict | None = None       # the world director: trigger, proposal, outcome
+        self.project: dict | None = None        # the narrator's project report and what code did with it
         self.pressing: dict | None = None      # which need expressions the brain prompt used, and why
         self.rolls: list[dict] = []
         self.sleep_steps: list[dict] = []
@@ -95,6 +97,12 @@ class Tracer:
 
     def set_need_math(self, rows: list[dict]) -> None:
         self.need_math = rows
+
+    def set_director(self, rec: dict) -> None:
+        self.director = rec
+
+    def set_project(self, adv: dict) -> None:
+        self.project = adv
 
     def set_pressing(self, selection: dict) -> None:
         self.pressing = selection
@@ -140,6 +148,10 @@ class Tracer:
                 conn.execute("INSERT INTO tick_traces(tick_id,started_at,finished_at,total_ms,stage_timings,"
                              "status,error) VALUES(?,?,?,?,?,?,?)",
                              (tick_id, self.started_at, _now(), round(total, 1), dumps(stages), status, error))
+            if self.director is not None:
+                conn.execute("UPDATE tick_traces SET director=? WHERE tick_id=?", (dumps(self.director), tick_id))
+            if self.project is not None:
+                conn.execute("UPDATE tick_traces SET project=? WHERE tick_id=?", (dumps(self.project), tick_id))
             if self.pressing is not None:
                 conn.execute("UPDATE tick_traces SET pressing=? WHERE tick_id=?", (dumps(self.pressing), tick_id))
             for c in self.llm:
@@ -179,8 +191,8 @@ class Tracer:
                               r.get("dislike_drain", 0.0), r["clamp_adjust"], r["after"]))
             if self.mood is not None:
                 m = self.mood["mood"]
-                conn.execute("INSERT OR REPLACE INTO mood_math(tick_id,inputs,valence,arousal,word) VALUES(?,?,?,?,?)",
-                             (tick_id, dumps(self.mood["inputs"]), m["valence"], m["arousal"], m["word"]))
+                conn.execute("INSERT OR REPLACE INTO mood_math(tick_id,inputs,value,word) VALUES(?,?,?,?)",
+                             (tick_id, dumps(self.mood["inputs"]), m["value"], m["word"]))
             for r in self.rolls:
                 conn.execute("INSERT INTO event_rolls(tick_id,event_text,chance,roll,fired,filtered_reason) "
                              "VALUES(?,?,?,?,?,?)",

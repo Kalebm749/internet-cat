@@ -77,7 +77,8 @@ def test_state_shape(cfg, seeded):
     assert re.match(r"^\w+day, Day \d+ · \d{1,2}:\d\d (am|pm)$", s["time"]["label"])
     assert {"id", "name"} == set(s["location"])
     assert {"state", "brain_online", "brain_last_seen", "model"} <= set(s["status"])
-    assert {"word", "description", "valence", "arousal"} <= set(s["mood"])
+    assert {"word", "description", "value", "slider_pct", "aria"} <= set(s["mood"])
+    assert "arousal" not in s["mood"] and "pad_x" not in s["mood"]
     assert {"value", "word"} <= set(s["energy"])
     n = s["needs"][0]
     assert {"id", "label", "value", "word", "delta", "low", "critical"} <= set(n)
@@ -354,20 +355,21 @@ def test_readonly_connection_cannot_write(cfg, seeded):
 
 
 # ---------- abstract presence and self-image (revised design) ----------
-def _presence(cfg, valence, arousal, state):
-    return views.presence_view(cfg, {"valence": valence, "arousal": arousal}, state, "Gregorovitch")
+def _presence(cfg, mood, energy, state):
+    return views.presence_view(cfg, {"value": mood}, state, "Gregorovitch", energy)
 
 
-def test_presence_colour_follows_valence(cfg):
+def test_presence_colour_follows_mood(cfg):
     low, mid, high = (_presence(cfg, v, 0, "awake")["hue"] for v in (-50, 0, 50))
     p = cfg.settings["web_ui"]["presence"]
     assert low == p["hue_low_valence"] and high == p["hue_high_valence"] and high < mid < low
 
 
-def test_presence_motion_follows_arousal(cfg):
-    calm, lively = (_presence(cfg, 0, a, "awake")["pulse_seconds"] for a in (-50, 50))
+def test_presence_motion_follows_energy(cfg):
+    tired, lively = (_presence(cfg, 0, e, "awake")["pulse_seconds"] for e in (-50, 50))
     p = cfg.settings["web_ui"]["presence"]
-    assert calm == p["pulse_seconds_calm"] and lively == p["pulse_seconds_aroused"] and lively < calm
+    assert tired == p["pulse_seconds_tired"] and lively == p["pulse_seconds_energetic"] and lively < tired
+    assert _presence(cfg, -40, 20, "awake")["pulse_seconds"] == _presence(cfg, 40, 20, "awake")["pulse_seconds"]   # not mood
 
 
 def test_presence_dims_asleep_and_desaturates_dozing(cfg):
@@ -448,3 +450,30 @@ def test_web_assets_have_no_glb_or_species(cfg):
     for f in ("templates/index.html", "static/js/journal.js", "static/css/site.css", "views.py"):
         text = (WEB / f).read_text().lower()
         assert "glb" not in text and "model-viewer" not in text and "species" not in text, f
+
+
+# ---------- mood is one slider ----------
+def test_mood_is_a_single_slider_from_negative_to_positive(cfg, seeded):
+    c = client(cfg)
+    html = re.sub(r"<template.*?</template>", "", c.get("/").text, flags=re.S)
+    assert 'id="mood-slider"' in html and 'id="mood-dot"' in html and 'id="mood-pad"' not in html
+    assert ">negative<" in html and ">positive<" in html
+    m = c.get("/api/state").json()["mood"]
+    assert -50 <= m["value"] <= 50 and 0 <= m["slider_pct"] <= 100
+
+
+@pytest.mark.parametrize("value,pct,word", [(-50, 0, "negative"), (0, 50, "middle"), (50, 100, "positive")])
+def test_slider_position_and_label(cfg, seeded, value, pct, word):
+    conn = db.connect(cfg.db_path)
+    st = db.get_state(conn)
+    st["mood"] = {"value": float(value), "word": "x", "description": "y"}
+    conn.execute("UPDATE state SET mood=?", (json.dumps(st["mood"]),))
+    api = client(cfg).get("/api/state").json()["mood"]
+    assert api["slider_pct"] == pct and word in api["aria"]
+
+
+def test_an_older_saved_mood_with_valence_still_renders(cfg, seeded):
+    conn = db.connect(cfg.db_path)
+    conn.execute("UPDATE state SET mood=?", (json.dumps({"valence": 20.0, "arousal": 3.0, "word": "content", "description": "d"}),))
+    api = client(cfg).get("/api/state").json()["mood"]
+    assert api["value"] == 20.0 and "arousal" not in api

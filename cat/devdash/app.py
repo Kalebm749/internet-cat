@@ -25,7 +25,7 @@ OptInt = Annotated[int | None, BeforeValidator(lambda v: None if v in ("", None)
 
 NAV = [("overview", "Overview", "/"), ("ticks", "Ticks", "/ticks"), ("llm", "LLM calls", "/llm"),
        ("memory", "Memory", "/memory"), ("needs", "Needs & mood", "/needs"),
-       ("behaviour", "Behaviour", "/behaviour"), ("sleep", "Sleep", "/sleep"), ("world", "World", "/world"),
+       ("behaviour", "Behaviour", "/behaviour"), ("sleep", "Sleep", "/sleep"), ("world", "World", "/world"), ("projects", "Projects", "/projects"),
        ("logs", "Logs", "/logs"), ("config", "Config", "/config"), ("playground", "Playground", "/playground")]
 SECURITY_HEADERS = {"X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
                     "X-Content-Type-Options": "nosniff"}
@@ -130,6 +130,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/sleep", response_class=HTMLResponse)
     def sleep_page(request: Request, page_no: int = Query(1, alias="page", ge=1)):
         return page(request, "sleep.html", "sleep", "Sleep", s=data.sleep_nights(cfg, page_no))
+
+    @app.get("/projects", response_class=HTMLResponse)
+    def projects_page(request: Request):
+        return page(request, "projects.html", "projects", "Projects", p=data.projects_page(cfg))
 
     @app.get("/world", response_class=HTMLResponse)
     def world_page(request: Request, object: str = "", page_no: int = Query(1, alias="page", ge=1)):
@@ -258,6 +262,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/dev/sleep")
     def api_sleep(page_no: int = Query(1, alias="page", ge=1), limit: int = Query(20, ge=1, le=200)):
         return j(data.sleep_nights(cfg, page_no, limit))
+
+    @app.get("/api/dev/projects")
+    def api_projects(limit: int = Query(50, ge=1, le=500)):
+        return j(data.projects_page(cfg, limit))
 
     @app.get("/api/dev/world")
     def api_world(object: str = "", page_no: int = Query(1, alias="page", ge=1), limit: int = Query(50, ge=1, le=500)):

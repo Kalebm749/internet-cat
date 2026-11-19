@@ -292,6 +292,8 @@ def tick_detail(cfg: Config, tick_id: int) -> dict | None:
         if tick is None and trace is None:
             return None
         d: dict[str, Any] = {"id": tick_id, "tick": tick, "trace": trace}
+        d["project"] = jload(trace.get("project"), None) if trace else None
+        d["director"] = jload(trace.get("director"), None) if trace else None
         pr = jload(trace.get("pressing"), None) if trace else None
         d["pressing"] = pr
         d["pressing_marks"] = ([r["expression"] for r in pr["rows"] if r["selected"] and r["expression"]]
@@ -649,11 +651,11 @@ def _downsample(n: int, limit: int) -> list[int]:
 
 
 def needs_series(cfg: Config, rng: str = "24h") -> dict:
-    """Needs, derived energy, valence and arousal over sim time, plus sleep/doze bands and the needs
+    """Needs, energy and the mood slider over sim time, plus sleep/doze bands and the needs
     that sat at a critical level the longest."""
     rng = rng if rng in RANGES else "24h"
     crit = cfg.settings["need_bands"]["empty_below"]       # the empty band is the critical one
-    out: dict[str, Any] = {"range": rng, "x": [], "needs": {}, "energy": [], "valence": [], "arousal": [],
+    out: dict[str, Any] = {"range": rng, "x": [], "needs": {}, "energy": [], "mood": [],
                            "bands": [], "critical": [], "critical_below": crit, "from": None, "to": None, "ticks": 0,
                            "labels": {k: character.need_label(k, cfg) for k in cfg.character["needs"]}}
     with game_db(cfg) as conn:
@@ -709,8 +711,7 @@ def needs_series(cfg: Config, rng: str = "24h") -> dict:
     out["needs"] = {nid: [round(r["_n"].get(nid), 2) if r["_n"].get(nid) is not None else None for r in sel]
                     for nid in cfg.character["needs"]}
     out["energy"] = [r.get("energy_after") for r in sel]
-    out["valence"] = [r["_m"].get("valence") for r in sel]
-    out["arousal"] = [r["_m"].get("arousal") for r in sel]
+    out["mood"] = [r["_m"].get("value", r["_m"].get("valence")) for r in sel]
     return out
 
 
@@ -1034,3 +1035,23 @@ def config_view(cfg: Config) -> dict:
         files.append(item)
     return {"files": files, "engine_known": bool(loaded), "changed": [f["name"] for f in files if f["state"] == "changed"],
             "engine_state": status.get("state")}
+
+
+def projects_page(cfg: Config, limit: int = 50) -> dict:
+    """Every project with its progress number, idle counters and artifacts, and the settings behind them."""
+    pc = cfg.settings["projects"]
+    out: dict[str, Any] = {"projects": [], "artifacts": [], "settings": {
+        k: pc[k] for k in ("max_active", "progress_values", "taper", "milestone_every", "completion_gains",
+                           "pause_after_idle_nights", "stages")}}
+    with game_db(cfg) as conn:
+        if conn is None:
+            return out
+        try:
+            for p in rows(conn, "SELECT * FROM projects ORDER BY id DESC"):
+                p["stage"] = "finished" if p["status"] == "done" else character._word_from(pc["stages"], p["progress"])
+                p["artifact_count"] = (one(conn, "SELECT COUNT(*) n FROM artifacts WHERE project_id=?", p["id"]) or {}).get("n", 0)
+                out["projects"].append(p)
+            out["artifacts"] = rows(conn, "SELECT * FROM artifacts ORDER BY id DESC LIMIT ?", limit)
+        except Exception:                        # an old database without the tables
+            pass
+    return out

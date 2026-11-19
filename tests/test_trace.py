@@ -102,9 +102,9 @@ def test_mock_tick_writes_complete_trace(cfg):
 
     mm = rows(e, "SELECT * FROM mood_math WHERE tick_id=?", tid)[0]
     mood_after = json.loads(tick_row["mood_after"])
-    assert (mm["word"], mm["valence"], mm["arousal"]) == (mood_after["word"], mood_after["valence"], mood_after["arousal"])
+    assert (mm["word"], mm["value"]) == (mood_after["word"], mood_after["value"])
     inp = json.loads(mm["inputs"])
-    assert {"bands", "valence_terms", "event_nudge", "feeling", "arousal_terms", "valence_unclamped", "arousal_unclamped"} <= set(inp)
+    assert {"bands", "terms", "event_nudge", "feeling", "unclamped", "thresholds"} <= set(inp)
     assert inp["feeling"] == "positive"
 
     ev = rows(e, "SELECT * FROM event_rolls WHERE tick_id=?", tid)
@@ -129,7 +129,7 @@ def test_need_and_mood_math_hold_for_every_tick_of_a_long_run(cfg):
             assert (r["before"] - r["decay"] + r["gain_raw"] * r["repetition_mult"]
                     - (r["event_drain"] or 0) - (r["dislike_drain"] or 0) + r["clamp_adjust"]) == pytest.approx(r["after"], abs=2e-3)
             n += 1
-        mm = rows(e, "SELECT word, valence FROM mood_math WHERE tick_id=?", t["id"])[0]
+        mm = rows(e, "SELECT word, value FROM mood_math WHERE tick_id=?", t["id"])[0]
         assert mm["word"] == json.loads(t["mood_after"])["word"]
     assert n > 1000
     assert e.conn.execute("SELECT COUNT(*) FROM tick_traces").fetchone()[0] == 400
@@ -248,11 +248,11 @@ def test_sleep_cycle_traced_with_proposed_vs_clamped(cfg):
     info = e.tick()
     assert info["kind"] == "asleep"
     kinds = [r["kind"] for r in rows(e, "SELECT kind FROM llm_calls WHERE tick_id=? ORDER BY id", info["id"])]
-    assert kinds == ["sleep_consolidate", "sleep_tendencies", "sleep_preferences", "sleep_self_image"]
+    assert kinds == ["sleep_consolidate", "sleep_tendencies", "sleep_preferences", "sleep_self_image", "sleep_projects"]
     assert "sleep" in json.loads(rows(e, "SELECT stage_timings s FROM tick_traces WHERE tick_id=?", info["id"])[0]["s"])
     log_id = rows(e, "SELECT id FROM sleep_log")[0]["id"]
     st = {r["step"]: r for r in rows(e, "SELECT * FROM sleep_traces WHERE sleep_log_id=?", log_id)}
-    assert set(st) == {"consolidate", "tendencies", "preferences", "self_image"}
+    assert set(st) == {"consolidate", "tendencies", "preferences", "self_image", "projects"}
     prop, clamped = json.loads(st["tendencies"]["proposed"]), json.loads(st["tendencies"]["clamped"])
     step = cfg.settings["sleep"]["tendency_max_step"]
     assert prop["boldness"] == 1 and clamped["boldness"]["applied_delta"] == pytest.approx(step)

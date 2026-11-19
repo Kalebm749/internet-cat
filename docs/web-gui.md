@@ -94,8 +94,8 @@ Put the font files in `static/fonts/` as `.woff2` files with `font-display: swap
 
 ### 4.2 Presence (the portrait frame)
 - The frame stays: an oval or arched "photo frame" border, now holding an **abstract presence** instead of a picture: soft concentric rings around a core, drawn as inline SVG (`#presence`). **No figure, no silhouette, no body.** Nothing in it suggests what the entity is.
-- **Colour follows valence:** hue runs from blue (valence −1) to amber (+1).
-- **Motion follows arousal:** the rings breathe; one breath takes ~7s when calm and ~1.4s when highly aroused. No motion under `prefers-reduced-motion`.
+- **Colour follows mood:** hue runs from blue (mood −50) to amber (+50).
+- **Motion follows energy:** the rings breathe; one breath takes ~7s when tired (energy −50) and ~1.4s when full of energy (50). No motion under `prefers-reduced-motion`.
 - **Asleep:** the presence dims (lower lightness) and a small animated "z z z" drifts up (CSS, reduced-motion safe).
 - **Dozing:** the presence desaturates and dims slightly, plus a caption "dozing… (brain offline)".
 - The server computes the values (`views.presence_view`, tuned by `web_ui.presence` in `settings.yaml`) and sends them as CSS variables (`--pv-h`, `--pv-s`, `--pv-l`, `--pv-t`) on the SVG, so the first paint is right without JS. `journal.js` updates the same variables.
@@ -104,7 +104,7 @@ Put the font files in `static/fonts/` as `.woff2` files with `font-display: swap
 
 ### 4.3 Mood and energy
 - **Mood:** a large word (Fraunces 22px, `--honey` underline), e.g. *content*, plus a one-line description from the engine ("tired but glowing after the sunset").
-- A small **mood dot on a 2D pad** (60×60px): x = valence (−50..50), y = arousal (−50..50, high at the top). The quadrants are faintly labelled on hover (calm/happy, excited, tense, low). This is optional for v1, so it can be cut if fiddly.
+- A **mood slider**: a short horizontal track from *negative* to *positive* with a dot at the current mood (−50..50). It has a text equivalent (`aria-label`).
 - **Energy:** a bar in `--dusk` with a word (*wide awake / fine / tired / exhausted*). Energy is a separate resource from −50 to 50, not a need.
 
 ### 4.4 Needs
@@ -140,6 +140,11 @@ orange over the rooftops.
 - **What it thinks it is:** the entity's current self-image lines (learned during sleep; see `creature-architecture.md` §7), one per row in italics, oldest first. Hover shows how sure it is and the day it was formed. If there are none, the section says *still figuring that out*. The entity starts with no self-image; a line may also come from an optional `character.yaml` `self_image.seed` hint.
 - **Loves / dislikes:** two short lists, top 5 each by |valence|. Small heart / cross marks drawn as inline SVG (no emoji). Hover shows the reason ("keeps coming back here at dusk").
 
+### 4.7a Projects (right column, above Keepsakes)
+- **What it is working on:** one row per project (active first, then set-aside, then finished; at most 8): the title, a status and **stage in words** ("working on it · well along"), and the running note ("where it got to"). Hover shows why it started it. Never the progress number.
+- **Made so far:** the latest `projects.artifacts_shown` (6) artifacts, newest first, as small cards: title, kind, project and day, then the text. A made piece also adds a tag to its diary entry ("made “Roots”").
+- Empty states: "no projects yet." and "nothing made yet."
+
 ### 4.7 Keepsakes (long-term memories)
 - Small index cards, newest first, 6 shown, then "more keepsakes" to see the rest.
 - Each card: memory text (Lora 15px), date (sim day), importance as 1–3 honey dots.
@@ -167,7 +172,7 @@ Polled every 10s. Everything except old diary pages.
   "status": {"state": "awake", "brain_online": true,
              "brain_last_seen": "2026-11-18T18:02:11", "model": "qwen3:8b"},
   "mood": {"word": "content", "description": "tired but glowing",
-           "valence": 18.0, "arousal": -8.5, "pad_x": 68.0, "pad_y": 58.5},
+           "value": 18.0, "slider_pct": 68.0, "aria": "Mood slider: content, positive, from negative to positive"},
   "energy": {"value": -12, "pct": 38, "word": "tired"},
   "needs": [{"id": "wonder", "label": "wonder", "value": 62, "band": "okay", "word": "okay",
              "meaning": "Awe and delight at the world: ...",
@@ -177,6 +182,12 @@ Polled every 10s. Everything except old diary pages.
   "presence": {"hue": 120, "saturation": 70, "lightness": 58, "pulse_seconds": 5.2,
                "style": "--pv-h:120;--pv-s:70%;--pv-l:58%;--pv-t:5.2s",
                "aria": "A soft glow for Mochi: ...", "caption": "Mochi, in the bookshop"},
+  "projects": {"rows": [{"id": 1, "title": "drawing the old tree", "why": "it keeps returning to it",
+                         "note": "the trunk is done", "stage": "well along", "status": "active",
+                         "status_label": "working on it"}],
+               "artifacts": [{"id": 3, "kind": "sketch", "title": "Roots", "text": "...", "project": "drawing the old tree",
+                              "day_text": "Day 4"}],
+               "empty": false, "artifacts_empty": false},
   "self_image": {"lines": [{"text": "I seem to tire when I climb.",
                             "title": "formed on day 3, 60% sure"}],
                  "empty": false, "empty_text": "still figuring that out"},
@@ -257,7 +268,7 @@ In `settings.yaml`, `need_bands` (the thresholds behind the band words) and `web
 ## 8. Accessibility
 
 - Text contrast meets WCAG AA in both palettes (check `--ink-soft` on `--card`).
-- Every bar has a visible band word and an `aria-label` with the band and the need's meaning (never a number). The tendency sliders and mood pad have text equivalents.
+- Every bar has a visible band word and an `aria-label` with the band and the need's meaning (never a number). The tendency sliders and the mood slider have text equivalents.
 - All motion is inside `@media (prefers-reduced-motion: no-preference)`.
 - Caveat is used only for short creature quotes, never for UI labels.
 

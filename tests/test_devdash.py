@@ -378,7 +378,7 @@ def test_tick_detail_numbers_equal_the_public_site(cfg, seeded):
     assert (pub["energy"]["value"], pub["energy"]["word"]) == (state["energy"]["value"], state["energy"]["word"])
     assert d["energy"] == pytest.approx(state["energy"]["value"], abs=0.5)          # stored, not derived
     assert d["mood_math"]["word"] == state["mood"]["word"] == pub["mood"]["word"]
-    assert d["mood_math"]["valence"] == state["mood"]["valence"] and d["mood_math"]["arousal"] == state["mood"]["arousal"]
+    assert d["mood_math"]["value"] == state["mood"]["value"]
     # trend arrows on the site compare with the previous tick: the math's `before` is that previous value
     prev = [json.loads(r[0]) for r in conn.execute("SELECT needs_after FROM ticks ORDER BY id DESC LIMIT 2")][1]
     for m in d["need_math"]:
@@ -417,6 +417,7 @@ def test_tick_detail_for_doze_asleep_and_error_ticks(cfg, seeded, monkeypatch):
     def down(m, s):
         raise BackendError("injected failure")
     seeded.backend.handlers["brain"] = down                                      # both brain attempts fail
+    seeded.state["is_asleep"], seeded.state["energy"] = False, 20.0               # awake, whatever the seed run ended on
     failed = seeded.tick()
     assert failed["kind"] == "doze"
     page = c.get(f"/ticks/{failed['id']}").text
@@ -458,7 +459,7 @@ def test_tick_detail_sleep_section_shows_proposed_vs_clamped(cfg):
     e.state["energy"] = -45.0
     tid = e.tick()["id"]
     d = data.tick_detail(cfg, tid)
-    assert d["sleep_logs"] and {t["step"] for t in d["sleep_logs"][0]["traces"]} == {"consolidate", "tendencies", "preferences", "self_image"}
+    assert d["sleep_logs"] and {t["step"] for t in d["sleep_logs"][0]["traces"]} == {"consolidate", "tendencies", "preferences", "self_image", "projects"}
     page = dash(cfg).get(f"/ticks/{tid}").text
     assert "Sleep cycle" in page and "LLM proposed" in page and "applied change" in page and "sleep_tendencies" in page
 
