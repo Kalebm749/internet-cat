@@ -278,3 +278,27 @@ def test_an_older_database_without_the_column_still_loads(cfg):
     e.tick()
     st = db.get_state(e.conn)
     assert "activity" in st and st["activity"]["remaining"] == 40
+
+
+# ---------- reasons and telemetry ----------
+def test_the_diary_shows_why_and_how_long_it_was_carried_on(cfg):
+    from cat.web.app import create_app
+    e, b, _ = make(cfg)
+    for _ in range(3):
+        e.tick()
+    en = TestClient(create_app(cfg)).get("/api/state").json()["diary"][0]
+    assert en["why_text"] == "because: it is cosy"
+    assert en["carried"] == 2 and "2 more steps" in en["carried_text"]
+    html = TestClient(create_app(cfg)).get("/").text
+    assert "because: it is cosy" in html and "no new decision" in html
+
+
+def test_the_dashboard_counts_decisions_against_carried_on_ticks(cfg):
+    from cat.devdash import data
+    e, b, _ = make(cfg)
+    for _ in range(3):
+        e.tick()
+    s = data.stats(db.connect(cfg.db_path, readonly=True), cfg, hours=24)
+    assert s["decisions"] == 1 and s["carried"] == 2
+    assert abs(s["carried_share"] - 2 / 3) < 1e-9
+    assert s["avg_tokens_per_call"] is not None and s["per_day"] and s["per_day"][0]["calls"] >= 1

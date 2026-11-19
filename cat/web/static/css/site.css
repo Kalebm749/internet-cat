@@ -131,6 +131,8 @@ body.night .n-trend.down { color: var(--accent); }
 .entry-action { font-style: italic; margin-top: 2px; }
 .entry-outcome { margin-top: 4px; }
 .entry-reaction { font: 500 20px/1.3 var(--f-hand); margin: 6px 0 0 18px; color: var(--ink); }
+.entry-why { margin: 4px 0 0; font-size: 14px; color: var(--ink-soft, var(--ink)); opacity: .75; font-style: italic; }
+.entry-carried { margin: 2px 0 0; font-size: 12px; opacity: .55; }
 .margin-note { font: italic 13px var(--f-body); color: var(--ink-soft); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
 .leaf { width: 8px; height: 8px; border-radius: 0 70% 0 70%; background: var(--sage); flex: none; }
 .entry-tags { margin-top: 8px !important; display: flex; flex-wrap: wrap; gap: 6px; }

@@ -248,7 +248,15 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
                                               (r["id"],))]
     am = r["activity_minutes"] if "activity_minutes" in r.keys() else None
     span = f"about {am} min" if am and am > (r["duration"] or 0) else ""          # a longer move, carried on
+    nxt = conn.execute("SELECT MIN(id) FROM ticks WHERE id>? AND kind!='carry'", (r["id"],)).fetchone()[0]
+    carried = conn.execute("SELECT COUNT(*) FROM ticks WHERE kind='carry' AND id>? AND id<?",
+                           (r["id"], nxt if nxt is not None else 2 ** 62)).fetchone()[0]
+    why = (r["intent"] or "").strip()
     return {"type": "tick", "key": f"t{r['id']}", "id": r["id"], "span": span,
+            "why": why, "why_text": f"because: {why}" if why else "",
+            "carried": carried,
+            "carried_text": (f"carried on for {carried} more step{'s' if carried != 1 else ''}, "
+                             "no new decision") if carried else "",
             "day_number": clock.day_number(first, dt), "day_label": clock.day_label(first, dt),
             "time_label": clock.time_label(dt), "area": _area_name(cfg, r["area"]),
             "action": r["action"] or "", "outcome": r["outcome"] or "", "reaction": r["reaction"] or "",

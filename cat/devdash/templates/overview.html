@@ -76,6 +76,9 @@
       <tr><th>rejected-effect rate</th><td>{% if s.rejected_rate is none %}–{% else %}{{ '%.1f'|format(s.rejected_rate*100) }}% <span class="dim">of {{ s.effects }} proposed changes</span>{% endif %}</td></tr>
       <tr><th>brain latency</th><td>mean {{ ms(s.brain.mean_ms) }} · p95 {{ ms(s.brain.p95_ms) }} <span class="dim">({{ s.brain.n }} calls)</span></td></tr>
       <tr><th>narrator latency</th><td>mean {{ ms(s.narrator.mean_ms) }} · p95 {{ ms(s.narrator.p95_ms) }} <span class="dim">({{ s.narrator.n }} calls)</span></td></tr>
+      <tr><th>model decisions vs carried on</th><td>{{ s.decisions }} decided · {{ s.carried }} carried on{% if s.carried_share is not none %} <span class="dim">({{ '%.0f'|format(s.carried_share*100) }}% without a model call)</span>{% endif %}</td></tr>
+      <tr><th>avg tokens per call</th><td>{{ s.avg_tokens_per_call if s.avg_tokens_per_call is not none else '–' }}</td></tr>
+      {% for d in s.per_day %}<tr><th>{{ d.day }}</th><td>{{ d.calls }} calls · {{ d.tokens }} tokens</td></tr>{% endfor %}
       <tr><th>tokens per tick</th><td>{{ s.tokens_per_tick if s.tokens_per_tick is not none else '–' }}</td></tr>
     </table>
   </div>
