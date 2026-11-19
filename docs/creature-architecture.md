@@ -1,6 +1,10 @@
-# Internet Cat: Creature Architecture (v0.3)
+# Internet Cat: Creature Architecture (v0.4)
 
-An autonomous web creature that lives in a simulated world. It thinks with an LLM, while plain code tracks time, needs and rules. Inspired by pinos.world. Pino's internals aren't public, so this is our own design.
+A framework for a conscious entity that lives in a simulated world. It thinks with an LLM, while plain code tracks time, needs and rules. Inspired by pinos.world. Pino's internals aren't public, so this is our own design.
+
+**Nothing here assumes a form.** The framework makes no assumption about the entity's species, body or appearance. The current character, Gregorovitch, is one configuration of it. The entity starts with no self-image and may or may not come to think of itself as having any form. Whatever it comes to believe about itself is learned during sleep (§7) and stored as data, never written into the config or the code.
+
+**Paused:** the original cat character and its 3D model work are paused. They are not part of the design. The old cat image assets and the script that generates them stay in the repository, unused.
 
 **Scope for now:** a single creature living on its own. No visitor interaction yet.
 **Hardware:** everything runs on one Ubuntu laptop (GTX 1060 6GB, 16GB RAM) under Docker Compose: Ollama (the brain), the world loop, the state store and the website (see §8).
@@ -11,13 +15,14 @@ Related docs: `server-architecture.md` (how it is built and deployed, including 
 
 ## 1. Design principles
 
-1. **The character is data.** A creature is defined by its config (identity, traits, needs). The engine is the same for every creature.
-2. **Actions aren't predefined.** The creature can do anything that makes sense in its situation. There's no fixed action menu.
-3. **Open actions, closed effects.** Actions are freeform, but they can only change the world through a small, fixed set of state changes that code checks (see §5). This keeps consequences persistent and stops things appearing out of nowhere.
-4. **The actor never grades itself.** The creature decides what to do. A separate, personality-free narrator decides what happened and how it affected needs.
-5. **The LLM describes, code calculates.** LLMs return words and coarse buckets. Code turns those into numbers, clamps them and applies them.
-6. **The LLM gets a situation, not instructions.** The brain receives an overview of its world and inner state, not "choose one of these options."
-7. **Personality changes slowly.** Traits drift a little each night and never get rewritten in one go.
+1. **The character is data.** An entity is defined by its config (name, voice, traits, needs). The engine is the same for every entity.
+2. **No assumed form.** Nothing in the code, config or docs assumes a species, body or appearance. A self-image, if one forms, is learned and revisable (§7).
+3. **Actions aren't predefined.** The creature can do anything that makes sense in its situation. There's no fixed action menu.
+4. **Open actions, closed effects.** Actions are freeform, but they can only change the world through a small, fixed set of state changes that code checks (see §5). This keeps consequences persistent and stops things appearing out of nowhere.
+5. **The actor never grades itself.** The creature decides what to do. A separate, personality-free narrator decides what happened and how it affected needs.
+6. **The LLM describes, code calculates.** LLMs return words and coarse buckets. Code turns those into numbers, clamps them and applies them.
+7. **The LLM gets a situation, not instructions.** The brain receives an overview of its world and inner state, not "choose one of these options."
+8. **Personality changes slowly.** Traits drift a little each night and never get rewritten in one go.
 
 ---
 
