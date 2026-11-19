@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cat import clock
+from cat import character, clock
 from cat import prompts as P
 from cat.config import Config
 from cat.llm import BackendError, LLMBackend, call_json
@@ -53,8 +53,16 @@ def system_prompt(cfg: Config) -> str:
                     allowed_tags=", ".join(s["allowed_tags"]))
 
 
+def describe_needs(cfg: Config, needs: dict[str, float]) -> str:
+    """Each need's meaning and its current band as a word (never a number)."""
+    lines = [P.render(cfg, "narrator.need_line", need=k, meaning=spec["meaning"],
+                      band=character.need_band(float(needs[k]), cfg))
+             for k, spec in cfg.character["needs"].items()]
+    return P.render(cfg, "narrator.needs_heading") + "\n" + "\n".join(lines)
+
+
 def describe_world(cfg: Config, sim_time: str, area_id: str, weather: str,
-                   here: list[dict], inventory: list[dict]) -> str:
+                   here: list[dict], inventory: list[dict], needs: dict[str, float] | None = None) -> str:
     areas = cfg.world["areas"]
     dt = clock.parse(sim_time)
 
@@ -63,10 +71,13 @@ def describe_world(cfg: Config, sim_time: str, area_id: str, weather: str,
         return f"- {o['id']}: {o['name']} | tags: {', '.join(o['tags']) or 'none'} | state: {state}"
 
     exits = "; ".join(f"{a} ({areas[a]['name']})" for a in areas[area_id]["exits"])
-    return (f"Location: {area_id} ({areas[area_id]['name']}): {areas[area_id]['description']}. "
+    text = (f"Location: {area_id} ({areas[area_id]['name']}): {areas[area_id]['description']}. "
             f"Time: {clock.time_label(dt)}. Weather: {weather}.\n"
             f"Exits: {exits}\nObjects here:\n" + "\n".join([fmt(o) for o in here] or ["(nothing)"])
             + "\nInventory:\n" + "\n".join([fmt(o) for o in inventory] or ["(empty)"]))
+    if needs is not None:
+        text += "\n" + describe_needs(cfg, needs)
+    return text
 
 
 def build_messages(cfg: Config, action: str, context: str) -> list[dict]:

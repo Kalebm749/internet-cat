@@ -42,6 +42,8 @@ SPEC: dict[str, set[str]] = {
     "brain.situation.earlier_today": {"memories"},
     "brain.situation.closing": set(),
     "narrator.system": {"needs_list", "sim_minutes_min", "sim_minutes_max", "allowed_tags"},
+    "narrator.needs_heading": set(),
+    "narrator.need_line": {"need", "meaning", "band"},
     "narrator.need_consume_note": set(),
     "narrator.user": {"context", "action"},
     "sleep.system": {"name", "core_traits", "job"},

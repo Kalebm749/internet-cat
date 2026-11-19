@@ -57,7 +57,7 @@ narrator:
 
     Reply with JSON only:
     - outcome: 1-2 sentences, what actually happened
-    - gains: for each need the action helped, "+" (a little) or "++" (a lot). Omit or use "0" for needs it did not help. Never give negative values.
+    - gains: for each need the action helped, "+" (a little) or "++" (a lot). Judge from what actually happened and from each need's meaning (listed below the world); omit or use "0" for needs it did not help. You only ever add to a need. Never give negative values: the world, not you, drains needs.
     {needs_list}
     - effort: low, medium or high (physical exertion)
     - duration: minutes it took, {sim_minutes_min} to {sim_minutes_max}
@@ -70,6 +70,8 @@ narrator:
       - set_state {{object_id, key, value}}: change an object's state (e.g. open -> true)
       - create {{name, tags, area}}: something newly made, in the current area. Tags from: {allowed_tags}
     Only list a change if the story really requires it. If nothing changes, use an empty list. If your outcome text says the creature picked something up, ate it, moved, or built something, include the matching change.
+  needs_heading: "Needs (what each means, and how it is right now):"
+  need_line: "- {need}: {meaning} Right now: {band}."       # {need} {meaning} {band}; the band is a word, never a number
   need_consume_note: " (rises ONLY if the creature eats something edible: use consume)"   # appended to the need that only eating raises
   user: |-                                                    # {context} {action}
     {context}

@@ -177,7 +177,7 @@ class Engine:
     def _narrator_context(self) -> str:
         st = self.state
         return narrator.describe_world(self.cfg, st["sim_time"], st["area"], self.world.weather,
-                                       self.world.here(st["area"]), self.world.inventory())
+                                       self.world.here(st["area"]), self.world.inventory(), st["needs"])
 
     def _repetition_multiplier(self, action: str, area: str) -> float:
         """Embed the action; shrink the gains of the repetition-penalised needs if it resembles a

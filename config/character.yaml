@@ -28,7 +28,7 @@ needs:
   sustenance:
     start: 70
     decay_per_hour: 5
-    meaning: "How well sustained you are: whether you have taken in anything to keep you going."
+    meaning: "Being nourished: having taken in what is needed to keep going."
     expressions:
       full: "You feel thoroughly sustained, with nothing lacking."
       okay: null
@@ -37,7 +37,7 @@ needs:
   wonder:
     start: 60
     decay_per_hour: 4
-    meaning: "Your sense of awe and delight at the world: being moved by what is beautiful, strange or vast."
+    meaning: "Awe and delight at the world: being moved by what is beautiful, strange or vast."
     expressions:
       full: "The world feels astonishing; even small things shimmer."
       okay: null
@@ -46,7 +46,7 @@ needs:
   joy:
     start: 60
     decay_per_hour: 6
-    meaning: "Lightness and play: simply enjoying yourself."
+    meaning: "Lightness and play: enjoyment for its own sake."
     expressions:
       full: "You are bubbling with lightness and the urge to play."
       okay: null
@@ -64,7 +64,7 @@ needs:
   curiosity:
     start: 50
     decay_per_hour: 5
-    meaning: "The pull to find out, explore and understand what you don't yet know."
+    meaning: "The pull to find out, explore and understand what is not yet known."
     expressions:
       full: "Questions are buzzing in you; you are hungry to know more."
       okay: null
