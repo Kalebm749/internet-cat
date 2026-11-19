@@ -106,23 +106,34 @@ class WorldState:
 
     # --- events ---
     def roll_events(self, rng: random.Random, dt: datetime, creature_area: str,
-                    now: str) -> list[dict[str, Any]]:
+                    now: str, trace: list | None = None) -> list[dict[str, Any]]:
         """Roll world events for this tick. `area` on an event means the creature must be there
         to perceive it. Applies weather changes and object spawns; returns what fired."""
         s = self.cfg.settings
         fired: list[dict] = []
+        def note(ev, roll, did_fire, why):
+            if trace is not None:
+                trace.append({"event_text": ev["text"], "chance": ev["chance"], "roll": roll,
+                              "fired": int(did_fire), "filtered_reason": why})
         for ev in self.cfg.world.get("events", []):
             if len(fired) >= s["events_max_per_tick"]:
-                break
+                note(ev, None, False, f"skipped: already {s['events_max_per_tick']} events this tick")
+                continue
             if "area" in ev and ev["area"] != creature_area:
+                note(ev, None, False, f"area: needs the creature in '{ev['area']}', it is in '{creature_area}'")
                 continue
             if "hours" in ev and not clock.hour_in_range(dt, ev["hours"][0], ev["hours"][1]):
+                note(ev, None, False, f"hours: {ev['hours'][0]}-{ev['hours'][1]}, it is {dt.hour}:{dt.minute:02d}")
                 continue
             if "only_weather" in ev and ev["only_weather"] != self.weather:
+                note(ev, None, False, f"weather: only when '{ev['only_weather']}', it is '{self.weather}'")
                 continue
             if "set_weather" in ev and ev["set_weather"] == self.weather:
+                note(ev, None, False, f"weather is already '{self.weather}'")
                 continue
-            if rng.random() >= ev["chance"]:
+            roll = rng.random()
+            if roll >= ev["chance"]:
+                note(ev, roll, False, "rolled too high")
                 continue
             record = {"text": ev["text"], "area": ev.get("area"), "mood": ev.get("mood", 0.0),
                       "spawned": None}
@@ -137,4 +148,6 @@ class WorldState:
                     record["spawn_info"] = {"op": "create", "source": "event", "object_id": o["id"],
                                             "area": o["area"], "name": o["name"], "label": o["name"]}
             fired.append(record)
+            note(ev, roll, True, None if not ("spawn" in ev and record["spawned"] is None)
+                 else "fired, but the spawn area is full")
         return fired

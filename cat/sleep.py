@@ -59,6 +59,7 @@ class SleepPlan:
     tendency_changes: dict[str, dict] = field(default_factory=dict)  # {name: {from, to}}
     preferences: list[dict] = field(default_factory=list)       # {subject, valence, reason, previous}
     last_tick_id: int = 0
+    trace_steps: list[dict] = field(default_factory=list)   # for the dev dashboard (sleep_traces)
 
 
 # ---------- pure helpers (unit-tested) ----------
@@ -218,6 +219,7 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
                       tendencies_messages(cfg, summary, current_tendencies),
                       tendencies_schema(cfg), lambda r: r.get("changes"), retries)
     new_t, t_changes = clamp_tendencies(cfg, current_tendencies, raw_t)   # never skipped
+    step = cfg.settings["sleep"]["tendency_max_step"]
 
     rows = conn.execute("SELECT subject, valence, reason FROM preferences").fetchall()
     existing = {r["subject"].lower(): dict(r) for r in rows}
@@ -227,17 +229,31 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
     prefs = merge_preferences(cfg, existing, raw_p)
 
     prepared = [memory.prepare(text, imp, sim_time) for text, imp in mems]   # embeddings
-    return SleepPlan(summary, prepared, new_t, t_changes, prefs, top_id)
+    steps = [
+        {"step": "consolidate", "input": {"short_memories": shorts, "day_log": lines},
+         "output": {"summary": summary, "memories": [{"text": t, "importance": i} for t, i in mems]},
+         "proposed": None, "clamped": None},
+        {"step": "tendencies", "input": {"summary": summary, "current": current_tendencies},
+         "output": raw_t,
+         "proposed": {k: (raw_t.get(k) if isinstance(raw_t, dict) else None) for k in current_tendencies},
+         "clamped": {k: {"from": current_tendencies[k], "to": new_t[k],
+                         "applied_delta": round(new_t[k] - current_tendencies[k], 4), "max_step": step}
+                     for k in current_tendencies}},
+        {"step": "preferences", "input": {"summary": summary, "existing": list(existing.values())},
+         "output": raw_p, "proposed": raw_p, "clamped": prefs},
+    ]
+    return SleepPlan(summary, prepared, new_t, t_changes, prefs, top_id, steps)
 
 
 def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time: str,
-           real_time: str, sim_date: str | None = None) -> None:
+           real_time: str, sim_date: str | None = None) -> int:
     """Apply a plan. Call inside a transaction (the caller also saves the new tendencies).
     `sim_date` is the date the sleep began (the website's "last night")."""
     from cat.db import get_meta, set_meta
     sl = cfg.settings["sleep"]
+    tick_for_memories = int(get_meta(conn, "sleep_tick_id", "0") or 0) or None
     for m in p.memories:
-        memory.save(m, "long")
+        memory.save(m, "long", tick_id=tick_for_memories)
     memory.clear_short()
     memory.prune_long()
     for pr in p.preferences:
@@ -254,7 +270,7 @@ def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time
     conn.execute(
         "DELETE FROM preferences WHERE id NOT IN (SELECT id FROM preferences "
         "ORDER BY abs(valence) DESC, id DESC LIMIT ?)", (sl["max_preferences_total"],))
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO sleep_log(sim_date,summary,tick_id,tendency_changes,new_memories,"
         "new_preferences) VALUES(?,?,?,?,?,?)",
         ((sim_date or sim_time[:10]), p.summary, int(get_meta(conn, "sleep_tick_id", "0") or 0), dumps(p.tendency_changes), dumps([m["text"] for m in p.memories]),
@@ -262,3 +278,4 @@ def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time
                 for x in p.preferences])))
     set_meta(conn, "sleep_pending", 0)
     set_meta(conn, "last_sleep_tick_id", p.last_tick_id)
+    return cur.lastrowid

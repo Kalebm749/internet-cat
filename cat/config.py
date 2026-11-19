@@ -32,6 +32,14 @@ class Config:
         return self.path("db_path")
 
     @property
+    def dev_db_path(self) -> Path:
+        return self.path("dev_db_path")
+
+    @property
+    def log_dir(self) -> Path:
+        return self.path("log_dir")
+
+    @property
     def heartbeat_path(self) -> Path:
         return self.path("heartbeat_file")
 
@@ -63,7 +71,10 @@ REQUIRED_SETTINGS = [
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
     "consume_min_gain", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
-    "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "tendency_words", "max_objects_per_area",
+    "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
+    "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
+    "log_backup_count", "dev_db_path", "dev_commands_enabled", "dev_poll_seconds",
+    "paused_alive_seconds", "devdash", "tendency_words", "max_objects_per_area",
 ]
 
 
@@ -136,6 +147,8 @@ def validate(settings: dict, character: dict, world: dict) -> None:
     if settings["downtime_policy"] not in ("pause", "catch_up"):
         raise ConfigError(f"settings.yaml: downtime_policy must be 'pause' or 'catch_up', "
                           f"got {settings['downtime_policy']!r}")
+    if settings["trace_level"] not in ("full", "summary"):
+        raise ConfigError(f"settings.yaml: trace_level must be 'full' or 'summary', got {settings['trace_level']!r}")
     if settings["max_catch_up_hours"] <= 0:
         raise ConfigError("settings.yaml: max_catch_up_hours must be > 0")
     if settings["sim_minutes_min"] > settings["sim_minutes_max"]:

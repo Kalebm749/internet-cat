@@ -5,7 +5,7 @@ import argparse
 import logging
 import random
 
-from cat import clock, db
+from cat import clock, db, logs
 from cat.config import load_config
 from cat.engine import Engine
 from cat.llm import LLMBackend, MockBackend
@@ -48,9 +48,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-q", "--quiet", action="store_true", help="don't print each tick")
     args = p.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     overrides = {k: v for k, v in (("db_path", args.db), ("ollama_host", args.ollama_host)) if v}
     cfg = load_config(args.config_dir, overrides or None)
+    if logs.structured_enabled():          # containers: JSON lines to stdout + data/logs/engine.jsonl
+        logs.setup_logging("engine", cfg)
+    else:
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        logging.getLogger("cat.tick").setLevel(logging.WARNING)      # per-tick lines are for structured logs
     backend = make_backend(cfg, args.mock, args.seed)
     engine = Engine(cfg, backend, rng=random.Random(args.seed))
     engine.install_signal_handlers()

@@ -43,6 +43,8 @@ Every tuning number. Groups:
 - **Pacing**: `tick_interval_seconds` (real), `sim_start`, `sim_minutes_per_tick_default`, `sim_minutes_min/max` (narrator duration clamp), `phases` (start hour of dawn/day/dusk/night).
 - **Effects**: `gain_values`, `effort_energy_cost`, `repetition_penalty`, `create_limit_per_tick`, `allowed_tags`, `state_value_max_length`.
 - **Mood**: `mood.*` weights, `feeling_values`, word thresholds. `default_need_words` / `energy_words` map values to words. `events_max_per_tick`, `max_objects_per_area` cap events.
+- **Tracing & logs**: `trace_enabled`, `trace_level` (`full` | `summary`), `trace_retention_days`, `trace_recall_candidates`, `log_dir`, `log_level`, `log_max_bytes`, `log_backup_count`, `log_tick_events`.
+- **Dev tools**: `dev_db_path`, `dev_commands_enabled`, `dev_poll_seconds`, `paused_alive_seconds`, `devdash.*`.
 - **Downtime**: `downtime_policy` (`pause` | `catch_up`), `max_catch_up_hours`, `catch_up_min_gap_ticks`, `catch_up_decay_multiplier`.
 - **Doze/sleep**: `doze.*`, `sleep.*` (thresholds, restore rate, `tendency_max_step`).
 - **Memory**: `notable.*` (what counts as a notable tick, importance of short-term memories), `recall`, `recency_half_life_sim_hours`, `short_term_shown`, `notable`, `long_term_cap`.
@@ -90,3 +92,15 @@ What happens to the creature while the engine (or the whole host) was off:
 - `catch_up`: at startup the real gap is converted to sim time at the normal pace (`sim_minutes_per_tick_default` per `tick_interval_seconds`), **capped at `max_catch_up_hours` simulated hours**. Needs decay for that time (`catch_up_decay_multiplier`; if the creature was asleep when it stopped, the gap counts as sleep and restores rest). One tick row of kind `catchup` is written ("dozed through the night" / "...afternoon"), shown on the website as a collapsed doze line. Then the loop resumes, and the first prompt says the creature just came round from a doze.
 - Gaps shorter than `catch_up_min_gap_ticks` tick intervals are treated as ordinary restarts. After a crash the last sign of life may be up to one tick interval older than the real stop, so one interval is subtracted; after a clean stop (SIGTERM / `docker compose stop`) the gap is exact. With `tick_interval_seconds: 0` (mock runs) there is no pace to convert with, so nothing is caught up.
 - The engine records `meta.last_alive_epoch` and `meta.clean_stop` on every tick commit and at stop.
+
+## Tracing and structured logs (`cat/trace.py`, `cat/logs.py`)
+Every tick is fully traceable. The engine records, in `cat.db`:
+- `tick_traces` (status ok/doze/error, total and per-stage ms: world, recall, brain, narrator, apply, record, sleep; a tick that raised before being recorded is stored under a **negative** `tick_id`),
+- `llm_calls` (one row per *attempt*: the exact system prompt, user prompt, JSON schema and raw response text that were sent/received, parsed JSON, valid-JSON flag, tokens and Ollama's own load/prompt/eval/total durations),
+- `embed_calls` (purpose `memory_write` | `recall_query` | `repetition_check`), `recall_logs` (every scored memory with recency / importance / relevance / score and whether it was selected),
+- `effect_logs` (every proposed change, accepted or rejected, with the reason), `need_math` (per need: before, decay, bucket, raw gain, repetition multiplier, effort cost, clamp adjustment, after; `after = before - decay + gain_raw*repetition_mult - effort_cost + clamp_adjust`), `mood_math` (every mood input and term), `event_rolls` (chance vs roll, or why an event was filtered), `sleep_traces` (inputs, raw LLM output, proposed vs clamped changes).
+- `memories.tick_id` links a memory to the tick that wrote it.
+
+**Tracing never breaks the creature**: a failed trace write is logged as a warning and the tick carries on. `trace_level: summary` keeps numbers (timings, tokens, rejections, math) but stores no prompt, response or input text. During every sleep cycle `llm_calls`, `embed_calls` and `recall_logs` older than `trace_retention_days` are pruned; the small tables are kept.
+
+All services log JSON lines (`ts, level, service, tick_id, event, message, extra`) to stdout (`docker logs`) and to `data/logs/<service>.jsonl`, rotated by size. This is switched on by `CAT_STRUCTURED_LOGS=1` (set in `compose.yaml`); plain console logging is used otherwise.

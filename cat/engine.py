@@ -11,12 +11,13 @@ from typing import Callable
 
 from collections import deque
 
-from cat import brain, character, clock, db, downtime, effects, narrator, sleep
+from cat import brain, character, clock, db, downtime, effects, logs, narrator, sleep
 from cat.config import Config
 from cat.db import dumps
 from cat.healthcheck import write_heartbeat
 from cat.llm import BackendError, LLMBackend, cosine
 from cat.memory import Memory, build_query, importance_for, notable_reasons
+from cat.trace import Tracer, prune
 from cat.world import WorldState
 
 log = logging.getLogger("cat.engine")
@@ -37,7 +38,9 @@ class Engine:
         self.stop_requested = False
         self._online_cache: bool | None = None
         self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])
-        self.memory = Memory(self.conn, cfg, backend)
+        self.tracer = Tracer(cfg)
+        backend.recorder = self.tracer.record_llm        # every LLM attempt is traced
+        self.memory = Memory(self.conn, cfg, backend, self.tracer)
         self._bootstrap()
         self._reconcile_config()
         self._load()
@@ -137,7 +140,9 @@ class Engine:
                          "objects": [o["name"] for o in self.world.here(st["area"])],
                          "mood": st["mood"]["word"],
                          "last_outcome": " ".join([e["text"] for e in fired] + [self.last_outcome or ""]).strip()})
-        return self.memory.recall(self.memory.embed_one(q), st["sim_time"])
+        recalled = self.memory.recall(self.memory.embed_one(q, "recall_query"), st["sim_time"])
+        self.tracer.set_recall(q, self.memory.last_candidates)
+        return recalled
 
     def _narrator_context(self) -> str:
         st = self.state
@@ -147,9 +152,8 @@ class Engine:
     def _repetition_multiplier(self, action: str) -> float:
         """Embed the action; shrink gains if it resembles a recent one. Embedding trouble just
         means no penalty this tick."""
-        try:
-            vec = self.backend.embed(self.cfg.settings["embed_model"], [action])[0]
-        except BackendError:
+        vec = self.memory.embed_one(action, "repetition_check")
+        if vec is None:
             return 1.0
         mult = effects.repetition_multiplier(vec, list(self.recent_action_vecs), self.cfg, cosine)
         self.recent_action_vecs.append(vec)
@@ -164,14 +168,30 @@ class Engine:
 
     def tick(self) -> dict:
         self._online_cache = None
+        self.tracer.begin()
+        t0 = time.perf_counter()
+        logs.set_tick_id(self.conn.execute("SELECT COALESCE(MAX(id),0)+1 FROM ticks").fetchone()[0])
         try:
-            return self._tick()
-        except BaseException:
+            info = self._tick()
+        except BaseException as e:
             # In-memory state may be ahead of the DB after a failed transaction: reload it.
             if self.conn.in_transaction:
                 self.conn.execute("ROLLBACK")
             self._load()
+            self.tracer.flush(self.conn, None, "error", f"{type(e).__name__}: {e}")
             raise
+        finally:
+            ms = (time.perf_counter() - t0) * 1000
+            logs.set_tick_id(None)            # log lines between ticks must not carry this tick's id
+        self.tracer.flush(self.conn, info["id"], "doze" if info["kind"] == "doze" else "ok")
+        if self.cfg.settings["log_tick_events"]:
+            logging.getLogger("cat.tick").info(
+                "tick %s (%s) in %.0f ms: %s", info["id"], info["kind"], ms, info["outcome"],
+                extra={"event": "tick", "tick_id": info["id"],
+                       "extra": {"kind": info["kind"], "area": info["area"], "ms": round(ms),
+                                 "action": info["action"], "mood": info["mood"],
+                                 "energy": info["energy"], "brain_online": info["brain_online"]}})
+        return info
 
     def _tick(self) -> dict:
         cfg, st, s = self.cfg, self.state, self.cfg.settings
@@ -179,7 +199,10 @@ class Engine:
         dt = clock.parse(now)
 
         # 1. world events (perceived at the start of the tick)
-        fired = self.world.roll_events(self.rng, dt, st["area"], now)
+        rolls: list[dict] = []
+        with self.tracer.stage("world"):
+            fired = self.world.roll_events(self.rng, dt, st["area"], now, trace=rolls)
+        self.tracer.set_event_rolls(rolls)
         nudge = st["mood"].get("event_nudge", 0.0) * s["mood"]["event_decay"] \
             + sum(e["mood"] for e in fired)
 
@@ -195,9 +218,12 @@ class Engine:
         online = self._online()
         if online:
             try:
-                recalled = self._recall(fired)
-                b = brain.think(self.backend, cfg, self._brain_context(fired, recalled))
-                n = narrator.resolve(self.backend, cfg, b["action"], self._narrator_context())
+                with self.tracer.stage("recall"):
+                    recalled = self._recall(fired)
+                with self.tracer.stage("brain"):
+                    b = brain.think(self.backend, cfg, self._brain_context(fired, recalled))
+                with self.tracer.stage("narrator"):
+                    n = narrator.resolve(self.backend, cfg, b["action"], self._narrator_context())
                 result = (b, n)
             except BackendError as e:
                 log.warning("brain/narrator unavailable (%s): dozing", e)
@@ -205,6 +231,7 @@ class Engine:
                 self._online_cache = False
 
         # 4. apply
+        t_apply = time.perf_counter()
         before = dict(st["needs"])
         if result:
             b, n = result
@@ -214,6 +241,9 @@ class Engine:
             needs = character.decay(before, minutes, cfg)
             needs = character.apply_gains(needs, n["gains"], n["effort"], cfg,
                                           consumed=fx.consumed, multiplier=mult)
+            self.tracer.set_effects(fx.log)
+            self.tracer.set_need_math(character.explain_needs(
+                before, minutes, n["gains"], n["effort"], cfg, needs, consumed=fx.consumed, multiplier=mult))
             feeling = b["feeling"]
             new_area = fx.area
             row = {"kind": "tick", "reaction": b["reaction"], "thought": b["thought"],
@@ -224,16 +254,21 @@ class Engine:
             minutes = s["doze"]["sim_minutes"]
             needs = character.decay(before, minutes, cfg)
             needs = character.restore(needs, s["doze"]["energy_restore"], cfg)
+            self.tracer.set_need_math(character.explain_needs(
+                before, minutes, None, None, cfg, needs, restore_amount=s["doze"]["energy_restore"]))
             feeling = None
             new_area = st["area"]
             row = {"kind": "doze", "reaction": None, "thought": None, "action": None,
                    "intent": None, "outcome": "dozing", "gains": {}, "effort": None,
                    "duration": minutes, "changes": [], "rejected": []}
 
-        mood = character.compute_mood(needs, before, nudge, feeling, cfg)
+        mood_inputs: dict = {}
+        mood = character.compute_mood(needs, before, nudge, feeling, cfg, trace=mood_inputs)
+        self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes),
                      "needs": needs, "mood": mood, "energy": character.energy(needs, cfg),
                      "weather": self.world.weather, "brain_online": online}
+        self.tracer.add_stage("apply", t_apply)
 
         # the creature chose to sleep (honoured when tired enough, or at night)
         falls_asleep = bool(result) and result[0]["wants_sleep"] and (
@@ -252,7 +287,8 @@ class Engine:
                         f"{row['outcome']}")
                 if row["reaction"]:
                     text += f' You felt: "{row["reaction"]}"'
-                short_mem = self.memory.prepare(text, importance_for(cfg, len(why)), now)
+                with self.tracer.stage("record"):
+                    short_mem = self.memory.prepare(text, importance_for(cfg, len(why)), now)
 
         info = self._commit(row, fired, now, st["area"], new_state, short_mem, recalled,
                             online, sleep_start=falls_asleep)
@@ -274,6 +310,9 @@ class Engine:
         minutes = sl["sim_minutes_per_tick"]
         needs = character.decay(before, minutes * sl["decay_multiplier"], cfg)
         needs = character.restore(needs, sl["restore_per_sim_hour"] * minutes / 60, cfg)
+        self.tracer.set_need_math(character.explain_needs(
+            before, minutes, None, None, cfg, needs, decay_multiplier=sl["decay_multiplier"],
+            restore_amount=sl["restore_per_sim_hour"] * minutes / 60))
         new_time = clock.advance(now, minutes)
         new_dt = clock.parse(new_time)
         wake = False
@@ -284,7 +323,9 @@ class Engine:
             morning = (new_dt.hour >= sl["wake_not_before_hour"]
                        and not clock.is_night(new_dt, s["phases"]))
             wake = (rested and morning) or slept_h >= sl["max_hours"]
-        mood = character.compute_mood(needs, before, nudge, None, cfg)
+        mood_inputs: dict = {}
+        mood = character.compute_mood(needs, before, nudge, None, cfg, trace=mood_inputs)
+        self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": new_time, "needs": needs, "mood": mood,
                      "energy": character.energy(needs, cfg), "weather": self.world.weather,
                      "brain_online": online, "is_asleep": not wake}
@@ -303,23 +344,30 @@ class Engine:
         writes nothing; it is retried on the next sleeping tick."""
         if db.get_meta(self.conn, "sleep_pending") != "1" or not self._online():
             return
-        st = self.state
-        try:
-            plan = sleep.plan(self.cfg, self.backend, self.conn, self.memory,
-                              st["tendencies"], st["sim_time"])
-        except BackendError as e:
-            log.warning("sleep cycle postponed (brain unavailable): %s", e)
-            return
-        new_state = {**st, "tendencies": plan.tendencies}
-        real = _now_real()
-        with db.transaction(self.conn):
-            sleep.commit(self.conn, self.cfg, self.memory, plan, st["sim_time"], real,
-                         sim_date=(db.get_meta(self.conn, "sleep_started") or st["sim_time"])[:10])
-            db.save_state(self.conn, new_state, real)
-        self.state = new_state
-        self.memory._dirty = True
-        log.info("sleep cycle done: %d memories, %d tendency changes, %d preferences",
-                 len(plan.memories), len(plan.tendency_changes), len(plan.preferences))
+        with self.tracer.stage("sleep"):
+            st = self.state
+            try:
+                plan = sleep.plan(self.cfg, self.backend, self.conn, self.memory,
+                                  st["tendencies"], st["sim_time"])
+            except BackendError as e:
+                log.warning("sleep cycle postponed (brain unavailable): %s", e)
+                return
+            new_state = {**st, "tendencies": plan.tendencies}
+            real = _now_real()
+            with db.transaction(self.conn):
+                sleep_log_id = sleep.commit(
+                    self.conn, self.cfg, self.memory, plan, st["sim_time"], real,
+                    sim_date=(db.get_meta(self.conn, "sleep_started") or st["sim_time"])[:10])
+                db.save_state(self.conn, new_state, real)
+            self.state = new_state
+            self.memory._dirty = True
+            self.tracer.set_sleep(plan.trace_steps, sleep_log_id)
+            log.info("sleep cycle done: %d memories, %d tendency changes, %d preferences",
+                     len(plan.memories), len(plan.tendency_changes), len(plan.preferences),
+                     extra={"event": "sleep_cycle", "extra": {
+                         "sleep_log_id": sleep_log_id, "memories": len(plan.memories),
+                         "tendency_changes": plan.tendency_changes}})
+            prune(self.conn, self.cfg)           # trace retention runs during sleep
 
     # ---------- recording ----------
     def _commit(self, row: dict, fired: list[dict], now: str, area: str, new_state: dict,
@@ -331,6 +379,7 @@ class Engine:
                 row["changes"] = [e["spawn_info"]] + row["changes"]
         needs, mood = new_state["needs"], new_state["mood"]
         real = _now_real()
+        t_rec = time.perf_counter()
         with db.transaction(self.conn):
             cur = self.conn.execute(
                 "INSERT INTO ticks(kind,sim_time,real_time,area,reaction,thought,action,intent,"
@@ -346,7 +395,7 @@ class Engine:
                                   (tick_id, now, e["area"] or area, e["text"]))
             self.world.sync(self.conn)
             if short_mem:
-                self.memory.save(short_mem, "short")
+                self.memory.save(short_mem, "short", tick_id=tick_id)
             if recalled:
                 self.memory.mark_recalled([m["id"] for m in recalled], now)
             if sleep_start:
@@ -360,6 +409,7 @@ class Engine:
                 db.set_meta(self.conn, "brain_last_seen", real)
             db.set_meta(self.conn, "last_alive_epoch", f"{self.time():.0f}")   # for downtime detection
             db.set_meta(self.conn, "clean_stop", 0)
+        self.tracer.add_stage("record", t_rec)
         self.state = new_state
         self.last_kind = row["kind"]
         return {"id": tick_id, "kind": row["kind"], "sim_time": now, "area": area,
@@ -410,13 +460,22 @@ class Engine:
             needs = character.restore(needs, sl["restore_per_sim_hour"] * minutes / 60, cfg)
         else:
             needs = character.decay(before, minutes * s["catch_up_decay_multiplier"], cfg)
-        mood = character.compute_mood(needs, before, 0.0, None, cfg)
+        self.tracer.begin()
+        self.tracer.set_need_math(character.explain_needs(
+            before, minutes, None, None, cfg, needs,
+            decay_multiplier=(s["sleep"]["decay_multiplier"] if st["is_asleep"] else s["catch_up_decay_multiplier"]),
+            restore_amount=(s["sleep"]["restore_per_sim_hour"] * minutes / 60 if st["is_asleep"] else 0.0)))
+        mood_inputs: dict = {}
+        mood = character.compute_mood(needs, before, 0.0, None, cfg, trace=mood_inputs)
+        self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs, "mood": mood,
                      "energy": character.energy(needs, cfg)}
         row = {"kind": "catchup", "reaction": None, "thought": None, "action": None, "intent": None,
                "outcome": downtime.description(now, minutes, s["phases"]), "gains": {},
                "effort": None, "duration": minutes, "changes": [], "rejected": []}
-        return self._commit(row, [], now, st["area"], new_state, None, [], online=False)
+        info = self._commit(row, [], now, st["area"], new_state, None, [], online=False)
+        self.tracer.flush(self.conn, info["id"], "ok")
+        return info
 
     # ---------- the loop ----------
     def run(self, ticks: int | None = None, interval: float | None = None,

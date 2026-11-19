@@ -5,6 +5,8 @@ calls are made *before* the tick transaction (`prepare`), the inserts inside it 
 from __future__ import annotations
 
 import logging
+import time
+from datetime import datetime
 from sqlite3 import Connection
 from typing import Any
 
@@ -58,8 +60,10 @@ def build_query(situation_bits: dict[str, Any]) -> str:
 
 
 class Memory:
-    def __init__(self, conn: Connection, cfg: Config, backend: LLMBackend):
+    def __init__(self, conn: Connection, cfg: Config, backend: LLMBackend | None, tracer=None):
         self.conn, self.cfg, self.backend = conn, cfg, backend
+        self.tracer = tracer                       # optional cat.trace.Tracer
+        self.last_candidates: list[dict] = []      # full scoring of the most recent recall (for tracing)
         self._ids: list[int] = []
         self._matrix: np.ndarray | None = None
         self._dirty = True
@@ -73,20 +77,29 @@ class Memory:
                 "embedding": to_blob(vec),
                 "embed_model": self.cfg.settings["embed_model"] if vec else None}
 
-    def embed_one(self, text: str) -> list[float] | None:
+    def embed_one(self, text: str, purpose: str = "memory_write") -> list[float] | None:
+        """Embed one text. `purpose` (memory_write | recall_query | repetition_check) is only
+        used for tracing. Returns None if the embedding call fails."""
+        model = self.cfg.settings["embed_model"]
+        started, t0 = datetime.now().isoformat(timespec="milliseconds"), time.perf_counter()
+        vec, err = None, None
         try:
-            return self.backend.embed(self.cfg.settings["embed_model"], [text])[0]
+            vec = self.backend.embed(model, [text])[0]
         except BackendError as e:
-            log.warning("embedding failed, storing without index: %s", e)
-            return None
+            err = str(e)
+            log.warning("embedding failed (%s): %s", purpose, e)
+        if self.tracer is not None:
+            self.tracer.record_embed(purpose, model, text, len(vec) if vec else None,
+                                     (time.perf_counter() - t0) * 1000, err, started)
+        return vec
 
-    def save(self, mem: dict, kind: str) -> int:
+    def save(self, mem: dict, kind: str, tick_id: int | None = None) -> int:
         """Insert a prepared memory. Call inside the caller's transaction."""
         cur = self.conn.execute(
             "INSERT INTO memories(kind,text,importance,created_sim_time,last_recalled,embedding,"
-            "embed_model) VALUES(?,?,?,?,?,?,?)",
+            "embed_model,tick_id) VALUES(?,?,?,?,?,?,?,?)",
             (kind, mem["text"], mem["importance"], mem["created_sim_time"], None,
-             mem["embedding"], mem["embed_model"]))
+             mem["embedding"], mem["embed_model"], tick_id))
         if kind == "long":
             self._dirty = True
         return cur.lastrowid
@@ -157,14 +170,12 @@ class Memory:
         hours = max(0.0, (clock.parse(now_sim_time) - clock.parse(ref_sim_time)).total_seconds() / 3600)
         return 0.5 ** (hours / self.cfg.settings["recency_half_life_sim_hours"])
 
-    def recall(self, query_vec: list[float] | None, now_sim_time: str,
-               k: int | None = None) -> list[dict]:
-        """Top-k long-term memories by
+    def score_candidates(self, query_vec: list[float] | None, now_sim_time: str) -> list[dict]:
+        """Score EVERY long-term memory:
         w_recency*recency + w_importance*importance + w_relevance*cosine(query, memory).
-        Without a query vector (embedding down) relevance is 0, so it falls back to
-        recency + importance."""
+        Returns [{row, recency, importance, relevance, score}] (unsorted). Without a query vector
+        (embedding down) relevance is 0, so it falls back to recency + importance."""
         rc = self.cfg.settings["recall"]
-        k = k or rc["k"]
         rows = self.conn.execute("SELECT * FROM memories WHERE kind='long'").fetchall()
         if not rows:
             return []
@@ -178,20 +189,35 @@ class Memory:
                 if n:
                     sims = self._matrix @ (q / n)
                     rel = {i: max(0.0, float(s)) for i, s in zip(self._ids, sims)}
-        scored = []
+        out = []
         for r in rows:
             ref = r["last_recalled"] or r["created_sim_time"]
             if clock.parse(r["created_sim_time"]) > clock.parse(ref):
                 ref = r["created_sim_time"]
-            score = (rc["w_recency"] * self._recency(ref, now_sim_time)
-                     + rc["w_importance"] * float(r["importance"])
-                     + rc["w_relevance"] * rel.get(r["id"], 0.0))
-            scored.append((score, r["id"], dict(r)))
-        scored.sort(key=lambda t: (-t[0], -t[1]))
+            recency = self._recency(ref, now_sim_time)
+            relevance = rel.get(r["id"], 0.0)
+            score = (rc["w_recency"] * recency + rc["w_importance"] * float(r["importance"])
+                     + rc["w_relevance"] * relevance)
+            out.append({"row": dict(r), "recency": recency, "importance": float(r["importance"]),
+                        "relevance": relevance, "score": score})
+        return out
+
+    def recall(self, query_vec: list[float] | None, now_sim_time: str,
+               k: int | None = None) -> list[dict]:
+        """Top-k long-term memories by score (see score_candidates). The full scoring of this
+        call is kept in `last_candidates` for tracing."""
+        k = k or self.cfg.settings["recall"]["k"]
+        cands = self.score_candidates(query_vec, now_sim_time)
+        cands.sort(key=lambda c: (-c["score"], -c["row"]["id"]))
+        self.last_candidates = [
+            {"memory_id": c["row"]["id"], "text": c["row"]["text"], "recency": round(c["recency"], 4),
+             "importance": round(c["importance"], 4), "relevance": round(c["relevance"], 4),
+             "score": round(c["score"], 4), "selected": i < k} for i, c in enumerate(cands)]
         out = []
-        for score, _, d in scored[:k]:
+        for c in cands[:k]:
+            d = dict(c["row"])
             d.pop("embedding", None)
-            d["score"] = score
+            d["score"] = c["score"]
             out.append(d)
         return out
 

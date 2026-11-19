@@ -45,6 +45,58 @@ CREATE TABLE IF NOT EXISTS sleep_log(
   id INTEGER PRIMARY KEY, sim_date TEXT, summary TEXT, tick_id INT,   -- tick at which the sleep began
   tendency_changes JSON, new_memories JSON, new_preferences JSON);
 
+-- ---- tracing (phase 2, part B): what the engine did and why. See cat/trace.py ----
+CREATE TABLE IF NOT EXISTS tick_traces(
+  tick_id INTEGER PRIMARY KEY,                 -- negative = a tick that raised before it was recorded
+  started_at TEXT, finished_at TEXT, total_ms REAL,
+  stage_timings JSON,                          -- {"world": ms, "recall": ms, "brain": ms, "narrator": ms, "apply": ms, "record": ms, "sleep": ms}
+  status TEXT,                                 -- ok | doze | error
+  error TEXT);
+
+CREATE TABLE IF NOT EXISTS llm_calls(
+  id INTEGER PRIMARY KEY, tick_id INT,
+  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | other
+  model TEXT, options JSON, system_prompt TEXT, user_prompt TEXT, schema JSON,
+  raw_response TEXT, parsed JSON, valid_json INT, attempt INT, error TEXT,
+  prompt_tokens INT, completion_tokens INT,
+  load_ms INT, prompt_eval_ms INT, eval_ms INT, total_ms INT, started_at TEXT);
+
+CREATE TABLE IF NOT EXISTS embed_calls(
+  id INTEGER PRIMARY KEY, tick_id INT,
+  purpose TEXT,                                -- memory_write | recall_query | repetition_check
+  model TEXT, input_text TEXT, dims INT, total_ms INT, error TEXT, started_at TEXT);
+
+CREATE TABLE IF NOT EXISTS recall_logs(
+  id INTEGER PRIMARY KEY, tick_id INT, query_text TEXT,
+  candidates JSON);                            -- [{memory_id, text, recency, importance, relevance, score, selected}]
+
+CREATE TABLE IF NOT EXISTS effect_logs(
+  id INTEGER PRIMARY KEY, tick_id INT, op TEXT, args JSON, accepted INT, reason TEXT);
+
+CREATE TABLE IF NOT EXISTS need_math(
+  id INTEGER PRIMARY KEY, tick_id INT, need TEXT, "before" REAL,
+  decay REAL, bucket TEXT, gain_raw REAL, repetition_mult REAL,
+  effort_cost REAL, clamp_adjust REAL, "after" REAL);
+
+CREATE TABLE IF NOT EXISTS mood_math(
+  tick_id INTEGER PRIMARY KEY, inputs JSON, valence REAL, arousal REAL, word TEXT);
+
+CREATE TABLE IF NOT EXISTS event_rolls(
+  id INTEGER PRIMARY KEY, tick_id INT, event_text TEXT, chance REAL, roll REAL,
+  fired INT, filtered_reason TEXT);
+
+CREATE TABLE IF NOT EXISTS sleep_traces(
+  id INTEGER PRIMARY KEY, sleep_log_id INT, step TEXT,
+  input JSON, output JSON, proposed JSON, clamped JSON);
+
+CREATE INDEX IF NOT EXISTS idx_llm_tick ON llm_calls(tick_id);
+CREATE INDEX IF NOT EXISTS idx_llm_started ON llm_calls(started_at);
+CREATE INDEX IF NOT EXISTS idx_embed_tick ON embed_calls(tick_id);
+CREATE INDEX IF NOT EXISTS idx_recall_tick ON recall_logs(tick_id);
+CREATE INDEX IF NOT EXISTS idx_effect_tick ON effect_logs(tick_id);
+CREATE INDEX IF NOT EXISTS idx_need_tick ON need_math(tick_id);
+CREATE INDEX IF NOT EXISTS idx_roll_tick ON event_rolls(tick_id);
+CREATE INDEX IF NOT EXISTS idx_sleeptr_log ON sleep_traces(sleep_log_id);
 CREATE INDEX IF NOT EXISTS idx_ticks_kind ON ticks(kind);
 CREATE INDEX IF NOT EXISTS idx_events_tick ON events(tick_id);
 CREATE INDEX IF NOT EXISTS idx_memories_kind ON memories(kind);
@@ -65,8 +117,15 @@ def connect(path: Path | str, readonly: bool = False) -> sqlite3.Connection:
     return conn
 
 
+def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    """Tiny migration helper: add a column to an existing table if it is not there yet."""
+    if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _add_column(conn, "memories", "tick_id", "INT")      # which tick wrote this memory (for tracing)
     if get_meta(conn, "schema_version") is None:
         set_meta(conn, "schema_version", SCHEMA_VERSION)
 

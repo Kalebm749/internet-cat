@@ -24,6 +24,7 @@ class EffectsResult:
     applied: list[dict] = field(default_factory=list)
     rejected: list[dict] = field(default_factory=list)
     consumed: bool = False
+    log: list[dict] = field(default_factory=list)   # every proposed change, in order, accepted or not
 
 
 class Rejected(Exception):
@@ -171,9 +172,12 @@ def apply_changes(changes: list[dict], world: WorldState, area: str, cfg: Config
                     rec["dropped_tags"] = dropped
 
             res.applied.append(rec)
+            res.log.append({"op": op, "args": raw, "accepted": 1, "reason": None})
         except Rejected as e:
             entry = {"change": raw, "reason": str(e)}
             res.rejected.append(entry)
+            res.log.append({"op": raw.get("op") if isinstance(raw, dict) else None, "args": raw,
+                            "accepted": 0, "reason": str(e)})
             log.warning("rejected change %s: %s", raw, e)
     return res
 

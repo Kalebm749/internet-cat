@@ -18,6 +18,32 @@ llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
 db_path: data/cat.db
 heartbeat_file: data/engine.heartbeat   # written by the engine every loop; read by its healthcheck
 
+# --- tracing & dev tools (phase 2, part B) ---
+trace_enabled: true
+trace_level: full               # full | summary (summary stores no prompt / response / input text)
+trace_retention_days: 14        # llm_calls, embed_calls and recall_logs older than this are pruned during sleep
+trace_recall_candidates: 25     # scored memories kept per recall log (the selected ones are always kept)
+log_dir: data/logs              # structured JSON logs: <service>.jsonl, size-rotated
+log_level: INFO
+log_max_bytes: 5000000
+log_backup_count: 5
+log_tick_events: true           # one INFO line per tick (structured logs only)
+dev_db_path: data/dev.db        # dev_commands, playground_runs, engine_status: the dashboard's only writable DB
+dev_commands_enabled: true
+dev_poll_seconds: 2             # the engine checks the command queue this often while waiting or paused
+paused_alive_seconds: 30        # while paused the engine refreshes its last-alive time (a pause is not downtime)
+devdash:
+  port: 8090
+  refresh_seconds: 5
+  page_size: 50
+  llm_timeout_seconds: 180
+  web_url: http://web:8080      # for the service-health panel
+  slow_tick_ms: 30000
+  stats_hours: 24
+  max_series_points: 800
+  log_tail_lines: 300
+  embedding_map_max_points: 2000
+
 # --- container healthchecks ---
 healthcheck:
   engine_max_age_seconds: 600   # engine is unhealthy if its heartbeat is older (or 3x the tick interval)

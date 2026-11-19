@@ -10,6 +10,8 @@ import logging
 import math
 import random
 import re
+import time
+from datetime import datetime
 from abc import ABC, abstractmethod
 from typing import Any, Callable
 
@@ -25,7 +27,27 @@ class BackendError(Exception):
     """The backend is unreachable, timed out, or returned unusable output."""
 
 
+def split_messages(messages: list[dict]) -> tuple[str, str]:
+    """(system prompt, user prompt) exactly as sent."""
+    sysm = "\n\n".join(m.get("content", "") for m in messages if m.get("role") == "system")
+    user = "\n\n".join(m.get("content", "") for m in messages if m.get("role") != "system")
+    return sysm, user
+
+
+def ollama_metrics(data: dict) -> dict:
+    """Token counts and durations (ns -> ms) from an Ollama /api/chat response."""
+    ms = lambda k: int((data.get(k) or 0) // 1_000_000)
+    return {"prompt_tokens": data.get("prompt_eval_count"), "completion_tokens": data.get("eval_count"),
+            "load_ms": ms("load_duration"), "prompt_eval_ms": ms("prompt_eval_duration"),
+            "eval_ms": ms("eval_duration"), "total_ms": ms("total_duration")}
+
+
 class LLMBackend(ABC):
+    # Tracing hooks. `last_call` describes the most recent chat_json attempt (exact prompts, raw
+    # response, timings...); `recorder` is called by call_json after every attempt. Both optional.
+    last_call: dict | None = None
+    recorder: Callable[..., None] | None = None
+
     @abstractmethod
     def is_online(self) -> bool:
         """Cheap health check (Ollama: GET /api/tags, ~3s timeout). Never raises."""
@@ -40,17 +62,42 @@ class LLMBackend(ABC):
         """Raises BackendError on failure."""
 
 
+def _record(backend: LLMBackend, task: str, model: str, attempt: int, parsed: Any,
+            error: str | None) -> None:
+    """Hand one attempt to the tracer. Tracing must never break the creature."""
+    rec = getattr(backend, "recorder", None)
+    if rec is None:
+        return
+    try:
+        rec(task, model, attempt, dict(backend.last_call or {}), parsed, error)
+    except Exception:
+        log.warning("trace recorder failed", exc_info=True)
+
+
 def call_json(backend: LLMBackend, task: str, model: str, messages: list[dict], schema: dict,
               parse: Callable[[dict], Any], retries: int) -> Any:
     """chat_json + parse, retried `retries` times on any BackendError (timeout, bad JSON,
-    unusable content). After the last failure raises BackendError => the engine dozes."""
+    unusable content). After the last failure raises BackendError => the engine dozes.
+    Every attempt is reported to `backend.recorder` (if set)."""
     last: BackendError | None = None
-    for attempt in range(retries + 1):
+    for attempt in range(1, retries + 2):
+        backend.last_call = None
         try:
-            return parse(backend.chat_json(task, model, messages, schema))
+            raw = backend.chat_json(task, model, messages, schema)
         except BackendError as e:
+            _record(backend, task, model, attempt, None, str(e))
             last = e
-            log.warning("%s call failed (attempt %d/%d): %s", task, attempt + 1, retries + 1, e)
+            log.warning("%s call failed (attempt %d/%d): %s", task, attempt, retries + 1, e)
+            continue
+        try:
+            result = parse(raw)
+        except BackendError as e:
+            _record(backend, task, model, attempt, raw, str(e))
+            last = e
+            log.warning("%s call failed (attempt %d/%d): %s", task, attempt, retries + 1, e)
+            continue
+        _record(backend, task, model, attempt, raw, None)
+        return result
     assert last is not None
     raise last
 
@@ -80,10 +127,13 @@ class OllamaBackend(LLMBackend):
     def __init__(self, cfg, client: httpx.Client | None = None):
         s = cfg.settings
         self.s = s
-        self.base = s["ollama_host"].rstrip("/")
         self._warned_missing: list[str] = []
         self.client = client or httpx.Client(
             timeout=httpx.Timeout(s["llm_timeout_seconds"], connect=s["health_timeout_seconds"]))
+
+    @property
+    def base(self) -> str:
+        return self.s["ollama_host"].rstrip("/")      # read live: settings can be reloaded
 
     def missing_models(self) -> list[str] | None:
         """Configured models that are not pulled yet; None if Ollama is unreachable."""
@@ -125,18 +175,37 @@ class OllamaBackend(LLMBackend):
             raise BackendError(f"{path} failed: {e}") from e
 
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
-        payload: dict[str, Any] = {
-            "model": model, "messages": messages, "stream": False, "format": schema,
-            "options": {"temperature": self.s["llm_temperature"].get(
-                "sleep" if task in ("consolidate", "tendencies", "preferences") else task, 0.7),
-                "num_ctx": self.s["llm_num_ctx"]}}
+        options = {"temperature": self.s["llm_temperature"].get(
+            "sleep" if task in ("consolidate", "tendencies", "preferences") else task, 0.7),
+            "num_ctx": self.s["llm_num_ctx"]}
+        payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False,
+                                   "format": schema, "options": options}
         if "ollama_think" in self.s:
             payload["think"] = bool(self.s["ollama_think"])
-        data = self._post("/api/chat", payload)
-        content = (data.get("message") or {}).get("content")
-        if not isinstance(content, str):
-            raise BackendError("no message content in /api/chat response")
-        return extract_json(content)
+        sysm, user = split_messages(messages)
+        info: dict[str, Any] = {
+            "started_at": datetime.now().isoformat(timespec="milliseconds"), "task": task,
+            "model": model, "options": {**options, **({"think": payload["think"]} if "think" in payload else {})},
+            "system_prompt": sysm, "user_prompt": user, "schema": schema, "raw_response": None,
+            "valid_json": 0, "error": None}
+        self.last_call = info
+        t0 = time.perf_counter()
+        try:
+            data = self._post("/api/chat", payload)
+            info.update(ollama_metrics(data))
+            content = (data.get("message") or {}).get("content")
+            if not isinstance(content, str):
+                raise BackendError("no message content in /api/chat response")
+            info["raw_response"] = content
+            out = extract_json(content)
+            info["valid_json"] = 1
+            return out
+        except BackendError as e:
+            info["error"] = str(e)
+            raise
+        finally:
+            if not info.get("total_ms"):
+                info["total_ms"] = int((time.perf_counter() - t0) * 1000)
 
     def embed(self, model: str, texts: list[str]) -> list[list[float]]:
         data = self._post("/api/embed", {"model": model, "input": texts})
@@ -188,11 +257,29 @@ class MockBackend(LLMBackend):
             raise BackendError("mock backend injected failure")
 
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
-        self._check()
-        self.calls.append((task, model))
-        if task in self.handlers:
-            return self.handlers[task](messages, schema)
-        return self._default(task, messages)
+        sysm, user = split_messages(messages)
+        info: dict[str, Any] = {
+            "started_at": datetime.now().isoformat(timespec="milliseconds"), "task": task,
+            "model": model, "options": {"mock": True}, "system_prompt": sysm, "user_prompt": user,
+            "schema": schema, "raw_response": None, "valid_json": 0, "error": None}
+        self.last_call = info
+        t0 = time.perf_counter()
+        try:
+            self._check()
+            self.calls.append((task, model))
+            out = self.handlers[task](messages, schema) if task in self.handlers else self._default(task, messages)
+            info["raw_response"] = json.dumps(out)
+            info["valid_json"] = 1
+            # rough token counts (4 chars/token) so the dashboard has something to chart
+            info["prompt_tokens"] = (len(sysm) + len(user)) // 4
+            info["completion_tokens"] = len(info["raw_response"]) // 4
+            return out
+        except BackendError as e:
+            info["error"] = str(e)
+            raise
+        finally:
+            info["total_ms"] = int((time.perf_counter() - t0) * 1000)
+            info.setdefault("load_ms", 0)
 
     def embed(self, model: str, texts: list[str]) -> list[list[float]]:
         self._check()

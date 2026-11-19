@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from cat import db
+from cat import db, logs
 from cat.config import Config, load_config
 from cat.web import views
 
@@ -20,6 +20,8 @@ HERE = Path(__file__).parent
 def create_app(cfg: Config | None = None) -> FastAPI:
     cfg = cfg or load_config(os.environ.get("CAT_CONFIG_DIR"),
                              {"db_path": os.environ["CAT_DB"]} if os.environ.get("CAT_DB") else None)
+    if logs.structured_enabled():
+        logs.setup_logging("web", cfg)
     app = FastAPI(title="Internet Cat", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.cfg = cfg
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
