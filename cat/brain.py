@@ -45,6 +45,13 @@ class BrainContext:
     long_memories: list[str] = field(default_factory=list)       # M5
     short_memories: list[str] = field(default_factory=list)      # M5
     just_woke_from_doze: bool = False
+    self_image: list[str] = field(default_factory=list)          # what it currently thinks it is (text only)
+
+
+def seed_self_image(cfg: Config) -> list[str]:
+    """The optional text hint from character.yaml (empty by default)."""
+    seed = (cfg.character.get("self_image") or {}).get("seed", "")
+    return [seed.strip()] if isinstance(seed, str) and seed.strip() else []
 
 
 def tendency_phrase(cfg: Config, name: str, value: float) -> str:
@@ -79,6 +86,11 @@ def system_prompt(cfg: Config) -> str:
              f"as {c['name']} would. You are not an assistant; you are living a life."]
     if c.get("backstory"):
         parts.append(f"Backstory: {c['backstory']}")
+    parts.append(
+        f"## Identity\nYou have a name ({c['name']}), a voice, core traits and tendencies. You do not "
+        "know what you are, or whether you have any physical form. You can notice things about your "
+        "own situation and limits, but you must not assert a form, species or body that is not in your "
+        "self-image below.")
     parts.append(f"Core traits (always true of you): {', '.join(c['core_traits'])}.")
     if c.get("voice"):
         parts.append(f"Your voice (for reaction and thought): {c['voice']}")
@@ -103,6 +115,11 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     L: list[str] = []
 
     L.append("## Who you are right now")
+    if ctx.self_image:
+        L.append("What you currently think you are (your self-image): " + " ".join(ctx.self_image))
+    else:
+        L.append("Your self-image is empty: you have no picture yet of what you are or whether you have "
+                 "a form.")
     if ctx.tendencies:
         L.append("Your tendencies lately: " + "; ".join(
             tendency_phrase(cfg, k, v) for k, v in ctx.tendencies.items()) + ".")

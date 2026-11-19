@@ -80,3 +80,34 @@ def test_narrator_parse_clamps_and_filters(cfg):
     assert out["duration"] == cfg.settings["sim_minutes_max"] and out["changes"] == [{"op": "take"}]
     assert narrator.parse({"outcome": "x", "gains": None, "changes": None, "duration": "a"},
                           cfg)["duration"] == cfg.settings["sim_minutes_per_tick_default"]
+
+
+def test_system_prompt_says_it_does_not_know_what_it_is(cfg):
+    s = brain.system_prompt(cfg)
+    assert "## Identity" in s
+    assert "a name" in s and "a voice" in s and "core traits" in s and "tendencies" in s
+    assert "do not know what you are" in s and "any physical form" in s
+    assert "must not assert a form, species or body that is not in your self-image" in s
+    for word in ("species:", "appearance", "fur", "paw", "humanoid"):
+        assert word not in s.lower().replace("species or body", ""), word
+
+
+def test_empty_self_image_is_stated(cfg, conn):
+    p = brain.situation_prompt(cfg, ctx(cfg, conn))
+    assert "self-image is empty" in p
+
+
+def test_self_image_text_is_in_the_prompt(cfg, conn):
+    p = brain.situation_prompt(cfg, ctx(cfg, conn, self_image=["I seem to be small.", "I like high places."]))
+    assert "I seem to be small. I like high places." in p and "self-image is empty" not in p
+
+
+def test_seed_hint_comes_from_config(cfg):
+    assert brain.seed_self_image(cfg) == []
+    cfg.character["self_image"] = {"seed": "  Something quiet.  "}
+    assert brain.seed_self_image(cfg) == ["Something quiet."]
+
+
+def test_brain_output_schema_unchanged(cfg):
+    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "action", "intent",
+                                                     "feeling", "wants_sleep"}

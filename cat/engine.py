@@ -144,7 +144,8 @@ class Engine:
             mood=st["mood"], tendencies=st["tendencies"], weather=self.world.weather,
             objects_here=self.world.here(st["area"]), inventory=self.world.inventory(),
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
-            recent_actions=recent, preferences=prefs, just_woke_from_doze=self.last_kind in ("doze", "catchup"),
+            recent_actions=recent, preferences=prefs, self_image=brain.seed_self_image(self.cfg),
+            just_woke_from_doze=self.last_kind in ("doze", "catchup"),
             long_memories=[m["text"] for m in (long_mems or [])],
             short_memories=[m["text"] for m in self.memory.recent_short()])
 
