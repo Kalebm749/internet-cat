@@ -85,10 +85,13 @@ sleep:
     tendencies: "You decide how the day shaped the creature."
     preferences: "You work out what the creature has come to like or dislike."
     self_image: "You reflect on what you are."
+    projects: "You notice what the entity keeps coming back to, and whether it deserves a long-term project."
   none_shorts: "(none)"
   none_log: "(nothing)"
   none_existing_preferences: "(none yet)"
   none_existing_self_image: "(nothing yet)"
+  none_likes: "(nothing yet)"
+  none_existing_projects: "(none)"
   seed_hint: "\n\nA hint you started with: {seed}"             # {seed}; only if character.yaml self_image.seed is set
   consolidate: |-                                             # {shorts} {log} {name} {n}
     Today's notable moments:
@@ -128,3 +131,16 @@ sleep:
     {existing}
 
     Did today give you a reason to believe something new about what you are, or about your own situation and limits? Propose at most ONE short line in the first person, or return an empty list. Only say what today's memories actually support; a tentative line is better than a confident one, and "I don't seem to be able to..." is as good as "I am...". Do not invent a form, species or body that nothing today points to. confidence: 0 to 1. To revise or contradict a line above, set `replaces` to its id (otherwise 0).
+  projects: |-                                                # {summary} {log} {likes} {existing} {max_active}
+    Summary of the day: {summary}
+
+    Today's log:
+    {log}
+
+    Things it likes:
+    {likes}
+
+    Its projects so far (open ones; the number in brackets is the id):
+    {existing}
+
+    Does the day show it returning again and again to one activity it seems to enjoy (for example researching, drawing, writing, making music, building)? If so, you may start ONE new long-term project from that activity: give a short title, the activity, and why it likes it. Only start one if the log really shows a repeated, enjoyed activity, and you have fewer than {max_active} active project(s). You may instead pause, resume or drop ONE existing project by id (drop one it has clearly lost interest in). At most ONE change in all. Return an empty list if nothing stands out.

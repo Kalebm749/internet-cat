@@ -47,6 +47,18 @@ CREATE TABLE IF NOT EXISTS self_image(
   formed_day TEXT,                                     -- sim date the line was formed (YYYY-MM-DD)
   updated_at TEXT);
 
+-- long-term projects: formed in sleep, advanced by the narrator, with the pieces they leave behind
+CREATE TABLE IF NOT EXISTS projects(
+  id INTEGER PRIMARY KEY, title TEXT, activity TEXT, why TEXT,
+  status TEXT,                                          -- active | paused | done | dropped
+  progress REAL DEFAULT 0,                              -- 0..100
+  note TEXT DEFAULT '',                                 -- where it got to, fed back into the prompt
+  formed_day TEXT, last_worked TEXT, ticks_worked INT DEFAULT 0,
+  worked_today INT DEFAULT 0, idle_nights INT DEFAULT 0, updated_at TEXT);
+CREATE TABLE IF NOT EXISTS artifacts(
+  id INTEGER PRIMARY KEY, project_id INT, tick_id INT, kind TEXT, title TEXT, text TEXT,
+  created_sim_time TEXT);
+
 CREATE TABLE IF NOT EXISTS sleep_log(
   id INTEGER PRIMARY KEY, sim_date TEXT, summary TEXT, tick_id INT,   -- tick at which the sleep began
   tendency_changes JSON, new_memories JSON, new_preferences JSON);
@@ -61,7 +73,7 @@ CREATE TABLE IF NOT EXISTS tick_traces(
 
 CREATE TABLE IF NOT EXISTS llm_calls(
   id INTEGER PRIMARY KEY, tick_id INT,
-  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | sleep_self_image | other
+  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | sleep_self_image | sleep_projects | other
   model TEXT, options JSON, system_prompt TEXT, user_prompt TEXT, schema JSON,
   raw_response TEXT, parsed JSON, valid_json INT, attempt INT, error TEXT,
   prompt_tokens INT, completion_tokens INT,

@@ -67,7 +67,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "dislike_drain", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "projects", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -309,6 +309,42 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             fv = md.get("feeling_values")
             if not isinstance(fv, dict) or not all(_num(v) and -50 <= v <= 50 for v in fv.values()):
                 errs.append("settings.yaml mood.feeling_values: must map feelings to numbers -50..50")
+        pj = st.get("projects")
+        if isinstance(pj, dict):
+            for k, lo in (("max_active", 1), ("milestone_every", 1), ("title_max_length", 1), ("why_max_length", 1),
+                          ("note_max_length", 1), ("artifact_max_length", 1), ("artifacts_shown", 1),
+                          ("pause_after_idle_nights", 0)):
+                v = pj.get(k)
+                if isinstance(v, bool) or not isinstance(v, int) or v < lo:
+                    errs.append(f"settings.yaml projects.{k}: must be an integer >= {lo}")
+            if not _num(pj.get("idle_hours_note")) or pj["idle_hours_note"] < 0:
+                errs.append("settings.yaml projects.idle_hours_note: must be a number >= 0")
+            if not _num(pj.get("taper")) or not 0 <= pj["taper"] <= 1:
+                errs.append("settings.yaml projects.taper: must be a number 0..1")
+            pv = pj.get("progress_values")
+            if not isinstance(pv, dict) or not pv or not all(_num(v) and 0 < v <= 100 for v in pv.values()):
+                errs.append("settings.yaml projects.progress_values: must map buckets to numbers 0..100 (> 0)")
+            elif isinstance(st.get("gain_values"), dict):
+                for b in pv:
+                    if str(b) not in {str(k) for k in st["gain_values"]}:
+                        errs.append(f"settings.yaml projects.progress_values: bucket '{b}' is not in gain_values")
+            cg = pj.get("completion_gains")
+            if not isinstance(cg, dict):
+                errs.append("settings.yaml projects.completion_gains: must be a mapping of need id -> points")
+            else:
+                for nid, pts in cg.items():
+                    if needs and nid not in needs:
+                        errs.append(f"settings.yaml projects.completion_gains: '{nid}' is not a need")
+                    if not _num(pts) or pts < 0:
+                        errs.append(f"settings.yaml projects.completion_gains.{nid}: must be a number >= 0")
+            stg = pj.get("stages")
+            if not isinstance(stg, dict) or not stg or not all(_num(k) for k in stg) \
+                    or not all(isinstance(v, str) and v.strip() for v in stg.values()):
+                errs.append("settings.yaml projects.stages: must map ascending progress bounds to non-empty words")
+            elif max(stg) < 100.0001:
+                errs.append("settings.yaml projects.stages: needs a bound above 100 so every progress has a word")
+        elif "projects" in st:
+            errs.append("settings.yaml projects: must be a mapping")
         dd = st.get("dislike_drain")
         if isinstance(dd, dict):
             dn = dd.get("needs")

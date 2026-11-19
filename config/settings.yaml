@@ -97,6 +97,22 @@ dislike_drain:
   points_per_hour: 4           # per matching dislike, scaled by how strong the dislike is (|valence|)
   max_matches: 2               # at most this many dislikes count in one tick (the strongest)
 
+# --- long-term projects (formed in sleep, advanced by the narrator, leave artifacts) ---
+projects:
+  max_active: 1                # projects it can be working on at once
+  progress_values: {"+": 8, "++": 16}   # progress points per narrator bucket (0..100 per project)
+  taper: 0.5                   # a step is multiplied by 1 - taper*progress/100: slower as it nears the end
+  milestone_every: 25          # crossing each multiple of this is a notable moment (a short-term memory)
+  completion_gains: {joy: 20, wonder: 10}   # need points added by code when a project is finished
+  pause_after_idle_nights: 3   # an active project untouched for this many nights is paused (0 = never)
+  idle_hours_note: 24          # the brain is told it has not touched a project after this many sim hours
+  stages: {25: just begun, 50: underway, 75: well along, 101: nearly done}   # progress -> words (below the key)
+  title_max_length: 80
+  why_max_length: 200
+  note_max_length: 200
+  artifact_max_length: 1200    # characters of a saved piece
+  artifacts_shown: 6           # on the website
+
 # --- energy: a separate resource, -50..50. Effort spends it, sleep restores it ---
 energy_start: 30
 events_max_per_tick: 2

@@ -55,7 +55,7 @@ class LLMBackend(ABC):
     @abstractmethod
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
         """Return a dict matching `schema`. `task` is one of brain|narrator|consolidate|
-        tendencies|preferences|self_image. Raises BackendError on failure."""
+        tendencies|preferences|self_image|projects. Raises BackendError on failure."""
 
     @abstractmethod
     def embed(self, model: str, texts: list[str]) -> list[list[float]]:
@@ -176,7 +176,7 @@ class OllamaBackend(LLMBackend):
 
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
         options = {"temperature": self.s["llm_temperature"].get(
-            "sleep" if task in ("consolidate", "tendencies", "preferences", "self_image") else task, 0.7),
+            "sleep" if task in ("consolidate", "tendencies", "preferences", "self_image", "projects") else task, 0.7),
             "num_ctx": self.s["llm_num_ctx"]}
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False,
                                    "format": schema, "options": options}
@@ -356,6 +356,14 @@ class MockBackend(LLMBackend):
                              "I am not sure what I am.", "I seem to like quiet places."])
             return {"self_image": [{"text": line, "confidence": r.choice([0.3, 0.5, 0.8]),
                                     "replaces": r.choice(ids) if ids and r.random() < 0.4 else 0}]}
+        if task == "projects":
+            text = messages[-1]["content"] if messages else ""
+            r = random.Random(len(text))        # own stream: leaves the seeded tick sequence untouched
+            has_open = bool(re.search(r"^- \[\d+\] ", text, re.M))
+            if has_open or r.random() < 0.7:
+                return {"projects": []}
+            return {"projects": [{"op": "start", "title": r.choice(["keeping a notebook of the garden", "learning the old tree"]),
+                                  "activity": "looking closely", "why": "it keeps returning to it"}]}
         raise BackendError(f"mock: unknown task '{task}'")
 
 

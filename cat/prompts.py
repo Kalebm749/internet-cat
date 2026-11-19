@@ -51,6 +51,9 @@ SPEC: dict[str, set[str]] = {
     "sleep.jobs.tendencies": set(),
     "sleep.jobs.preferences": set(),
     "sleep.jobs.self_image": set(),
+    "sleep.jobs.projects": set(),
+    "sleep.none_likes": set(),
+    "sleep.none_existing_projects": set(),
     "sleep.none_shorts": set(),
     "sleep.none_log": set(),
     "sleep.none_existing_preferences": set(),
@@ -60,6 +63,7 @@ SPEC: dict[str, set[str]] = {
     "sleep.tendencies": {"summary", "tendencies"},
     "sleep.preferences": {"summary", "log", "existing", "n"},
     "sleep.self_image": {"summary", "shorts", "log", "seed_hint", "existing"},
+    "sleep.projects": {"summary", "log", "likes", "existing", "max_active"},
 }
 
 
