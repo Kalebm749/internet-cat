@@ -61,7 +61,7 @@ Spec for the website. Read `server-architecture.md` (§13) for where this sits: 
 | `--honey` | `#D9A441` | `#E8BC63` | mood, importance markers |
 
 - **Time of day:** add a class on `<body>` from the sim time: `dawn | day | dusk | night`. `night` swaps to the night palette. `dawn` and `dusk` add a soft tinted overlay on the header (no gradients on cards). Changes fade over 2s.
-- Low needs (<35) turn their bar `--accent`. Critical needs (<15) also get a gentle pulse (turned off when `prefers-reduced-motion` is set).
+- Needs in the *low* or *empty* band turn their bar `--accent`. *Empty* needs also get a gentle pulse (turned off when `prefers-reduced-motion` is set).
 
 ### Type (self-hosted, all OFL-licensed)
 
@@ -104,12 +104,13 @@ Put the font files in `static/fonts/` as `.woff2` files with `font-display: swap
 
 ### 4.3 Mood and energy
 - **Mood:** a large word (Fraunces 22px, `--honey` underline), e.g. *content*, plus a one-line description from the engine ("tired but glowing after the sunset").
-- A small **mood dot on a 2D pad** (60×60px): x = valence (−1..1), y = arousal (0..1). The quadrants are faintly labelled on hover (calm/happy, excited, tense, low). This is optional for v1, so it can be cut if fiddly.
-- **Energy:** a bar in `--dusk` with a word (*wide awake / fine / tired / exhausted*).
+- A small **mood dot on a 2D pad** (60×60px): x = valence (−50..50), y = arousal (−50..50, high at the top). The quadrants are faintly labelled on hover (calm/happy, excited, tense, low). This is optional for v1, so it can be cut if fiddly.
+- **Energy:** a bar in `--dusk` with a word (*wide awake / fine / tired / exhausted*). Energy is a separate resource from −50 to 50, not a need.
 
 ### 4.4 Needs
-- One row per need, in config order: `label · word · bar`.
-- Bar: 8px tall, rounded, `--rule` track, `--sage` fill (`--accent` when low).
+- Five rows (one per need, in config order): `label · band word · bar`. The word is the need's **band**: *full*, *okay*, *low* or *empty*. No number is shown or spoken.
+- **Hover** shows the need's **meaning** (the sentence from `character.yaml`), e.g. "Awe and delight at the world: being moved by what is beautiful, strange or vast."
+- Bar: 8px tall, rounded, `--rule` track, `--sage` fill (`--accent` when the band is low or empty).
 - Trend arrow after the bar: ▲ / ▼ / — compared with the previous tick (only if the change is >2).
 - Hover shows "62 / 100, +8 since last tick".
 - Words: from the optional `words` in `character.yaml` for each need. Otherwise the defaults are: <15 *desperate*, <35 *low*, <70 *okay*, ≥70 *content*.
@@ -124,7 +125,7 @@ climbs the old oak to watch the sunset                   ⟵ action, Lora italic
 She scrambles up, slipping once, and the sky turns      ⟵ outcome (narrator), Lora
 orange over the rooftops.
   "worth the slip. the sky looked like a sardine."     ⟵ reaction, Caveat, --ink
-  fun ▲  energy ▼                                        ⟵ need changes, small chips
+  joy ▲  peace ▼                                         ⟵ need changes, small chips
 ```
 - **World events** that happened that tick show as a margin note above the entry: small italic, a leaf/dot marker, e.g. *It starts to drizzle.*
 - **World changes** (moved, created, consumed objects) show as tiny tags: `+ fort (created)`, `− sardine (eaten)`.
@@ -166,9 +167,10 @@ Polled every 10s. Everything except old diary pages.
   "status": {"state": "awake", "brain_online": true,
              "brain_last_seen": "2026-11-18T18:02:11", "model": "qwen3:8b"},
   "mood": {"word": "content", "description": "tired but glowing",
-           "valence": 0.6, "arousal": 0.3},
-  "energy": {"value": 41, "word": "tired"},
-  "needs": [{"id": "food", "label": "food", "value": 62, "word": "okay",
+           "valence": 18.0, "arousal": -8.5, "pad_x": 68.0, "pad_y": 58.5},
+  "energy": {"value": -12, "pct": 38, "word": "tired"},
+  "needs": [{"id": "wonder", "label": "wonder", "value": 62, "band": "okay", "word": "okay",
+             "meaning": "Awe and delight at the world: ...",
              "delta": 8, "low": false, "critical": false}],
   "tendencies": [{"id": "boldness", "low_label": "timid", "high_label": "bold",
                   "value": 0.55, "previous": 0.50}],
@@ -191,7 +193,7 @@ Polled every 10s. Everything except old diary pages.
 {"type": "tick", "id": 4821, "day_number": 12, "time_label": "7:20 pm",
  "area": "the park", "action": "...", "outcome": "...", "reaction": "...",
  "events": ["It starts to drizzle."],
- "need_changes": [{"id": "fun", "dir": "up"}, {"id": "energy", "dir": "down"}],
+ "need_changes": [{"id": "joy", "dir": "up"}, {"id": "peace", "dir": "down"}],
  "world_changes": [{"op": "create", "label": "fort"}]}
 ```
 Other `type`s: `"doze"` (`from_label`, `to_label`) and `"sleep"` (`summary`, `tendency_changes`, `new_preferences`).
@@ -235,8 +237,11 @@ In `character.yaml` (optional fields the GUI uses):
 ```yaml
 pronoun: she
 needs:
-  food: {start: 60, decay: 6, label: "food",
-         words: {15: "starving", 35: "peckish", 70: "fed", 101: "full"}}
+  wonder:
+    start: 60
+    decay_per_hour: 4
+    meaning: "Awe and delight at the world: ..."     # shown on hover in the Needs panel
+    expressions: {full: "...", okay: null, low: "...", empty: "..."}   # shown to the brain, never to the public page
 tendency_labels:
   boldness: [timid, bold]
   sociability: [solitary, social]
@@ -245,14 +250,14 @@ self_image:
   seed: ""        # optional text hint; empty by default
 ```
 
-In `settings.yaml`, `web_ui.presence` holds the presence's tuning (hue range, saturation and lightness per state, pulse seconds).
+In `settings.yaml`, `need_bands` (the thresholds behind the band words) and `web_ui.presence` holds the presence's tuning (hue range, saturation and lightness per state, pulse seconds).
 
 ---
 
 ## 8. Accessibility
 
 - Text contrast meets WCAG AA in both palettes (check `--ink-soft` on `--card`).
-- Every bar has a visible word and an `aria-label` with the number. The tendency sliders and mood pad have text equivalents.
+- Every bar has a visible band word and an `aria-label` with the band and the need's meaning (never a number). The tendency sliders and mood pad have text equivalents.
 - All motion is inside `@media (prefers-reduced-motion: no-preference)`.
 - Caveat is used only for short creature quotes, never for UI labels.
 

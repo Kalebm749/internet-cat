@@ -72,9 +72,9 @@ internet-cat/
   CLAUDE.md  README.md  requirements.txt  requirements-dev.txt
   Dockerfile  compose.yaml  .env.example            # Docker Compose deployment
   docs/        creature-architecture.md  server-architecture.md  web-gui.md  config-reference.md  phase-2-...md
-  config/      character.yaml  world.yaml  settings.yaml
+  config/      character.yaml  world.yaml  settings.yaml  prompts.yaml
   cat/
-    config.py clock.py world.py character.py effects.py memory.py
+    config.py prompts.py clock.py world.py character.py effects.py memory.py
     brain.py narrator.py sleep.py llm.py db.py engine.py main.py
     trace.py logs.py devqueue.py devcontrol.py downtime.py healthcheck.py pullmodels.py
     web/       app.py views.py templates/ static/
@@ -99,7 +99,7 @@ objects(id PRIMARY KEY, name, area,         -- area = 'inventory' when carried
 ticks(id, kind,                             -- 'tick' | 'doze' | 'asleep'
       sim_time, real_time, area, reaction, thought, action, intent,
       outcome, gains JSON, effort, duration, changes JSON, rejected_changes JSON,
-      needs_after JSON, mood_after JSON)
+      needs_after JSON, mood_after JSON, energy_after)
 events(id, tick_id, sim_time, area, text)
 memories(id, kind,                          -- 'short' | 'long'
          text, importance, created_sim_time, last_recalled, embedding BLOB, embed_model)
@@ -111,7 +111,7 @@ sleep_log(id, sim_date, summary, tick_id,   -- tick_id: where the sleep began
 --                event_rolls, sleep_traces;  memories also carry tick_id (which tick wrote them)
 ```
 
-**Energy is not stored as a need.** It is derived from the needs (`energy_weight`) and cached in `state.energy`.
+**Energy is not a need.** It is a separate resource, one number from −50 to 50, stored in `state.energy` (and `ticks.energy_after`). Effort spends it; sleep and dozing restore it. **Mood** is two numbers, valence and arousal, each −50..50, stored in `state.mood`.
 
 **Memories are text plus an embedding.** The embedding (`float32` blob) is only a search index. The website shows the text. `embed_model` is stored so that changing the model can be followed by `scripts/reembed.py`.
 
@@ -119,11 +119,12 @@ sleep_log(id, sim_date, summary, tick_id,   -- tick_id: where the sleep began
 
 ## 7. Config
 
-Three YAML files in `config/`, mounted read-only into the containers. Every field is described in `config-reference.md`. **All tuning numbers live in `settings.yaml`, never in code.** Key points:
+Four YAML files in `config/` (`settings.yaml`, `character.yaml`, `world.yaml`, `prompts.yaml`), mounted read-only into the containers. Every field is described in `config-reference.md`. **All tuning numbers live in `settings.yaml`, never in code.** Key points:
 
 - `ollama_host` defaults to `http://ollama:11434` (the Compose service name).
 - `character.yaml` and `world.yaml` currently hold a placeholder character (Gregorovitch, with no species or appearance) and a tiny house; the engine works with any content that follows the schema.
-- `settings.yaml` is read when a service starts. Edit it and restart the engine (a dev-dashboard command will later reload it live).
+- `settings.yaml` and `prompts.yaml` are read when a service starts; the dev dashboard's reload applies both live. `prompts.yaml` holds every fixed prompt text (brain, narrator, sleep) with `{placeholders}`, so the prompts can be tuned without code changes.
+- A need in `character.yaml` has `start`, `decay_per_hour`, a `meaning` and `expressions` for the bands `full`, `okay` (may be null), `low` and `empty`; `settings.yaml` has the `need_bands` thresholds, `max_pressing_needs`, `stale_after_ticks`, `sustenance_need`, `energy_start`, the `dislike_drain` and the `mood` band mapping. There are no per-need flags and no affinity tables: the code never picks, suggests or ranks actions by need.
 
 ---
 
@@ -131,11 +132,11 @@ Three YAML files in `config/`, mounted read-only into the containers. Every fiel
 
 Follow `creature-architecture.md` §3. As built:
 
-1. **World events** roll at the start of the tick (weather changes, spawned objects).
+1. **World events** roll at the start of the tick (weather changes, spawned objects, and `drains` that take points from needs).
 2. **Rest checks.** If asleep, or exhausted at night, the tick is a *rest* tick (no brain call, §11).
-3. **Brain call** builds the situation overview (words, never numbers) and asks Ollama for `reaction, thought, action, intent, feeling, wants_sleep` with a JSON schema. Relevant long-term and recent short-term memories are included.
-4. **Narrator call** gets the action plus the area's objects (ids, tags, state), inventory, exits, time and weather. It returns `outcome, gains, effort, duration, changes[]`.
-5. **Apply:** validate every change (§9), convert buckets to numbers, apply the repetition penalty and the effort cost, decay needs for the action's duration, clamp, recompute mood.
+3. **Brain call** builds the situation overview (words, never numbers). Each need level becomes a band; the prompt's "What's pulling at you right now" section shows the expression text of the most pressing needs (lowest bands first, at most `max_pressing_needs`), and `stale_here` after `stale_after_ticks` ticks in one area. The selection and the reasons are traced for the dashboard. and asks Ollama for `reaction, thought, action, intent, feeling, wants_sleep` with a JSON schema. Relevant long-term and recent short-term memories are included.
+4. **Narrator call** gets the action plus the area's objects (ids, tags, state), inventory, exits, time and weather, and each need's meaning with its band as a word. It returns `outcome, gains, effort, duration, changes[]`.
+5. **Apply:** validate every change (§9), decay needs for the action's duration, apply event and dislike drains, convert the narrator's buckets to gains (it only adds; sustenance only rises when something edible was consumed), apply the repetition penalty to the gains of the listed needs, spend energy for the effort, clamp, recompute mood from the bands.
 6. **Record:** insert the `ticks` row, events, object changes, any short-term memory and the new state in **one transaction**. LLM and embedding calls happen *outside* it, so a crash leaves the previous state intact.
 7. If the brain chose to sleep (and is tired enough, or it is night), the sleep cycle runs after the tick is committed.
 
@@ -153,7 +154,7 @@ The creature can try anything; the narrator writes the story freely; but the sav
 | `move_object` | `object_id, area` | in reach, `movable`, target is here or adjacent |
 | `take` | `object_id` | object is here, `movable`, inventory not full |
 | `drop` | `object_id` | object is in the inventory |
-| `consume` | `object_id` | in reach and `edible`; deletes it. Only this can raise needs flagged `requires_consume` (food) |
+| `consume` | `object_id` | in reach and `edible`; deletes it. Only this can raise the sustenance need (`settings.yaml` `sustenance_need`) |
 | `set_state` | `object_id, key, value` | in reach; length-limited |
 | `create` | `name, tags, area` | current area; rate-limited per tick; tags filtered to `allowed_tags` |
 
@@ -171,7 +172,7 @@ Anything that fails goes into `rejected_changes` with a reason, is logged, and d
 
 ## 11. Sleep
 
-- The creature falls asleep when exhausted at night, or when the brain sets `wants_sleep` and it is tired enough (or night). Asleep ticks skip the brain and narrator, restore the `sleep_restore` need, and decay needs slowly. It wakes when rested, in the morning.
+- The creature falls asleep when exhausted at night, or when the brain sets `wants_sleep` and it is tired enough (or night). Asleep ticks skip the brain and narrator, restore energy, and decay needs slowly. It wakes when energy is restored, in the morning.
 - When sleep begins, the sleep cycle makes four calls (consolidate memories, drift tendencies, learn preferences, propose a self-image line). **Nothing is written unless all succeed**; if the brain is offline it stays pending and retries on every sleeping tick. LLM output becomes numbers in code: importance buckets, tendency proposals scaled and **clamped** to ±`sleep.tendency_max_step`, blended preference valences. Core traits never change.
 - **Self-image step:** one call reads the day's short-term memories and log plus the current self-image lines and proposes **at most one** new line (or none). A line carries text, a confidence (0..1) and the day it was formed. A proposal may name an existing line in `replaces` to revise or contradict it. Proposals below `sleep.self_image_min_confidence`, duplicates and empty text are rejected; over `sleep.max_self_image_lines` the least confident lines are forgotten. Every proposal and its outcome (`added`, `revised`, `rejected`, `dropped_at_cap`, `none`) is written to the `sleep_traces` row with step `self_image`. The brain sees the lines (text only) in its situation prompt; the website shows them in the About panel.
 
