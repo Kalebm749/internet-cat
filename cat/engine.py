@@ -33,6 +33,7 @@ class Engine:
         self.conn = conn or db.connect(cfg.db_path)
         db.init_db(self.conn)
         self.stop_requested = False
+        self._online_cache: bool | None = None
         self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])
         self.memory = Memory(self.conn, cfg, backend)
         self._bootstrap()
@@ -65,6 +66,10 @@ class Engine:
         row = self.conn.execute(
             "SELECT outcome FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT 1").fetchone()
         self.last_outcome = row["outcome"] if row else None
+        # what the previous non-sleep tick was: 'doze' => the first prompt notes the doze
+        k = self.conn.execute(
+            "SELECT kind FROM ticks ORDER BY id DESC LIMIT 1").fetchone()
+        self.last_kind = k["kind"] if k else None
 
     # ---------- prompts ----------
     def _brain_context(self, fired: list[dict], long_mems: list[dict] | None = None) -> brain.BrainContext:
@@ -83,7 +88,7 @@ class Engine:
             mood=st["mood"], tendencies=st["tendencies"], weather=self.world.weather,
             objects_here=self.world.here(st["area"]), inventory=self.world.inventory(),
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
-            recent_actions=recent, preferences=prefs,
+            recent_actions=recent, preferences=prefs, just_woke_from_doze=self.last_kind == "doze",
             long_memories=[m["text"] for m in (long_mems or [])],
             short_memories=[m["text"] for m in self.memory.recent_short()])
 
@@ -115,7 +120,14 @@ class Engine:
         return mult
 
     # ---------- the tick ----------
+    def _online(self) -> bool:
+        """Brain health check (GET /api/tags), cached for the duration of one tick."""
+        if self._online_cache is None:
+            self._online_cache = self.backend.is_online()
+        return self._online_cache
+
     def tick(self) -> dict:
+        self._online_cache = None
         try:
             return self._tick()
         except BaseException:
@@ -144,7 +156,7 @@ class Engine:
         # 2+3. brain and narrator (LLM calls, outside any transaction)
         result = None
         recalled: list[dict] = []
-        online = self.backend.is_online()
+        online = self._online()
         if online:
             try:
                 recalled = self._recall(fired)
@@ -154,6 +166,7 @@ class Engine:
             except BackendError as e:
                 log.warning("brain/narrator unavailable (%s): dozing", e)
                 online = False
+                self._online_cache = False
 
         # 4. apply
         before = dict(st["needs"])
@@ -220,7 +233,7 @@ class Engine:
         cfg, st, s = self.cfg, self.state, self.cfg.settings
         sl = s["sleep"]
         now = st["sim_time"]
-        online = self.backend.is_online()
+        online = self._online()
         before = dict(st["needs"])
         minutes = sl["sim_minutes_per_tick"]
         needs = character.decay(before, minutes * sl["decay_multiplier"], cfg)
@@ -252,7 +265,7 @@ class Engine:
     def _try_sleep_cycle(self) -> None:
         """Run the nightly consolidation if one is pending and the brain is reachable. A failure
         writes nothing; it is retried on the next sleeping tick."""
-        if db.get_meta(self.conn, "sleep_pending") != "1" or not self.backend.is_online():
+        if db.get_meta(self.conn, "sleep_pending") != "1" or not self._online():
             return
         st = self.state
         try:
@@ -309,9 +322,11 @@ class Engine:
             if online:
                 db.set_meta(self.conn, "brain_last_seen", real)
         self.state = new_state
+        self.last_kind = row["kind"]
         return {"id": tick_id, "kind": row["kind"], "sim_time": now, "area": area,
                 "action": row["action"], "outcome": row["outcome"], "mood": mood["word"],
-                "energy": new_state["energy"], "fired": [e["text"] for e in fired]}
+                "energy": new_state["energy"], "fired": [e["text"] for e in fired],
+                "brain_online": online}
 
     # ---------- the loop ----------
     def run(self, ticks: int | None = None, interval: float | None = None,
@@ -322,15 +337,17 @@ class Engine:
         interval = self.cfg.settings["tick_interval_seconds"] if interval is None else interval
         done = 0
         while not self.stop_requested and (ticks is None or done < ticks):
+            failed = False
             try:
                 info = self.tick()
                 if on_tick:
                     on_tick(info)
             except Exception:
+                failed = True
                 log.exception("tick failed; state reloaded, continuing")
             done += 1
             if interval and not self.stop_requested and (ticks is None or done < ticks):
-                sleep(interval)
+                sleep(max(interval, self.cfg.settings["error_backoff_seconds"]) if failed else interval)
         return done
 
     def install_signal_handlers(self) -> None:

@@ -11,6 +11,7 @@ llm_timeout_seconds: 120
 health_timeout_seconds: 3
 llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5}
 llm_num_ctx: 4096
+error_backoff_seconds: 30      # extra wait after a tick that raised an unexpected error
 llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
 
 # --- storage ---

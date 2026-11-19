@@ -129,12 +129,14 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     exits = [cfg.world["areas"][e]["name"] for e in area["exits"]]
     L.append("From here you can go to: " + ", ".join(exits) + ".")
 
-    if ctx.just_woke_from_doze:
-        L.append("\nYou have just come round from a long, hazy doze. Time has passed.")
     L.append("\n## What just happened")
     if ctx.events:
         L.append("The world: " + " ".join(ctx.events))
-    L.append(ctx.last_outcome or "Nothing yet. This is the start of your day.")
+    if ctx.just_woke_from_doze:
+        L.append("You have just come round from a long, hazy doze. Time has passed and you "
+                 "can't quite remember what you were doing.")
+    else:
+        L.append(ctx.last_outcome or "Nothing yet. This is the start of your day.")
     if ctx.recent_actions:
         L.append("Recently you did: " + "; then ".join(ctx.recent_actions) + ".")
 

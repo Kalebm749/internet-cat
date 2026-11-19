@@ -68,3 +68,9 @@ Changes are checked **in order** against the real world; invalid ones are droppe
 - **The cycle** runs when sleep begins and makes 3 LLM calls (consolidate, tendencies, preferences). Nothing is written unless all succeed; if the brain is offline it stays pending (`meta.sleep_pending`) and retries on every sleeping tick. Short-term memories are kept until then.
 - LLM output is turned into numbers by code: memory importance is `low|medium|high` -> `importance_values`; tendency proposals are -1..1, scaled by `tendency_max_step` and clamped to 0..1 (core traits are never touched); preference valences are blended with the existing value (`preference_blend`), so new likes start weak and strengthen by repetition. Weak ones (< `preference_min_abs`) are forgotten and the total is capped.
 - `sleep_log.sim_date` is the date the sleep began.
+
+## Brain offline (`cat/engine.py`)
+- Each tick starts with `GET /api/tags` (`health_timeout_seconds`), cached for that tick. If it fails, or the brain/narrator call still fails after `llm_retries` retries, the tick is a **doze**: events, clock and decay still run, `doze.energy_restore` is added to the sleep_restore need, the tick is stored with `kind='doze'`, `outcome='dozing'`, and `state.brain_online=0`. No LLM calls are made.
+- When the brain returns, the first prompt says the creature just came round from a doze (and omits the stale "last outcome").
+- A creature that is exhausted at night still falls asleep while the brain is offline; the sleep cycle waits (see Sleep).
+- If a tick raises an unexpected error, the state is reloaded from the DB and the loop waits at least `error_backoff_seconds` before the next one.

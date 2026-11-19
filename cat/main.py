@@ -27,6 +27,8 @@ def print_tick(cfg, first_dt):
         area = cfg.world["areas"][i["area"]]["name"]
         what = f"{i['action']} -> {i['outcome']}" if i["action"] else i["outcome"]
         extra = f"  [{'; '.join(i['fired'])}]" if i["fired"] else ""
+        if not i["brain_online"]:
+            extra += "  (brain offline)"
         print(f"#{i['id']:<4} {clock.day_label(first_dt, dt)} {clock.time_label(dt):>8} | "
               f"{area} | {what} | mood {i['mood']}, energy {i['energy']:.0f}{extra}")
     return _p
