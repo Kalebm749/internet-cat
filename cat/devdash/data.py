@@ -625,3 +625,268 @@ def memory_search(cfg: Config, text: str) -> dict:
                                  "relevance": round(rc["w_relevance"] * c["relevance"], 4)}}
                       for i, c in enumerate(cands)]
     return out
+
+
+# ---------- Needs and mood ----------
+RANGES = {"24h": 24 * 60, "7d": 7 * 24 * 60, "all": None}
+
+
+def _epoch(sim_time: str) -> int:
+    import calendar
+    return calendar.timegm(clock.parse(sim_time).timetuple())     # sim times are naive: plotted as-is (UTC axis)
+
+
+def _downsample(n: int, limit: int) -> list[int]:
+    if n <= limit:
+        return list(range(n))
+    step = (n - 1) / (limit - 1)
+    return sorted({round(i * step) for i in range(limit)})
+
+
+def needs_series(cfg: Config, rng: str = "24h") -> dict:
+    """Needs, derived energy, valence and arousal over sim time, plus sleep/doze bands and the needs
+    that sat at a critical level the longest."""
+    rng = rng if rng in RANGES else "24h"
+    crit = cfg.settings["web_ui"]["need_critical_below"]
+    out: dict[str, Any] = {"range": rng, "x": [], "needs": {}, "energy": [], "valence": [], "arousal": [],
+                           "bands": [], "critical": [], "critical_below": crit, "from": None, "to": None, "ticks": 0,
+                           "labels": {k: character.need_label(k, cfg) for k in cfg.character["needs"]}}
+    with game_db(cfg) as conn:
+        if conn is None:
+            return out
+        recs = rows(conn, "SELECT id, sim_time, kind, duration, needs_after, mood_after FROM ticks "
+                          "WHERE needs_after IS NOT NULL ORDER BY id DESC LIMIT 60000")[::-1]
+    if not recs:
+        return out
+    if RANGES[rng]:
+        cutoff = _epoch(recs[-1]["sim_time"]) - RANGES[rng] * 60
+        recs = [r for r in recs if _epoch(r["sim_time"]) >= cutoff]
+    for r in recs:
+        r["_n"], r["_m"], r["_t"] = jload(r["needs_after"], {}), jload(r["mood_after"], {}), _epoch(r["sim_time"])
+    out["ticks"], out["from"], out["to"] = len(recs), recs[0]["sim_time"], recs[-1]["sim_time"]
+
+    # critical time: sim minutes (sum of tick durations) each need spent below the critical level
+    for nid in cfg.character["needs"]:
+        total = streak = longest = 0
+        for r in recs:
+            v = r["_n"].get(nid)
+            if v is not None and v < crit:
+                streak += r["duration"] or 0
+                total += r["duration"] or 0
+                longest = max(longest, streak)
+            else:
+                streak = 0
+        span = max(1, sum((r["duration"] or 0) for r in recs))
+        out["critical"].append({"need": nid, "label": out["labels"][nid], "minutes": total, "hours": round(total / 60, 1),
+                                "pct": round(100 * total / span, 1), "longest_minutes": longest})
+    out["critical"].sort(key=lambda c: -c["minutes"])
+
+    # bands: runs of asleep / doze / catch-up ticks
+    run: dict | None = None
+    for r in recs:
+        if r["kind"] in ("asleep", "doze", "catchup"):
+            end = _epoch(clock.advance(r["sim_time"], r["duration"] or 0))
+            if run and run["kind"] == r["kind"]:
+                run["to"] = end
+            else:
+                if run:
+                    out["bands"].append(run)
+                run = {"kind": r["kind"], "from": r["_t"], "to": end}
+        elif run:
+            out["bands"].append(run)
+            run = None
+    if run:
+        out["bands"].append(run)
+
+    keep = _downsample(len(recs), cfg.settings["devdash"]["max_series_points"])
+    sel = [recs[i] for i in keep]
+    out["x"] = [r["_t"] for r in sel]
+    out["needs"] = {nid: [round(r["_n"].get(nid), 2) if r["_n"].get(nid) is not None else None for r in sel]
+                    for nid in cfg.character["needs"]}
+    full = set(cfg.character["needs"])
+    out["energy"] = [character.energy(r["_n"], cfg) if full <= set(r["_n"]) else None for r in sel]
+    out["valence"] = [r["_m"].get("valence") for r in sel]
+    out["arousal"] = [r["_m"].get("arousal") for r in sel]
+    return out
+
+
+# ---------- Behaviour ----------
+def normalize_action(a: str | None) -> str:
+    return " ".join((a or "").lower().split())
+
+
+def normalize_reason(reason: str | None) -> str:
+    import re
+    return re.sub(r"'[^']*'", "'…'", reason or "(none)")
+
+
+def behaviour(cfg: Config) -> dict:
+    out: dict[str, Any] = {"days": [], "top_actions": [], "penalty": {"hits": 0, "ticks": 0, "recent": [], "by_day": {}},
+                           "areas": [], "ops": [], "reasons": [], "total_actions": 0, "distinct_actions": 0}
+    with game_db(cfg) as conn:
+        if conn is None:
+            return out
+        first = clock.parse(db.get_meta(conn, "first_sim_time") or cfg.settings["sim_start"])
+        ticks = rows(conn, "SELECT id, kind, sim_time, area, action, duration FROM ticks")
+        by_day: dict[int, dict] = {}
+        counts: dict[str, int] = {}
+        area_min: dict[str, dict] = {}
+        for t in ticks:
+            dn = clock.day_number(first, clock.parse(t["sim_time"]))
+            a = area_min.setdefault(t["area"], {"tick": 0, "asleep": 0, "doze": 0, "catchup": 0})
+            a[t["kind"]] = a.get(t["kind"], 0) + (t["duration"] or 0)
+            if t["kind"] == "tick" and t["action"]:
+                act = normalize_action(t["action"])
+                d = by_day.setdefault(dn, {"day": dn, "total": 0, "distinct": set()})
+                d["total"] += 1
+                d["distinct"].add(act)
+                counts[act] = counts.get(act, 0) + 1
+        out["days"] = [{"day": d["day"], "label": clock.day_label(first, first + timedelta(days=d["day"] - 1)),
+                        "total": d["total"], "distinct": len(d["distinct"]),
+                        "variety": round(len(d["distinct"]) / d["total"], 2)} for d in sorted(by_day.values(), key=lambda d: -d["day"])]
+        total = sum(counts.values())
+        out["total_actions"], out["distinct_actions"] = total, len(counts)
+        out["top_actions"] = [{"action": a, "count": n, "pct": round(100 * n / total, 1)} for a, n in
+                              sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:20]] if total else []
+        tot_min = sum(sum(v.values()) for v in area_min.values()) or 1
+        out["areas"] = sorted(
+            [{"area": a, "name": cfg.world["areas"].get(a, {}).get("name", a), "minutes": sum(v.values()), "hours": round(sum(v.values()) / 60, 1),
+              "pct": round(100 * sum(v.values()) / tot_min, 1), "awake": v["tick"], "asleep": v["asleep"], "doze": v["doze"]}
+             for a, v in area_min.items()], key=lambda r: -r["minutes"])
+        # repetition-penalty hits: a non-physical need's gain was cut by the repetition multiplier
+        hit = rows(conn, "SELECT n.tick_id, t.sim_time, t.action, COUNT(*) needs, MIN(n.repetition_mult) mult FROM need_math n "
+                         "JOIN ticks t ON t.id = n.tick_id WHERE n.repetition_mult < 1 AND n.gain_raw > 0 "
+                         "GROUP BY n.tick_id ORDER BY n.tick_id DESC")
+        out["penalty"]["hits"] = len(hit)
+        out["penalty"]["ticks"] = (one(conn, "SELECT COUNT(*) n FROM ticks WHERE kind='tick'") or {}).get("n", 0)
+        out["penalty"]["recent"] = hit[:15]
+        for h in hit:
+            dn = clock.day_number(first, clock.parse(h["sim_time"]))
+            out["penalty"]["by_day"][dn] = out["penalty"]["by_day"].get(dn, 0) + 1
+        for d in out["days"]:
+            d["penalty_hits"] = out["penalty"]["by_day"].get(d["day"], 0)
+        ops = rows(conn, "SELECT op, SUM(accepted) ok, SUM(1-accepted) rejected, COUNT(*) n FROM effect_logs GROUP BY op ORDER BY n DESC")
+        out["ops"] = [{"op": o["op"] or "(invalid)", "accepted": o["ok"] or 0, "rejected": o["rejected"] or 0, "n": o["n"]} for o in ops]
+        reasons: dict[str, int] = {}
+        for r in conn.execute("SELECT reason FROM effect_logs WHERE accepted=0"):
+            k = normalize_reason(r["reason"])
+            reasons[k] = reasons.get(k, 0) + 1
+        out["reasons"] = [{"reason": k, "count": n} for k, n in sorted(reasons.items(), key=lambda kv: (-kv[1], kv[0]))]
+    return out
+
+
+# ---------- Sleep ----------
+def sleep_nights(cfg: Config, page: int = 1, limit: int | None = None) -> dict:
+    limit = min(limit or 20, 200)
+    out: dict[str, Any] = {"nights": [], "total": 0, "page": page, "pages": 1, "history": {"x": [], "tendencies": {}},
+                           "tendency_ids": list(cfg.character["tendencies"]), "max_step": cfg.settings["sleep"]["tendency_max_step"]}
+    with game_db(cfg) as conn:
+        if conn is None:
+            return out
+        first = clock.parse(db.get_meta(conn, "first_sim_time") or cfg.settings["sim_start"])
+        out["total"] = one(conn, "SELECT COUNT(*) n FROM sleep_log")["n"]
+        out["pages"] = max(1, math.ceil(out["total"] / limit))
+        logs_ = rows(conn, "SELECT * FROM sleep_log ORDER BY id DESC LIMIT ? OFFSET ?", limit, (max(1, page) - 1) * limit)
+        for s in logs_:
+            s["tendency_changes"] = jload(s["tendency_changes"], {})
+            s["new_memories"] = jload(s["new_memories"], [])
+            s["new_preferences"] = jload(s["new_preferences"], [])
+            d = clock.parse(s["sim_date"] + "T00:00")
+            s["day_label"] = clock.day_label(first, d)
+            s["traces"] = {t["step"]: {**t, "input": jload(t["input"]), "output": jload(t["output"]),
+                                       "proposed": jload(t["proposed"]), "clamped": jload(t["clamped"])}
+                           for t in rows(conn, "SELECT * FROM sleep_traces WHERE sleep_log_id=? ORDER BY id", s["id"])}
+            s["calls"] = rows(conn, "SELECT id, kind, attempt, valid_json, error, total_ms FROM llm_calls WHERE tick_id=? "
+                                    "AND kind LIKE 'sleep_%' ORDER BY id", s["tick_id"]) if s["tick_id"] else []
+            tt = s["traces"].get("tendencies")
+            s["tendency_table"] = []
+            if tt and tt["clamped"]:
+                for k, c in tt["clamped"].items():
+                    prop = (tt["proposed"] or {}).get(k)
+                    s["tendency_table"].append({"id": k, "proposed": prop, "applied": c["applied_delta"], "from": c["from"],
+                                                "to": c["to"], "max_step": c["max_step"], "clamped": prop is not None and abs(prop) * c["max_step"] > abs(c["applied_delta"]) + 1e-9})
+            else:
+                s["tendency_table"] = [{"id": k, "proposed": None, "applied": round(c["to"] - c["from"], 4), "from": c["from"], "to": c["to"],
+                                        "max_step": out["max_step"], "clamped": False} for k, c in s["tendency_changes"].items()]
+            pt = s["traces"].get("preferences")
+            s["pref_table"] = []
+            for p in (pt["clamped"] if pt and pt["clamped"] else s["new_preferences"]):
+                s["pref_table"].append({"subject": p["subject"], "valence": p["valence"], "previous": p.get("previous"), "reason": p.get("reason", "")})
+        out["nights"] = logs_
+        # tendency history: value after each night (oldest first)
+        allogs = rows(conn, "SELECT id, sim_date, tendency_changes FROM sleep_log ORDER BY id")
+        traced = {r["sleep_log_id"]: jload(r["clamped"], {}) for r in conn.execute(
+            "SELECT sleep_log_id, clamped FROM sleep_traces WHERE step='tendencies'")}
+    cur = dict(cfg.character["tendencies"])
+    hist: dict[str, list] = {k: [] for k in cur}
+    xs = []
+    for i, s in enumerate(allogs):
+        ch = jload(s["tendency_changes"], {})
+        full = traced.get(s["id"]) or {}
+        for k in hist:
+            if k in full:
+                cur[k] = full[k]["to"]
+            elif k in ch:
+                cur[k] = ch[k]["to"]
+            hist[k].append(round(cur[k], 4))
+        xs.append(i + 1)
+    out["history"] = {"x": xs, "tendencies": hist, "dates": [s["sim_date"] for s in allogs]}
+    return out
+
+
+# ---------- World state ----------
+def _change_detail(cfg: Config, c: dict) -> str:
+    areas = cfg.world["areas"]
+    nm = lambda a: areas.get(a, {}).get("name", a)
+    op = c.get("op")
+    if op == "create":
+        return f"created '{c.get('name') or c.get('label')}' in {nm(c.get('area'))}" + (" (spawned by a world event)" if c.get("source") == "event" else " (by the creature)")
+    if op == "consume":
+        return "eaten / used up"
+    if op == "take":
+        return "picked up (now carried)"
+    if op == "drop":
+        return f"put down in {nm(c.get('area'))}"
+    if op == "move_object":
+        return f"moved to {nm(c.get('area'))}"
+    if op == "set_state":
+        return f"state {c.get('key')} = {c.get('value')}"
+    if op == "move_self":
+        return f"creature moved to {nm(c.get('area'))}"
+    return str(op)
+
+
+def world_state(cfg: Config, object_id: str = "", page: int = 1, limit: int = 50) -> dict:
+    out: dict[str, Any] = {"areas": [], "objects": [], "inventory": [], "history": [], "history_total": 0, "page": page, "pages": 1,
+                           "creature_area": None, "weather": None, "object": object_id, "object_row": None}
+    areas = cfg.world["areas"]
+    with game_db(cfg) as conn:
+        counts: dict[str, int] = {}
+        objs: list[dict] = []
+        if conn is not None:
+            st = db.get_state(conn)
+            if st:
+                out["creature_area"], out["weather"] = st["area"], st["weather"]
+            objs = rows(conn, "SELECT * FROM objects ORDER BY area, name")
+            for o in objs:
+                o["tags"], o["state"] = jload(o["tags"], []), jload(o["state"], {})
+                o["area_name"] = areas.get(o["area"], {}).get("name", "carried" if o["area"] == "inventory" else o["area"])
+                counts[o["area"]] = counts.get(o["area"], 0) + 1
+            hist = []
+            for t in conn.execute("SELECT id, kind, sim_time, changes FROM ticks WHERE changes IS NOT NULL AND changes NOT IN ('[]','') ORDER BY id DESC LIMIT 3000"):
+                for c in reversed(jload(t["changes"], [])):          # newest first, also within one tick
+                    hist.append({"tick_id": t["id"], "sim_time": t["sim_time"], "op": c.get("op"), "object_id": c.get("object_id"),
+                                 "label": c.get("label") or c.get("name") or c.get("object_id") or "(creature)",
+                                 "detail": _change_detail(cfg, c), "source": c.get("source") or "creature"})
+            if object_id:
+                hist = [h for h in hist if h["object_id"] == object_id]
+                out["object_row"] = next((o for o in objs if o["id"] == object_id), None)
+            out["history_total"] = len(hist)
+            out["pages"] = max(1, math.ceil(len(hist) / limit))
+            out["history"] = hist[(max(1, page) - 1) * limit: max(1, page) * limit]
+    for aid, a in areas.items():
+        out["areas"].append({"id": aid, "name": a["name"], "description": a["description"], "exits": [areas[e]["name"] for e in a["exits"]],
+                             "objects": counts.get(aid, 0), "here": aid == out["creature_area"]})
+    out["objects"] = [o for o in objs if o["area"] != "inventory"]
+    out["inventory"] = [o for o in objs if o["area"] == "inventory"]
+    return out

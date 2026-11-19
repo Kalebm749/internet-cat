@@ -20,7 +20,9 @@ from cat.devqueue import CommandError
 HERE = Path(__file__).parent
 
 NAV = [("overview", "Overview", "/"), ("ticks", "Ticks", "/ticks"), ("llm", "LLM calls", "/llm"),
-       ("memory", "Memory", "/memory"), ("playground", "Playground", "/playground")]
+       ("memory", "Memory", "/memory"), ("needs", "Needs & mood", "/needs"),
+       ("behaviour", "Behaviour", "/behaviour"), ("sleep", "Sleep", "/sleep"), ("world", "World", "/world"),
+       ("playground", "Playground", "/playground")]
 SECURITY_HEADERS = {"X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
                     "X-Content-Type-Options": "nosniff"}
 
@@ -102,6 +104,23 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         selected = {r["memory_id"] for r in search["results"] if r["selected"]} if search else set()
         emap = data.embedding_map(cfg, search["vector"] if search else None, selected)
         return page(request, "memory.html", "memory", "Memory & embeddings", t=tables, search=search, emap=emap, q=q)
+
+    @app.get("/needs", response_class=HTMLResponse)
+    def needs_page(request: Request, range: str = "24h"):
+        return page(request, "needs.html", "needs", "Needs & mood", range=range if range in data.RANGES else "24h",
+                    n=data.needs_series(cfg, range))
+
+    @app.get("/behaviour", response_class=HTMLResponse)
+    def behaviour_page(request: Request):
+        return page(request, "behaviour.html", "behaviour", "Behaviour", b=data.behaviour(cfg))
+
+    @app.get("/sleep", response_class=HTMLResponse)
+    def sleep_page(request: Request, page_no: int = Query(1, alias="page", ge=1)):
+        return page(request, "sleep.html", "sleep", "Sleep", s=data.sleep_nights(cfg, page_no))
+
+    @app.get("/world", response_class=HTMLResponse)
+    def world_page(request: Request, object: str = "", page_no: int = Query(1, alias="page", ge=1)):
+        return page(request, "world.html", "world", "World state", w=data.world_state(cfg, object, page_no), object=object)
 
     @app.get("/playground", response_class=HTMLResponse)
     def playground_page(request: Request, call_id: int | None = None):
@@ -203,6 +222,22 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         r = data.memory_search(cfg, q)
         r.pop("vector", None)
         return j(r)
+
+    @app.get("/api/dev/needs")
+    def api_needs(range: str = Query("24h", pattern="^(24h|7d|all)$")):
+        return j(data.needs_series(cfg, range))
+
+    @app.get("/api/dev/behaviour")
+    def api_behaviour():
+        return j(data.behaviour(cfg))
+
+    @app.get("/api/dev/sleep")
+    def api_sleep(page_no: int = Query(1, alias="page", ge=1), limit: int = Query(20, ge=1, le=200)):
+        return j(data.sleep_nights(cfg, page_no, limit))
+
+    @app.get("/api/dev/world")
+    def api_world(object: str = "", page_no: int = Query(1, alias="page", ge=1), limit: int = Query(50, ge=1, le=500)):
+        return j(data.world_state(cfg, object, page_no, limit))
 
     @app.get("/api/dev/playground/models")
     def api_pg_models():

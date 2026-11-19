@@ -77,3 +77,12 @@ fieldset.models { border: 1px solid var(--rule); border-radius: 4px; display: fl
 .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; } .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
 .dot.pt-long { background: var(--accent); } .dot.pt-short { background: var(--warn); }
 tr:target td { outline: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* ---- needs / behaviour / sleep / world ---- */
+.btn.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.hbar { display: inline-block; width: 90px; height: 8px; background: var(--rule); border-radius: 4px; vertical-align: middle; overflow: hidden; margin-right: 6px; }
+.hbar > i { display: block; height: 100%; background: var(--accent); }
+details.night { border: 1px solid var(--rule); border-radius: 6px; margin: 8px 0; }
+details.night > summary { padding: 6px 10px; cursor: pointer; background: color-mix(in srgb, var(--rule) 35%, transparent); }
+.night-body { padding: 4px 12px 10px; }
+#needs-charts .chart, #chart-tendencies { min-height: 230px; }

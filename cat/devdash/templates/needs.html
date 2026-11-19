@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pill %}
+{% block head %}<link rel="stylesheet" href="/static/vendor/uPlot.min.css">{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="titlebar"><h2>Needs &amp; mood over time</h2><span class="spacer"></span>
+    {% for r, label in [('24h','last 24 sim hours'),('7d','last 7 sim days'),('all','all')] %}<a class="btn {{ 'on' if range == r }}" href="/needs?range={{ r }}">{{ label }}</a>{% endfor %}
+  </div>
+  <p id="needs-note" class="dim small"></p>
+  <div id="needs-charts" data-range="{{ range }}">
+    <h3>Needs (0–100; dashed line = critical, below {{ n.critical_below }})</h3><div class="chart" id="chart-needs"></div>
+    <div class="charts">
+      <div><h3>Energy (derived from the needs)</h3><div class="chart" id="chart-energy"></div></div>
+      <div><h3>Mood: valence (−1..1) and arousal</h3><div class="chart" id="chart-mood"></div></div>
+    </div>
+  </div>
+</section>
+<section class="card">
+  <h2>Needs that sat at a critical level the longest <span class="dim small">(below {{ n.critical_below }} · sim time, in this range)</span></h2>
+  <table class="data num">
+    <tr><th>need</th><th>time critical</th><th>share of range</th><th>longest unbroken stretch</th></tr>
+    {% for c in n.critical %}
+    <tr><td>{{ c.label }}</td><td>{{ c.hours }} h <span class="dim">({{ c.minutes }} min)</span></td>
+        <td><span class="hbar"><i style="width: {{ c.pct }}%"></i></span> {{ c.pct }}%</td><td>{{ (c.longest_minutes / 60)|round(1) }} h</td></tr>
+    {% else %}<tr><td colspan="4" class="dim">no data yet</td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/chartlib.js"></script><script src="/static/needs.js"></script>{% endblock %}

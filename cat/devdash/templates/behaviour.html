@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="dim small">Tuning aids: what the creature actually does, and how the rules push back. {{ b.total_actions }} actions, {{ b.distinct_actions }} distinct.</p>
+<section class="grid2">
+  <div class="card">
+    <h2>Action variety per sim day <span class="dim small">(distinct ÷ total)</span></h2>
+    <table class="data num"><tr><th>day</th><th>actions</th><th>distinct</th><th>variety</th><th>penalty hits</th></tr>
+      {% for d in b.days %}<tr><td>{{ d.label }}</td><td>{{ d.total }}</td><td>{{ d.distinct }}</td><td><span class="hbar"><i style="width: {{ (d.variety * 100)|round(0) }}%"></i></span> {{ d.variety }}</td><td>{{ d.penalty_hits }}</td></tr>
+      {% else %}<tr><td colspan="5" class="dim">no actions yet</td></tr>{% endfor %}
+    </table>
+    <h3>Repetition-penalty hits</h3>
+    <p>{{ b.penalty.hits }} of {{ b.penalty.ticks }} ticks had a need's gain cut by the repetition multiplier ({{ cfg.settings.repetition_penalty.multiplier }}×, similarity ≥ {{ cfg.settings.repetition_penalty.similarity_threshold }} within the last {{ cfg.settings.repetition_penalty.window }} actions).</p>
+    <table class="data"><tr><th>tick</th><th>action</th><th>multiplier</th></tr>
+      {% for h in b.penalty.recent %}<tr><td><a href="/ticks/{{ h.tick_id }}#needmath">#{{ h.tick_id }}</a></td><td>{{ h.action }}</td><td>{{ h.mult }}</td></tr>{% else %}<tr><td colspan="3" class="dim">none</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>Top repeated actions</h2>
+    <table class="data num"><tr><th>action</th><th>count</th><th>share</th></tr>
+      {% for a in b.top_actions %}<tr><td>{{ a.action }}</td><td>{{ a.count }}</td><td><span class="hbar"><i style="width: {{ a.pct * 3 if a.pct * 3 < 100 else 100 }}%"></i></span> {{ a.pct }}%</td></tr>
+      {% else %}<tr><td colspan="3" class="dim">no actions yet</td></tr>{% endfor %}
+    </table>
+  </div>
+</section>
+<section class="grid2">
+  <div class="card">
+    <h2>Time spent per area <span class="dim small">(sim time)</span></h2>
+    <table class="data num"><tr><th>area</th><th>total</th><th>share</th><th>awake</th><th>asleep</th><th>dozing</th></tr>
+      {% for a in b.areas %}<tr><td>{{ a.name }}</td><td>{{ a.hours }} h</td><td><span class="hbar"><i style="width: {{ a.pct }}%"></i></span> {{ a.pct }}%</td><td>{{ (a.awake / 60)|round(1) }} h</td><td>{{ (a.asleep / 60)|round(1) }} h</td><td>{{ (a.doze / 60)|round(1) }} h</td></tr>
+      {% else %}<tr><td colspan="6" class="dim">no data yet</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>Effect ops <span class="dim small">(what the narrator proposed)</span></h2>
+    <table class="data num"><tr><th>op</th><th>proposed</th><th>accepted</th><th>rejected</th></tr>
+      {% for o in b.ops %}<tr><td>{{ o.op }}</td><td>{{ o.n }}</td><td class="ok">{{ o.accepted }}</td><td class="{{ 'bad' if o.rejected }}">{{ o.rejected }}</td></tr>
+      {% else %}<tr><td colspan="4" class="dim">no changes proposed yet</td></tr>{% endfor %}
+    </table>
+    <h3>Rejection reasons</h3>
+    {% set top = b.reasons[0].count if b.reasons else 1 %}
+    <table class="data num"><tr><th>reason (object ids and areas shown as '…')</th><th>count</th></tr>
+      {% for r in b.reasons %}<tr><td>{{ r.reason }}</td><td><span class="hbar"><i style="width: {{ (100 * r.count / top)|round(0) }}%"></i></span> {{ r.count }}</td></tr>
+      {% else %}<tr><td colspan="2" class="dim">nothing has been rejected</td></tr>{% endfor %}
+    </table>
+  </div>
+</section>
+{% endblock %}
