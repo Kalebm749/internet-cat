@@ -113,14 +113,14 @@
 <section class="card" id="needmath">
   <h2>6 · Need math</h2>
   <table class="data num">
-    <tr><th>need</th><th>before</th><th>− decay</th><th>bucket</th><th>+ gain (raw)</th><th>× repetition</th><th>− effort</th><th>clamp</th><th>= after</th><th>site shows</th></tr>
+    <tr><th>need</th><th>before</th><th>− decay</th><th>bucket</th><th>+ gain (raw)</th><th>× repetition</th><th>− event drain</th><th>− dislike drain</th><th>clamp</th><th>= after</th><th>site shows</th></tr>
     {% for n in d.need_math %}
     <tr id="need-{{ n.need }}"><td>{{ d.need_labels.get(n.need, n.need) }}</td><td>{{ n.before }}</td><td>{{ n.decay }}</td><td>{{ n.bucket or '–' }}</td><td>{{ n.gain_raw }}</td>
-        <td class="{{ 'warn' if n.repetition_mult < 1 else '' }}">{{ n.repetition_mult }}</td><td>{{ n.effort_cost }}</td><td>{{ n.clamp_adjust }}</td><td><b>{{ n.after }}</b></td>
+        <td class="{{ 'warn' if n.repetition_mult < 1 else '' }}">{{ n.repetition_mult }}</td><td>{{ n.event_drain or 0 }}</td><td>{{ n.dislike_drain or 0 }}</td><td>{{ n.clamp_adjust }}</td><td><b>{{ n.after }}</b></td>
         <td>{% if d.public %}{% for p in d.public.needs if p.id == n.need %}{{ p.value }} ({{ p.word }}){% endfor %}{% endif %}</td></tr>
-    {% else %}<tr><td colspan="10" class="dim">no need math stored</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="11" class="dim">no need math stored</td></tr>{% endfor %}
   </table>
-  <p class="dim small">after = before − decay + raw gain × repetition + clamp. Gains come from the narrator's buckets ({{ cfg.settings.gain_values|tojson }}); repetition &lt; 1 means the action was too similar to a recent one.</p>
+  <p class="dim small">after = before − decay − event drain − dislike drain + raw gain × repetition + clamp. Only the world drains (decay, events); the narrator only adds. Gains come from the narrator's buckets ({{ cfg.settings.gain_values|tojson }}); repetition &lt; 1 means the action was too similar to a recent one.</p>
   {% if d.energy is not none %}
   <p id="energy"><b>Energy</b> (a separate resource, −50..50: effort spends it, sleep restores it) = <b>{{ d.energy }}</b>{% if d.energy_effort %}; this action's effort was <i>{{ d.energy_effort }}</i> ({{ d.energy_spent }} points spent){% endif %}</p>
   {% endif %}

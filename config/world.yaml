@@ -28,7 +28,7 @@ objects:
 weather: [clear, cloudy, rain]   # first entry is the starting weather
 
 events:
-  - {text: "It starts to rain.", chance: 0.03, set_weather: rain}
+  - {text: "It starts to rain.", chance: 0.03, set_weather: rain, drains: {joy: 3}}   # drains: points the world takes from needs when it fires
   - {text: "The rain stops.", chance: 0.08, only_weather: rain, set_weather: clear}
   - {text: "A bird lands on the windowsill.", chance: 0.04, area: living_room, hours: [8, 18]}
   - {text: "Someone leaves a bowl of fish.", chance: 0.03, area: kitchen,

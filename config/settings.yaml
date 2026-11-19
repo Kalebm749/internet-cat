@@ -90,6 +90,13 @@ need_bands: {empty_below: 15, low_below: 40, okay_below: 75}   # below empty_bel
 max_pressing_needs: 2          # the brain's prompt shows the expressions of at most this many needs
 stale_after_ticks: 3           # ticks in one area before the prompt adds character.yaml stale_here
 
+# --- drains from the world: dislikes. While something it dislikes is present (the area, an object here,
+#     the weather, or its own action), the world drains these needs. The narrator never drains. ---
+dislike_drain:
+  needs: [peace, joy]
+  points_per_hour: 4           # per matching dislike, scaled by how strong the dislike is (|valence|)
+  max_matches: 2               # at most this many dislikes count in one tick (the strongest)
+
 # --- energy: a separate resource, -50..50. Effort spends it, sleep restores it ---
 energy_start: 30
 events_max_per_tick: 2

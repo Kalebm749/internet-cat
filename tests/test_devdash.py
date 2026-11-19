@@ -373,6 +373,7 @@ def test_tick_detail_numbers_equal_the_public_site(cfg, seeded):
     for m in d["need_math"]:                                                # ... and the arithmetic behind each
         assert round(m["after"]) == site[m["need"]]["value"]
         assert m["after"] == pytest.approx(m["before"] - m["decay"] + m["gain_raw"] * m["repetition_mult"]
+                                           - (m["event_drain"] or 0) - (m["dislike_drain"] or 0)
                                            + m["clamp_adjust"], abs=2e-3)
     assert (pub["energy"]["value"], pub["energy"]["word"]) == (state["energy"]["value"], state["energy"]["word"])
     assert d["energy"] == pytest.approx(state["energy"]["value"], abs=0.5)          # stored, not derived

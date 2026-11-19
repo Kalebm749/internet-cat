@@ -90,7 +90,8 @@ def test_mock_tick_writes_complete_trace(cfg):
     assert [r["need"] for r in nm] == list(cfg.character["needs"])
     for r in nm:                                              # the arithmetic reproduces the stored number
         assert r["after"] == pytest.approx(needs_after[r["need"]], abs=1e-3)
-        rebuilt = r["before"] - r["decay"] + r["gain_raw"] * r["repetition_mult"] + r["clamp_adjust"]
+        rebuilt = r["before"] - r["decay"] + r["gain_raw"] * r["repetition_mult"] \
+            - (r["event_drain"] or 0) - (r["dislike_drain"] or 0) + r["clamp_adjust"]
         assert r["effort_cost"] == 0                          # effort spends energy, not needs
         assert rebuilt == pytest.approx(r["after"], abs=2e-3)
     joy = next(r for r in nm if r["need"] == "joy")
@@ -126,7 +127,7 @@ def test_need_and_mood_math_hold_for_every_tick_of_a_long_run(cfg):
         for r in nm:
             assert r["after"] == pytest.approx(after[r["need"]], abs=1e-3)
             assert (r["before"] - r["decay"] + r["gain_raw"] * r["repetition_mult"]
-                    + r["clamp_adjust"]) == pytest.approx(r["after"], abs=2e-3)
+                    - (r["event_drain"] or 0) - (r["dislike_drain"] or 0) + r["clamp_adjust"]) == pytest.approx(r["after"], abs=2e-3)
             n += 1
         mm = rows(e, "SELECT word, valence FROM mood_math WHERE tick_id=?", t["id"])[0]
         assert mm["word"] == json.loads(t["mood_after"])["word"]

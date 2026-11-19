@@ -42,7 +42,7 @@ class Engine:
         self.time = time.time          # injectable for tests
         self.stop_requested = False
         self._online_cache: bool | None = None
-        self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])
+        self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])   # (area, vec)
         # dev-dashboard state (see cat/devcontrol.py)
         self.paused = False
         self.step_pending = False
@@ -156,6 +156,7 @@ class Engine:
             objects_here=self.world.here(st["area"]), inventory=self.world.inventory(),
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
             recent_actions=recent, preferences=prefs, self_image=self._self_image_lines(),
+            stale_here=self._stale_here(),
             just_woke_from_doze=self.last_kind in ("doze", "catchup"),
             long_memories=[m["text"] for m in (long_mems or [])],
             short_memories=[m["text"] for m in self.memory.recent_short()])
@@ -178,15 +179,36 @@ class Engine:
         return narrator.describe_world(self.cfg, st["sim_time"], st["area"], self.world.weather,
                                        self.world.here(st["area"]), self.world.inventory())
 
-    def _repetition_multiplier(self, action: str) -> float:
-        """Embed the action; shrink gains if it resembles a recent one. Embedding trouble just
-        means no penalty this tick."""
+    def _repetition_multiplier(self, action: str, area: str) -> float:
+        """Embed the action; shrink the gains of the repetition-penalised needs if it resembles a
+        recent action taken in this same place. Embedding trouble just means no penalty this tick."""
         vec = self.memory.embed_one(action, "repetition_check")
         if vec is None:
             return 1.0
-        mult = effects.repetition_multiplier(vec, list(self.recent_action_vecs), self.cfg, cosine)
-        self.recent_action_vecs.append(vec)
+        here = [v for a, v in self.recent_action_vecs if a == area]
+        mult = effects.repetition_multiplier(vec, here, self.cfg, cosine)
+        self.recent_action_vecs.append((area, vec))
         return mult
+
+    def _dislike_drains(self, minutes: float, action: str | None) -> tuple[dict[str, float], list[dict]]:
+        """What the world drains this tick because something disliked is here."""
+        st = self.state
+        dislikes = [dict(r) for r in self.conn.execute(
+            "SELECT subject, valence FROM preferences WHERE valence<0")]
+        if not dislikes:
+            return {}, []
+        present = [self.cfg.world["areas"][st["area"]]["name"], self.world.weather, action or ""] \
+            + [o["name"] for o in self.world.here(st["area"])]
+        return character.dislike_drains(dislikes, present, minutes, self.cfg)
+
+    def _ticks_in_area(self) -> int:
+        return int(db.get_meta(self.conn, "ticks_in_area", "0") or 0)
+
+    def _stale_here(self) -> bool:
+        """True once it has spent `stale_after_ticks` ticks in the current area (0 turns this off).
+        Only a flag for the prompt: it changes no need values."""
+        n = self.cfg.settings["stale_after_ticks"]
+        return n > 0 and self._ticks_in_area() >= n
 
     # ---------- the tick ----------
     def _online(self) -> bool:
@@ -268,14 +290,19 @@ class Engine:
             b, n = result
             minutes = n["duration"]
             fx = effects.apply_changes(n["changes"], self.world, st["area"], cfg, now)
-            mult = self._repetition_multiplier(b["action"])
+            mult = self._repetition_multiplier(b["action"], st["area"])
             needs = character.decay(before, minutes, cfg)
+            drains = character.event_drains(fired)
+            needs = character.apply_drains(needs, drains)
+            dis, _ = self._dislike_drains(minutes, b["action"])
+            needs = character.apply_drains(needs, dis)
             needs = character.apply_gains(needs, n["gains"], cfg,
                                           consumed=fx.consumed, multiplier=mult)
             energy = character.spend_energy(st["energy"], n["effort"], cfg)
             self.tracer.set_effects(fx.log)
             self.tracer.set_need_math(character.explain_needs(
-                before, minutes, n["gains"], cfg, needs, consumed=fx.consumed, multiplier=mult))
+                before, minutes, n["gains"], cfg, needs, consumed=fx.consumed, multiplier=mult,
+                drains=drains, dislike_drains=dis))
             feeling = b["feeling"]
             new_area = fx.area
             row = {"kind": "tick", "reaction": b["reaction"], "thought": b["thought"],
@@ -285,8 +312,13 @@ class Engine:
         else:
             minutes = s["doze"]["sim_minutes"]
             needs = character.decay(before, minutes, cfg)
+            drains = character.event_drains(fired)
+            needs = character.apply_drains(needs, drains)
+            dis, _ = self._dislike_drains(minutes, None)
+            needs = character.apply_drains(needs, dis)
             energy = character.restore_energy(st["energy"], s["doze"]["energy_restore"])
-            self.tracer.set_need_math(character.explain_needs(before, minutes, None, cfg, needs))
+            self.tracer.set_need_math(character.explain_needs(before, minutes, None, cfg, needs,
+                                                              drains=drains, dislike_drains=dis))
             feeling = None
             new_area = st["area"]
             row = {"kind": "doze", "reaction": None, "thought": None, "action": None,
@@ -340,9 +372,11 @@ class Engine:
         before = dict(st["needs"])
         minutes = sl["sim_minutes_per_tick"]
         needs = character.decay(before, minutes * sl["decay_multiplier"], cfg)
+        drains = character.event_drains(fired)
+        needs = character.apply_drains(needs, drains)
         energy = character.restore_energy(st["energy"], sl["restore_per_sim_hour"] * minutes / 60)
         self.tracer.set_need_math(character.explain_needs(
-            before, minutes, None, cfg, needs, decay_multiplier=sl["decay_multiplier"]))
+            before, minutes, None, cfg, needs, decay_multiplier=sl["decay_multiplier"], drains=drains))
         new_time = clock.advance(now, minutes)
         new_dt = clock.parse(new_time)
         wake = False
@@ -432,6 +466,9 @@ class Engine:
                 db.set_meta(self.conn, "sleep_started", now)
                 db.set_meta(self.conn, "sleep_tick_id", tick_id)
                 db.set_meta(self.conn, "sleep_pending", 1)
+            if row["kind"] == "tick":      # time spent in this place (a move resets it)
+                stayed = new_state["area"] == area
+                db.set_meta(self.conn, "ticks_in_area", self._ticks_in_area() + 1 if stayed else 0)
             if wake:
                 db.set_meta(self.conn, "sleep_started", "")
             db.save_state(self.conn, new_state, real)

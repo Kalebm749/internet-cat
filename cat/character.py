@@ -26,6 +26,39 @@ def decay(needs: dict[str, float], sim_minutes: float, cfg: Config) -> dict[str,
     return {k: clamp(v - cfg.character["needs"][k]["decay_per_hour"] * hours) for k, v in needs.items()}
 
 
+def event_drains(fired: list[dict]) -> dict[str, float]:
+    """Total points each need loses from the events that fired this tick (the world drains; the
+    narrator never does)."""
+    out: dict[str, float] = {}
+    for e in fired or []:
+        for nid, pts in (e.get("drains") or {}).items():
+            out[nid] = out.get(nid, 0.0) + float(pts)
+    return out
+
+
+def dislike_drains(dislikes: list[dict], present: list[str], minutes: float,
+                   cfg: Config) -> tuple[dict[str, float], list[dict]]:
+    """The world drains needs while something disliked is present. `present` is the text of what is
+    around (area, objects here, weather, the action just taken). A dislike matches when its subject
+    appears in one of them (case-insensitive). Returns (points per need, the matches used)."""
+    dd = cfg.settings["dislike_drain"]
+    hay = [t.lower() for t in present if t]
+    hits = [d for d in dislikes
+            if d["valence"] < 0 and d["subject"].strip() and any(d["subject"].strip().lower() in h for h in hay)]
+    hits.sort(key=lambda d: d["valence"])                       # strongest dislike first
+    hits = hits[:dd["max_matches"]]
+    out: dict[str, float] = {}
+    for d in hits:
+        pts = dd["points_per_hour"] * minutes / 60 * abs(d["valence"])
+        for nid in dd["needs"]:
+            out[nid] = out.get(nid, 0.0) + pts
+    return out, [{"subject": d["subject"], "valence": d["valence"]} for d in hits]
+
+
+def apply_drains(needs: dict[str, float], drains: dict[str, float] | None) -> dict[str, float]:
+    return {k: clamp(v - (drains or {}).get(k, 0.0)) for k, v in needs.items()}
+
+
 def spend_energy(energy: float, effort: str | None, cfg: Config) -> float:
     """Effort spends energy (a separate resource, -50..50)."""
     return clamp_energy(energy - cfg.settings["effort_energy_cost"].get(effort, 0))
@@ -96,10 +129,12 @@ def apply_gains(needs: dict[str, float], gains: dict[str, str], cfg: Config,
 
 def explain_needs(before: dict[str, float], minutes: float, gains: dict[str, str] | None,
                   cfg: Config, after: dict[str, float], consumed: bool = False,
-                  multiplier: float = 1.0, decay_multiplier: float = 1.0) -> list[dict]:
+                  multiplier: float = 1.0, decay_multiplier: float = 1.0,
+                  drains: dict[str, float] | None = None,
+                  dislike_drains: dict[str, float] | None = None) -> list[dict]:
     """Per-need breakdown of one tick's arithmetic, one row per need, for the dev dashboard. It only
     *describes*; the real numbers come from `after`.
-    Identity: after = before - decay + gain_raw * repetition_mult + clamp_adjust."""
+    Identity: after = before - decay - event_drain - dislike_drain + gain_raw * repetition_mult + clamp_adjust."""
     values = cfg.settings["gain_values"]
     sus = cfg.settings["sustenance_need"]
     slowed = set(cfg.settings["repetition_penalty"].get("needs", []))
@@ -125,11 +160,14 @@ def explain_needs(before: dict[str, float], minutes: float, gains: dict[str, str
         if consumed and nid == sus and bucket is None:
             shown = str(cfg.settings["consume_min_gain"])
             raw = float(values[shown])                     # eating guarantees a minimum gain
-        nominal = b - decay + raw * mult
+        drain = float((drains or {}).get(nid, 0.0))
+        dis = float((dislike_drains or {}).get(nid, 0.0))
+        nominal = b - decay - drain - dis + raw * mult
         a = float(after[nid])
         rows.append({"need": nid, "before": round(b, 3), "decay": round(decay, 3), "bucket": shown,
                      "gain_raw": round(raw, 3), "repetition_mult": round(mult, 3),
-                     "effort_cost": 0.0, "clamp_adjust": round(a - nominal, 3),
+                     "effort_cost": 0.0, "event_drain": round(drain, 3),
+                     "dislike_drain": round(dis, 3), "clamp_adjust": round(a - nominal, 3),
                      "after": round(a, 3)})
     return rows
 

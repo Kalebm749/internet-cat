@@ -167,9 +167,10 @@ class Tracer:
                              (tick_id, e["op"], dumps(e["args"]), e["accepted"], e["reason"]))
             for r in self.need_math:
                 conn.execute('INSERT INTO need_math(tick_id,need,"before",decay,bucket,gain_raw,repetition_mult,'
-                             'effort_cost,clamp_adjust,"after") VALUES(?,?,?,?,?,?,?,?,?,?)',
+                             'effort_cost,event_drain,dislike_drain,clamp_adjust,"after") VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
                              (tick_id, r["need"], r["before"], r["decay"], r["bucket"], r["gain_raw"],
-                              r["repetition_mult"], r["effort_cost"], r["clamp_adjust"], r["after"]))
+                              r["repetition_mult"], r["effort_cost"], r.get("event_drain", 0.0),
+                              r.get("dislike_drain", 0.0), r["clamp_adjust"], r["after"]))
             if self.mood is not None:
                 m = self.mood["mood"]
                 conn.execute("INSERT OR REPLACE INTO mood_math(tick_id,inputs,valence,arousal,word) VALUES(?,?,?,?,?)",

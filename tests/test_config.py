@@ -249,3 +249,17 @@ def test_every_problem_is_reported_at_once(tmp_path):
     msg = _problems(tmp_path, "character.yaml", bad)
     assert msg.startswith("3 config problems") and msg.count("\n  - ") == 3
 
+
+
+def test_dislike_drain_settings_are_validated(tmp_path):
+    assert "dislike_drain.needs: 'fun' is not a need" in _problems(
+        tmp_path, "settings.yaml", lambda s: s["dislike_drain"].update(needs=["peace", "fun"]))
+    assert "dislike_drain.points_per_hour: must be a number >= 0" in _problems(
+        tmp_path / "b", "settings.yaml", lambda s: s["dislike_drain"].update(points_per_hour=-1))
+    assert "dislike_drain.max_matches: must be an integer >= 1" in _problems(
+        tmp_path / "c", "settings.yaml", lambda s: s["dislike_drain"].update(max_matches=0))
+
+
+def test_the_placeholder_world_has_an_event_with_drains():
+    events = load_config().world["events"]
+    assert any(e.get("drains") for e in events)

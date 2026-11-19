@@ -47,6 +47,7 @@ class BrainContext:
     short_memories: list[str] = field(default_factory=list)      # M5
     just_woke_from_doze: bool = False
     self_image: list[str] = field(default_factory=list)          # what it currently thinks it is (text only)
+    stale_here: bool = False                                     # it has stayed in this area for a while
 
 
 def seed_self_image(cfg: Config) -> list[str]:

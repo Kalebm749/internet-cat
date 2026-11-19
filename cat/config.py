@@ -67,7 +67,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -283,6 +283,22 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                 for x in rn:
                     if x not in needs:
                         errs.append(f"settings.yaml repetition_penalty.needs: '{x}' is not a need")
+        dd = st.get("dislike_drain")
+        if isinstance(dd, dict):
+            dn = dd.get("needs")
+            if not isinstance(dn, list) or not all(isinstance(x, str) for x in dn):
+                errs.append("settings.yaml dislike_drain.needs: must be a list of need ids")
+            else:
+                for x in dn:
+                    if needs and x not in needs:
+                        errs.append(f"settings.yaml dislike_drain.needs: '{x}' is not a need")
+            if not _num(dd.get("points_per_hour")) or dd["points_per_hour"] < 0:
+                errs.append("settings.yaml dislike_drain.points_per_hour: must be a number >= 0")
+            mm = dd.get("max_matches")
+            if isinstance(mm, bool) or not isinstance(mm, int) or mm < 1:
+                errs.append("settings.yaml dislike_drain.max_matches: must be an integer >= 1")
+        elif "dislike_drain" in st:
+            errs.append("settings.yaml dislike_drain: must be a mapping")
         if "stale_here" in character and (not isinstance(character["stale_here"], str)
                                           or not character["stale_here"].strip()):
             errs.append("character.yaml: stale_here must be non-empty text")
