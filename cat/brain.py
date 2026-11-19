@@ -75,10 +75,8 @@ def _obj(o: dict) -> str:
 def system_prompt(cfg: Config) -> str:
     c = cfg.character
     pron = c.get("pronoun", "they")
-    parts = [f"You are {c['name']}, a {c['species']}. You live in a small world and think and act "
-             f"as {c['name']} would. You are not an assistant; you are a creature living a life."]
-    if c.get("appearance"):
-        parts.append(f"Appearance: {c['appearance']}")
+    parts = [f"You are {c['name']}. You live in a small world and think and act "
+             f"as {c['name']} would. You are not an assistant; you are living a life."]
     if c.get("backstory"):
         parts.append(f"Backstory: {c['backstory']}")
     parts.append(f"Core traits (always true of you): {', '.join(c['core_traits'])}.")

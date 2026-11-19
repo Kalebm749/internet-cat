@@ -1,18 +1,18 @@
 # Config reference
 
-Three files in `config/`. Loaded and validated by `cat/config.py`; errors name the file and field.
+Three files in `config/`. Loaded and validated by `cat/config.py`. The validator collects **every** problem and refuses to start, printing them all (need ids in event effects exist, `tendency_labels` match `tendencies`, `start_area` exists, need flags are known, numeric ranges are valid, `self_image` is text only). Unknown top-level fields in `character.yaml` and `world.yaml` only produce a warning (e.g. a leftover `species`).
 
 ## character.yaml
 | Field | Req | Meaning |
 |---|---|---|
-| `name`, `species` | ✔ | Identity. |
+| `name` | ✔ | Identity. |
 | `pronoun` | | Used in prompts/web copy (default `they`). |
-| `appearance`, `backstory`, `voice` | | Prompt text for the brain. |
+| `backstory`, `voice` | | Optional prompt text for the brain. |
+| `self_image` | | `{seed: ""}`. Optional text hint for the entity's self-image; empty by default (the entity starts with none). Text only. Learned self-image lines are stored in the database, not here. |
 | `core_traits` | ✔ | List of strings. Never change. |
 | `tendencies` | ✔ | `{name: 0..1}`. Drift ≤ `sleep.tendency_max_step` per night. |
 | `tendency_labels` | | `{tendency: [low_label, high_label]}` for the web sliders. |
 | `start_area` | ✔ | Area id the creature starts in. |
-| `portrait` | | Static path of the portrait image (default `img/cat.png`). |
 | `needs` | ✔ | `{id: {...}}`, see below. Order is display order. |
 
 ### Need fields

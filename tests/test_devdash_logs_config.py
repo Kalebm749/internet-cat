@@ -231,7 +231,7 @@ def test_config_shows_a_diff_when_files_change_on_disk(cfg):
     assert "tick_interval_seconds: 90" in f["loaded"]                                    # the loaded copy is untouched
     # character.yaml: flagged, and noted as needing a restart
     p = cfg.config_dir / "character.yaml"
-    p.write_text(p.read_text().replace("name: Cat", "name: Mochi"))
+    p.write_text(p.read_text().replace("name: Gregorovitch", "name: Mochi"))
     c = data.config_view(cfg)
     assert c["changed"] == ["settings", "character"] and c["files"][1]["applies"] == "on restart" and "+name: Mochi" in c["files"][1]["diff"]
 
@@ -266,7 +266,7 @@ def test_reload_settings_button_flow_clears_the_settings_diff(cfg):
     e, b = started(cfg)
     edit_settings(cfg, tick_interval_seconds=12)
     p = cfg.config_dir / "character.yaml"
-    p.write_text(p.read_text().replace("name: Cat", "name: Mochi"))
+    p.write_text(p.read_text().replace("name: Gregorovitch", "name: Mochi"))
     c = client(cfg)
     html = c.get("/config").text
     assert "Changed on disk since the engine loaded them" in html and "settings, character" in html and 'data-command="reload_settings"' in html

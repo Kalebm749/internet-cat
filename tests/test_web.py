@@ -42,7 +42,7 @@ def test_missing_db_shows_empty_states(cfg):
     c = client(cfg)
     r = c.get("/")
     assert r.status_code == 200
-    assert "the journal is empty. cat hasn’t woken up yet." in r.text
+    assert "the journal is empty. gregorovitch hasn’t woken up yet." in r.text
     assert "no keepsakes yet." in r.text
     s = c.get("/api/state").json()
     assert s["diary"] == [] and s["keepsakes"] == [] and s["latest_tick_id"] == 0
@@ -71,7 +71,7 @@ def test_state_shape(cfg, seeded):
     s = client(cfg).get("/api/state").json()
     assert {"creature", "time", "location", "status", "mood", "energy", "needs", "tendencies",
             "preferences", "latest_tick_id", "diary", "keepsakes"} <= set(s)
-    assert {"name", "species", "core_traits"} <= set(s["creature"])
+    assert {"name", "core_traits"} <= set(s["creature"])
     assert {"sim_time", "day_number", "label", "phase"} <= set(s["time"])
     assert s["time"]["phase"] in ("dawn", "day", "dusk", "night")
     assert re.match(r"^\w+day, Day \d+ · \d{1,2}:\d\d (am|pm)$", s["time"]["label"])

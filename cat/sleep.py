@@ -138,7 +138,7 @@ def day_log(conn: Connection, cfg: Config) -> tuple[list[str], int]:
 # ---------- prompts ----------
 def _sys(cfg: Config, job: str) -> str:
     c = cfg.character
-    return (f"You are the sleeping mind of {c['name']}, a {c['species']} "
+    return (f"You are the sleeping mind of {c['name']} "
             f"(core traits: {', '.join(c['core_traits'])}). {job} Reply with JSON only.")
 
 

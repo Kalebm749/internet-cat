@@ -1,12 +1,13 @@
-# PLACEHOLDER — replace. A generic cat; engine works with any character that follows the schema.
-name: Cat
+# PLACEHOLDER — replace. The engine works with any character that follows the schema.
+# Nothing here says what the entity is or looks like: it starts with no self-image (see self_image).
+name: Gregorovitch
 pronoun: she
-species: small grey cat
-appearance: "A small grey cat with white paws."
-backstory: "PLACEHOLDER backstory."
+backstory: "PLACEHOLDER backstory."    # optional
+voice: "short, simple sentences"       # optional
 core_traits: [curious, playful]        # never change
-voice: "short, simple sentences"
-portrait: img/cat.png
+
+self_image:                            # optional text hint; empty by default. Learned lines live in the database.
+  seed: ""
 
 tendencies:                            # 0..1, drift a little each night
   boldness: 0.5

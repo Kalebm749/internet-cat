@@ -4,9 +4,10 @@ from __future__ import annotations
 import argparse
 import logging
 import random
+import sys
 
 from cat import clock, db, logs
-from cat.config import load_config, sibling_overrides
+from cat.config import ConfigError, load_config, sibling_overrides
 from cat.engine import Engine
 from cat.llm import LLMBackend, MockBackend
 
@@ -51,7 +52,11 @@ def main(argv: list[str] | None = None) -> int:
     overrides = sibling_overrides(args.db) if args.db else {}      # --db: keep devdash.db / logs / heartbeat beside it
     if args.ollama_host:
         overrides["ollama_host"] = args.ollama_host
-    cfg = load_config(args.config_dir, overrides or None)
+    try:
+        cfg = load_config(args.config_dir, overrides or None)
+    except ConfigError as e:
+        print(f"refusing to start: {e}", file=sys.stderr)
+        return 2
     if logs.structured_enabled():          # containers: JSON lines to stdout + data/logs/engine.jsonl
         logs.setup_logging("engine", cfg)
     else:

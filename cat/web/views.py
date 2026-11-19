@@ -287,12 +287,12 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
 
     diary, next_before = diary_view(conn, cfg)
     keepsakes, more = keepsakes_view(conn, cfg)
-    portrait = ch.get("portrait", "img/cat.png")
+    portrait = "img/cat.png"      # placeholder until the abstract presence replaces it
     asleep_img = Path(portrait).with_name(Path(portrait).stem + "-asleep" + Path(portrait).suffix)
     mood = st["mood"]
     pad_x, pad_y = (mood["valence"] + 1) / 2 * 100, (1 - mood["arousal"]) * 100
     return {
-        "creature": {"name": ch["name"], "species": ch["species"], "core_traits": ch["core_traits"],
+        "creature": {"name": ch["name"], "core_traits": ch["core_traits"],
                      "pronoun": ch.get("pronoun", "they")},
         "time": {"sim_time": st["sim_time"], "day_number": clock.day_number(first, dt),
                  "label": f"{clock.day_label(first, dt)} · {clock.time_label(dt)}",
@@ -306,7 +306,7 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
                                  f"brain: last seen {last_seen}" if last_seen else "brain: not seen yet"},
         "portrait": {"src": f"/static/{portrait}",
                      "asleep_src": f"/static/{asleep_img.as_posix()}" if (STATIC / asleep_img).exists() else None,
-                     "caption": f"{ch['species']}, in {area_name}"},
+                     "caption": f"in {area_name}"},
         "mood": {"word": mood["word"], "description": mood["description"],
                  "valence": mood["valence"], "arousal": mood["arousal"],
                  "pad_x": round(pad_x, 1), "pad_y": round(pad_y, 1),

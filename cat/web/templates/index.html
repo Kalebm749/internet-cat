@@ -36,7 +36,7 @@
         <div class="frame">
           <img id="portrait-img" src="{{ s.portrait.asleep_src if s.status.state != 'awake' and s.portrait.asleep_src else s.portrait.src }}"
                data-awake="{{ s.portrait.src }}" data-asleep="{{ s.portrait.asleep_src or '' }}"
-               alt="{{ s.creature.name }}, {{ s.creature.species }}" width="240" height="240">
+               alt="{{ s.creature.name }}" width="240" height="240">
           <span class="zzz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
         </div>
         <figcaption>
