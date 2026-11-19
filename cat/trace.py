@@ -23,7 +23,7 @@ log = logging.getLogger("cat.trace")
 
 KIND = {"brain": "brain", "narrator": "narrator", "consolidate": "sleep_consolidate",
         "tendencies": "sleep_tendencies", "preferences": "sleep_preferences",
-        "self_image": "sleep_self_image", "projects": "sleep_projects", "director": "director"}
+        "self_image": "sleep_self_image", "projects": "sleep_projects", "director": "director", "create": "create"}
 
 
 def _now() -> str:

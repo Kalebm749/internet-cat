@@ -232,3 +232,87 @@ def test_working_on_a_project_does_not_make_a_place_stale(cfg):
     for _ in range(3):
         e2.tick()
     assert e2._stale_here()
+
+
+# ---------- the piece it makes, in its own voice ----------
+def creating(cfg, text="Deep roots under the old tree.", **kw):
+    e, b = make(cfg, **kw)
+    calls = []
+    b.handlers["create"] = lambda m, s: (calls.append(m), {"kind": "sketch", "title": "Roots", "text": text})[1]
+    return e, b, calls
+
+
+def test_a_milestone_asks_the_entity_itself_to_make_something(cfg):
+    e, b, calls = creating(cfg)
+    add_project(e, progress=20.0, note="the trunk is done")
+    info = e.tick()
+    assert len(calls) == 1
+    system, user = calls[0][0]["content"], calls[0][1]["content"]
+    assert system == brain.system_prompt(cfg) and cfg.character["name"] in system        # its voice and identity, not the narrator's
+    assert "drawing the old tree" in user and "likes it" in user and "You have just reached a milestone in it." in user
+    a = e.conn.execute("SELECT * FROM artifacts").fetchone()
+    assert (a["project_id"], a["tick_id"], a["kind"], a["title"], a["text"]) == (1, info["id"], "sketch", "Roots", "Deep roots under the old tree.")
+    assert e.conn.execute("SELECT kind FROM llm_calls WHERE kind='create'").fetchone()
+
+
+def test_finishing_asks_for_a_final_piece_and_says_so(cfg):
+    e, b, calls = creating(cfg)
+    add_project(e, progress=99.0)
+    e.tick()
+    assert "You have just finished it." in calls[0][1]["content"] and "It is finished." in calls[0][1]["content"]
+    assert e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 1
+
+
+def test_an_ordinary_step_makes_no_piece_and_no_call(cfg):
+    e, b, calls = creating(cfg)
+    add_project(e, progress=0.0)                          # 0 -> 8: no milestone
+    e.tick()
+    assert calls == [] and e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
+
+
+def test_a_failed_creation_is_just_no_piece_and_the_progress_still_counts(cfg):
+    from cat.llm import BackendError
+    e, b, calls = creating(cfg)
+    def down(m, s): raise BackendError("down")
+    b.handlers["create"] = down
+    add_project(e, progress=20.0)
+    info = e.tick()
+    assert info["kind"] == "tick" and PJ.get(e.conn, 1)["progress"] > 25
+    assert e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
+
+
+def test_artifacts_can_be_turned_off(cfg):
+    cfg.settings["projects"]["artifacts_enabled"] = False
+    e, b, calls = creating(cfg)
+    add_project(e, progress=20.0)
+    e.tick()
+    assert calls == [] and e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
+
+
+def test_the_piece_is_cleaned_and_a_blank_one_is_dropped(cfg):
+    e, b, calls = creating(cfg, text="  words   " + "x" * 5000)
+    add_project(e, progress=20.0)
+    e.tick()
+    t = e.conn.execute("SELECT text FROM artifacts").fetchone()[0]
+    assert t.startswith("words x") and len(t) == cfg.settings["projects"]["artifact_max_length"]
+    cfg.settings["db_path"] = cfg.settings["db_path"] + "2"
+    e2, b2, calls2 = creating(cfg, text="   ")
+    add_project(e2, progress=20.0)
+    e2.tick()
+    assert e2.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
+
+
+def test_the_creation_prompt_is_editable_yaml(cfg):
+    cfg.prompts["brain"]["milestone_reached"] = "A big step!"
+    e, b, calls = creating(cfg)
+    add_project(e, progress=20.0)
+    e.tick()
+    assert "A big step!" in calls[0][1]["content"]
+
+
+def test_the_narrator_never_writes_the_piece(cfg):
+    e, b, calls = creating(cfg)
+    b.handlers["narrator"] = lambda m, s: {"outcome": "x", "artifact": {"kind": "k", "title": "t", "text": "narrator wrote this"}}
+    add_project(e, progress=0.0)
+    e.tick()
+    assert e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0

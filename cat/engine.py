@@ -349,6 +349,11 @@ class Engine:
             mult = self._repetition_multiplier(b["move"].key, st["area"])
             # project work is exempt from the repetition penalty: its progress (tapering) replaces it
             adv = PJ.plan_advance(cfg, PJ.active(self.conn), n.get("project"))
+            if adv and adv.get("ok") and cfg.settings["projects"]["artifacts_enabled"] \
+                    and (adv["milestones"] or adv["completed"]) and not adv["artifact"]:
+                proj = PJ.get(self.conn, adv["id"])
+                with self.tracer.stage("create"):
+                    adv["artifact"] = PJ.create_artifact(self.backend, cfg, proj, adv) if proj else None
             exempt = bool(adv and adv.get("ok") and adv["advanced"])
             if exempt:
                 mult = 1.0

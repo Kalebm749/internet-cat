@@ -21,6 +21,14 @@ brain:
       - why: why you chose it, in your own words
       - feeling: negative, neutral or positive: your overall feeling right now
       Do not describe results or consequences of your move, and do not invent how needs or objects change: the world decides what happens. Refer to yourself as {pronoun} only if you need to; speak as yourself.
+  create: |-                                                  # {title} {why} {stage} {note} {milestone}; sent after the brain's system prompt, in its own voice
+    You have been working on a project of your own: {title}{why}. It is {stage}.{note}
+    {milestone}
+    Make something now, in your own voice: a piece you made today. Write the piece itself in a few sentences (a passage, what the drawing shows, how the melody goes, what you found out). Reply with JSON only: {{"kind": "<what it is, one or two words>", "title": "<a short title>", "text": "<the piece itself>"}}
+  create_why: " ({why})"                                      # {why}
+  create_note: " Where you got to: {note}"                    # {note}
+  milestone_reached: "You have just reached a milestone in it."
+  milestone_finished: "You have just finished it."
   situation:                                                  # the "user" message built every tick
     heading_who: "## Who you are right now"
     self_image: "What you currently think you are (your self-image): {self_image}"   # {self_image}

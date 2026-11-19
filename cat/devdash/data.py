@@ -272,7 +272,7 @@ def ticks_list(cfg: Config, f: dict, page: int = 1, limit: int | None = None) ->
 
 
 # ---------- Tick detail ----------
-STAGE_ORDER = ["world", "recall", "brain", "narrator", "apply", "record", "sleep"]
+STAGE_ORDER = ["world", "director", "recall", "brain", "narrator", "create", "apply", "record", "sleep"]
 
 
 def _llm_view(c: dict) -> dict:

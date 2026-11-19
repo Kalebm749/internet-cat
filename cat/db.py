@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS tick_traces(
 
 CREATE TABLE IF NOT EXISTS llm_calls(
   id INTEGER PRIMARY KEY, tick_id INT,
-  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | sleep_self_image | sleep_projects | director | other
+  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | sleep_self_image | sleep_projects | director | create | other
   model TEXT, options JSON, system_prompt TEXT, user_prompt TEXT, schema JSON,
   raw_response TEXT, parsed JSON, valid_json INT, attempt INT, error TEXT,
   prompt_tokens INT, completion_tokens INT,

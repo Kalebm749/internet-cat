@@ -287,3 +287,10 @@ def test_mood_numbers_are_validated(tmp_path):
 def test_there_is_no_arousal_setting():
     mood = load_config().settings["mood"]
     assert not any("arousal" in k for k in mood) and "valence_bands" not in mood
+
+
+def test_artifacts_enabled_and_work_bucket_are_validated(tmp_path):
+    assert "projects.artifacts_enabled: must be true or false" in _problems(
+        tmp_path, "settings.yaml", lambda s: s["projects"].update(artifacts_enabled="yes"))
+    assert "projects.work_bucket: must be a key of progress_values" in _problems(
+        tmp_path / "b", "settings.yaml", lambda s: s["projects"].update(work_bucket="+++"))

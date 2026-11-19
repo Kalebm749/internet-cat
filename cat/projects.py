@@ -216,3 +216,36 @@ def brain_view(cfg: Config, conn: Connection, now: str) -> list[dict]:
 def narrator_view(cfg: Config, conn: Connection) -> list[dict]:
     return [{"id": p["id"], "title": p["title"], "why": p["why"], "stage": stage_word(p["progress"], cfg),
              "note": p["note"]} for p in active(conn)]
+
+
+# ---------- the piece it makes, in its own voice ----------
+CREATE_SCHEMA = {"type": "object", "properties": {"kind": {"type": "string"}, "title": {"type": "string"},
+                                                  "text": {"type": "string"}},
+                 "required": ["kind", "title", "text"]}
+
+
+def create_artifact(backend, cfg: Config, proj: dict, adv: dict) -> dict | None:
+    """After a milestone or on finishing, ask the entity itself (the brain's voice and identity, not the
+    narrator's) to make something. Returns a cleaned artifact or None; a failed call is just no piece."""
+    from cat import brain
+    from cat import prompts as P
+    from cat.llm import BackendError, call_json
+    pc = cfg.settings["projects"]
+    R = lambda key, **kw: P.render(cfg, "brain." + key, **kw)
+    note = adv.get("note") or proj.get("note") or ""
+    user = R("create", title=proj["title"], why=R("create_why", why=proj["why"]) if proj.get("why") else "",
+             stage="finished" if adv["completed"] else stage_word(adv["progress_after"], cfg),
+             note=R("create_note", note=note) if note else "",
+             milestone=R("milestone_finished") if adv["completed"] else R("milestone_reached"))
+    msgs = [{"role": "system", "content": brain.system_prompt(cfg)}, {"role": "user", "content": user}]
+    try:
+        raw = call_json(backend, "create", cfg.settings["brain_model"], msgs, CREATE_SCHEMA,
+                        lambda r: r, cfg.settings["llm_retries"])
+    except BackendError as e:
+        log.warning("making a piece failed (%s): no artifact this time", e)
+        return None
+    text = " ".join(str(raw.get("text") or "").split())[:pc["artifact_max_length"]].strip()
+    if not text:
+        return None
+    return {"kind": _clean(raw.get("kind"), 30) or "piece", "title": _clean(raw.get("title"), pc["title_max_length"]) or proj["title"],
+            "text": text}

@@ -9,7 +9,7 @@ embed_model: nomic-embed-text
 ollama_think: false            # qwen3: disable thinking so JSON `format` output stays clean
 llm_timeout_seconds: 120
 health_timeout_seconds: 3
-llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5, director: 0.8}
+llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5, director: 0.8, create: 0.9}
 llm_num_ctx: 4096
 error_backoff_seconds: 30      # extra wait after a tick that raised an unexpected error
 llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
@@ -106,6 +106,7 @@ dislike_drain:
 projects:
   max_active: 1                # projects it can be working on at once
   work_bucket: "+"             # progress bucket for one "work on" move (a key of progress_values)
+  artifacts_enabled: true      # at each milestone and on finishing, a call in its own voice makes the piece
   progress_values: {"+": 8, "++": 16}   # progress points per narrator bucket (0..100 per project)
   taper: 0.5                   # a step is multiplied by 1 - taper*progress/100: slower as it nears the end
   milestone_every: 25          # crossing each multiple of this is a notable moment (a short-term memory)

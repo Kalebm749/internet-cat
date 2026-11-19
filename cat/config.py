@@ -352,6 +352,8 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                 errs.append("settings.yaml projects.idle_hours_note: must be a number >= 0")
             if not _num(pj.get("taper")) or not 0 <= pj["taper"] <= 1:
                 errs.append("settings.yaml projects.taper: must be a number 0..1")
+            if not isinstance(pj.get("artifacts_enabled"), bool):
+                errs.append("settings.yaml projects.artifacts_enabled: must be true or false")
             if pj.get("work_bucket") not in (pj.get("progress_values") or {}):
                 errs.append("settings.yaml projects.work_bucket: must be a key of progress_values")
             pv = pj.get("progress_values")
