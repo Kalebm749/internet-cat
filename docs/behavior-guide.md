@@ -195,7 +195,7 @@ Sim hours from the starting levels until each band is crossed:
 | sustenance | 70 | 5 | 6 h | 11 h |
 | wonder | 60 | 4 | 5 h | 11.25 h |
 | joy | 60 | 6 | 3.3 h | 7.5 h |
-| peace | 70 | 2 | 15 h | 27.5 h |
+| peace | 70 | 3 | 10 h | 18.3 h |
 | curiosity | 50 | 5 | 2 h | 7 h |
 
 At ~13 sim hours per real hour, an entity that never eats and never has a good moment is empty on sustenance about 50 real minutes in. Gains (+15/+30) from moves are what push levels back up. To reach `full` (≥ 75) a need must be fed well above its start.

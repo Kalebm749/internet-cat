@@ -23,6 +23,7 @@ objects:
   - {id: cushion, name: a cushion,        area: living_room, tags: [soft, movable], state: {}}
   - {id: bowl,    name: a bowl of fish,   area: kitchen,     tags: [edible, movable], state: {}}
   - {id: ball,    name: a red ball,       area: hallway,     tags: [toy, movable], state: {}}
+  - {id: yarn,    name: a loose ball of yarn, area: garden, tags: [toy, movable], state: {}}
   - {id: tree,    name: the old tree,     area: garden,      tags: [climbable], state: {}}
   - {id: button,  name: a shiny button,   area: hallway,     tags: [shiny, movable], state: {}}
   - {id: books,   name: a stack of old books, area: living_room, tags: [movable], state: {}}
@@ -34,5 +35,5 @@ events:
   - {text: "It starts to rain.", chance: 0.03, set_weather: rain, drains: {joy: 3}}   # drains: points the world takes from needs when it fires
   - {text: "The rain stops.", chance: 0.08, only_weather: rain, set_weather: clear}
   - {text: "A bird lands on the windowsill.", chance: 0.04, area: living_room, hours: [8, 18]}
-  - {text: "Someone leaves a bowl of fish.", chance: 0.03, area: kitchen,
+  - {text: "Someone leaves a bowl of fish.", chance: 0.08, area: kitchen,
      spawn: {name: a bowl of fish, tags: [edible, movable], area: kitchen}}

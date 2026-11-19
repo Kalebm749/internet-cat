@@ -6,7 +6,9 @@ in each band, so decay rates, move gains and sleep can be tuned from numbers ins
 
 Policies (what the stand-in brain picks from the menu; none looks at needs, like the real brain's menu):
   random  a uniformly random move       first  always the first move on the menu (the worst case: no variety)
-  cycle   the menu in rotation          all    each of the above
+  cycle   the menu in rotation          needy  an upper bound: sleeps when tired, else feeds the lowest need
+                                         (a yardstick only; the real engine never ranks moves by need)
+  all     each of the above
 Reads like: "food: empty 3%, low 20%, okay 50%, full 27%". A need that sits in 'empty' for a long time under
 `random` is probably decaying too fast, or nothing offered can restore it. Uses a temporary database."""
 import argparse
@@ -23,21 +25,56 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from cat import character  # noqa: E402
 from cat import db  # noqa: E402
+from cat import moves as MV  # noqa: E402
 from cat.config import load_config  # noqa: E402
 from cat.engine import Engine  # noqa: E402
 from cat.llm import MockBackend  # noqa: E402
 
 MENU = re.compile(r"^- \[(m\d+)\] (.+)$", re.M)
-POLICIES = ("random", "first", "cycle")
+POLICIES = ("random", "first", "cycle", "needy")
 
 
-def brain_for(policy: str, seed: int):
+def needy_pick(e, items):
+    """An upper bound, NOT how the real brain or engine behaves (code never ranks moves by need): sleep
+    when tired and allowed, else the move that feeds the lowest need most. If even this policy cannot keep
+    the needs up, the moves/decay numbers are wrong, not the brain."""
+    menu = {m.id: m for m in e._menu()}
+    st = e.state
+    needs = st["needs"]
+    low = min(needs, key=lambda k: needs[k])
+    gv = e.cfg.settings["gain_values"]
+    best, best_score = None, 0.0
+    goes = [mid for mid, _ in items if menu[mid].verb == "go"]
+    can_feed = False
+    for mid, _label in items:
+        mv = menu[mid]
+        if mv.verb == "sleep":
+            if st["energy"] < 0:
+                return mid
+            continue
+        pool = e.world.here(st["area"]) + e.world.inventory()
+        tags = next((o["tags"] for o in pool if o["id"] == mv.target_id), []) if mv.target_id else []
+        res = MV.resolve(e.cfg, mv, target_tags=tags, rng=random.Random(0), novel=False)
+        pts = {n: gv.get(b, 0) for n, b in res["gains"].items()}
+        if pts.get(low, 0) > 0:
+            can_feed = True
+        score = pts.get(low, 0) * 10 + sum(pts.values())       # the lowest need first, then anything useful
+        if score > best_score:
+            best, best_score = mid, score
+    if not can_feed and goes:                      # nothing here feeds it: look elsewhere
+        return random.Random(st["sim_time"]).choice(goes)
+    return best or items[0][0]
+
+
+def brain_for(policy: str, seed: int, holder: dict):
     rng = random.Random(seed)
     counter = itertools.count()
 
     def handler(messages, _seed):
         items = MENU.findall(messages[-1]["content"])
-        if policy == "first":
+        if policy == "needy":
+            mid = needy_pick(holder["engine"], items)
+        elif policy == "first":
             mid = items[0][0]
         elif policy == "cycle":
             mid = items[next(counter) % len(items)][0]
@@ -57,8 +94,10 @@ def run(config_dir, policy: str, seed: int, ticks: int) -> dict:
         b = MockBackend(seed=seed)
         b.need_ids = list(cfg.character["needs"])
         b.tendency_names = list(cfg.character["tendencies"])
-        b.handlers["brain"] = brain_for(policy, seed)
+        holder: dict = {}
+        b.handlers["brain"] = brain_for(policy, seed, holder)
         e = Engine(cfg, b, rng=random.Random(seed))
+        holder["engine"] = e
         e.run(ticks=ticks, interval=0)
         rows = e.conn.execute("SELECT kind, needs_after, energy_after FROM ticks ORDER BY id").fetchall()
         sleeps = e.conn.execute("SELECT COUNT(*) FROM sleep_log").fetchone()[0]

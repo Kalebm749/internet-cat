@@ -53,7 +53,7 @@ verbs:
     any_tags: [soft, warm]
     effort: low
     minutes: [20, 60]
-    effects: {peace: "++"}
+    effects: {peace: "+"}
     does: none
     outcome: "You rested on {target}."
   climb:
