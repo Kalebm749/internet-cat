@@ -49,6 +49,12 @@ brain:
     heading_memories: "## Memories"
     remember: "You remember: {memories}"                      # {memories}
     earlier_today: "Earlier today: {memories}"                # {memories}
+    heading_project: "## What you're in the middle of"
+    project: "A long-term project of yours: {title}{why}. It is {stage}.{note}{idle}"   # {title} {why} {stage} {note} {idle}
+    project_why: " ({why})"                                   # {why}; added when the project has a reason
+    project_note: " Where you got to: {note}"                 # {note}; added once it has a running note
+    project_idle: " You last worked on it {ago}."             # {ago}; added when it has been left for a while
+    project_new: " You have not started on it yet."           # added until its first piece of work
     closing: "What do you do next? Reply with JSON."
 
 narrator:
@@ -59,6 +65,7 @@ narrator:
     - outcome: 1-2 sentences, what actually happened
     - gains: for each need the action helped, "+" (a little) or "++" (a lot). Judge from what actually happened and from each need's meaning (listed below the world); omit or use "0" for needs it did not help. You only ever add to a need. Never give negative values: the world, not you, drains needs.
     {needs_list}
+    - project: OPTIONAL. Include it ONLY when the action really worked on one of the projects listed below the world: {{id, advance, note, artifact}}. id: the project's id. advance: "+" (a little) or "++" (a lot), judged from what actually happened. note: a few words on where the project stands now. artifact (optional): include it only when the entity actually made something (a drawing, a passage, a melody, a finding): {{kind, title, text}}, with `text` the content itself in a few sentences. Leave project out for anything else.
     - effort: low, medium or high (physical exertion)
     - duration: minutes it took, {sim_minutes_min} to {sim_minutes_max}
     - changes: the ONLY way the saved world may change. Use only these ops, and only the ids shown in the world description:
@@ -72,6 +79,10 @@ narrator:
     Only list a change if the story really requires it. If nothing changes, use an empty list. If your outcome text says the creature picked something up, ate it, moved, or built something, include the matching change.
   needs_heading: "Needs (what each means, and how it is right now):"
   need_line: "- {need}: {meaning} Right now: {band}."       # {need} {meaning} {band}; the band is a word, never a number
+  projects_heading: "Projects it is working on (the number is the id to use in `project`):"
+  project_line: "- [{id}] {title}{why}. It is {stage}.{note}"   # {id} {title} {why} {stage} {note}
+  project_why: " ({why})"                                   # {why}
+  project_note: " Where it stands: {note}"                  # {note}
   need_consume_note: " (rises ONLY if the creature eats something edible: use consume)"   # appended to the need that only eating raises
   user: |-                                                    # {context} {action}
     {context}

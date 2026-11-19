@@ -59,6 +59,15 @@ def apply_drains(needs: dict[str, float], drains: dict[str, float] | None) -> di
     return {k: clamp(v - (drains or {}).get(k, 0.0)) for k, v in needs.items()}
 
 
+def add_points(needs: dict[str, float], points: dict[str, float]) -> dict[str, float]:
+    """Code-side additions (e.g. finishing a project), clamped 0..100. Unknown need ids are ignored."""
+    out = dict(needs)
+    for nid, pts in (points or {}).items():
+        if nid in out:
+            out[nid] = clamp(out[nid] + max(0.0, float(pts)))
+    return out
+
+
 def spend_energy(energy: float, effort: str | None, cfg: Config) -> float:
     """Effort spends energy (a separate resource, -50..50)."""
     return clamp_energy(energy - cfg.settings["effort_energy_cost"].get(effort, 0))

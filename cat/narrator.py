@@ -22,6 +22,12 @@ def schema(cfg: Config) -> dict:
             "gains": {"type": "object",
                       "properties": {n: {"type": "string", "enum": buckets}
                                      for n in cfg.character["needs"]}},
+            "project": {"type": "object", "properties": {
+                "id": {"type": "integer"},
+                "advance": {"type": "string", "enum": sorted(cfg.settings["projects"]["progress_values"]) + ["0"]},
+                "note": {"type": "string"},
+                "artifact": {"type": "object", "properties": {
+                    "kind": {"type": "string"}, "title": {"type": "string"}, "text": {"type": "string"}}}}},
             "effort": {"type": "string", "enum": EFFORTS},
             "duration": {"type": "integer"},
             "changes": {"type": "array", "items": {
@@ -62,7 +68,8 @@ def describe_needs(cfg: Config, needs: dict[str, float]) -> str:
 
 
 def describe_world(cfg: Config, sim_time: str, area_id: str, weather: str,
-                   here: list[dict], inventory: list[dict], needs: dict[str, float] | None = None) -> str:
+                   here: list[dict], inventory: list[dict], needs: dict[str, float] | None = None,
+                   projects: list[dict] | None = None) -> str:
     areas = cfg.world["areas"]
     dt = clock.parse(sim_time)
 
@@ -77,6 +84,12 @@ def describe_world(cfg: Config, sim_time: str, area_id: str, weather: str,
             + "\nInventory:\n" + "\n".join([fmt(o) for o in inventory] or ["(empty)"]))
     if needs is not None:
         text += "\n" + describe_needs(cfg, needs)
+    if projects:
+        R = lambda key, **kw: P.render(cfg, "narrator." + key, **kw)
+        text += "\n" + R("projects_heading") + "\n" + "\n".join(
+            R("project_line", id=p["id"], title=p["title"], stage=p["stage"],
+              why=R("project_why", why=p["why"]) if p["why"] else "",
+              note=R("project_note", note=p["note"]) if p["note"] else "") for p in projects)
     return text
 
 
@@ -100,8 +113,9 @@ def parse(raw: dict, cfg: Config) -> dict[str, Any]:
         duration = s["sim_minutes_per_tick_default"]
     duration = max(s["sim_minutes_min"], min(s["sim_minutes_max"], duration))
     changes = raw.get("changes") if isinstance(raw.get("changes"), list) else []
+    project = raw.get("project") if isinstance(raw.get("project"), dict) else None
     return {"outcome": outcome, "gains": gains, "effort": effort, "duration": duration,
-            "changes": [c for c in changes if isinstance(c, dict)]}
+            "changes": [c for c in changes if isinstance(c, dict)], "project": project}
 
 
 def resolve(backend: LLMBackend, cfg: Config, action: str, context: str) -> dict[str, Any]:

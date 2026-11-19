@@ -184,3 +184,35 @@ def commit_advance(conn: Connection, adv: dict, tick_id: int, sim_time: str) -> 
                            "VALUES(?,?,?,?,?,?)",
                            (adv["id"], tick_id, a["kind"], a["title"], a["text"], sim_time)).lastrowid
     return aid
+
+
+# ---------- what the LLMs are told ----------
+def ago_phrase(hours: float) -> str:
+    if hours < 1:
+        return "a short while ago"
+    if hours < 24:
+        return f"about {int(hours)} hour{'s' if int(hours) != 1 else ''} ago"
+    if hours < 48:
+        return "about a day ago"
+    return f"about {int(hours // 24)} days ago"
+
+
+def brain_view(cfg: Config, conn: Connection, now: str) -> list[dict]:
+    """The active projects as the brain sees them: words and the running note, never the progress number."""
+    from cat import clock
+    pc = cfg.settings["projects"]
+    out = []
+    for p in active(conn):
+        idle = ""
+        if p["last_worked"]:
+            hours = (clock.parse(now) - clock.parse(p["last_worked"])).total_seconds() / 3600
+            if hours >= pc["idle_hours_note"]:
+                idle = ago_phrase(hours)
+        out.append({"title": p["title"], "why": p["why"], "stage": stage_word(p["progress"], cfg),
+                    "note": p["note"], "idle": idle, "untouched": not p["last_worked"]})
+    return out
+
+
+def narrator_view(cfg: Config, conn: Connection) -> list[dict]:
+    return [{"id": p["id"], "title": p["title"], "why": p["why"], "stage": stage_word(p["progress"], cfg),
+             "note": p["note"]} for p in active(conn)]

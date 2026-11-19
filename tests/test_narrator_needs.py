@@ -74,7 +74,8 @@ def test_system_prompt_says_the_narrator_only_adds(cfg):
 
 def test_output_schema_is_unchanged(cfg):
     sch = narrator.schema(cfg)
-    assert set(sch["properties"]) == {"outcome", "gains", "effort", "duration", "changes"}
+    assert set(sch["properties"]) == {"outcome", "gains", "effort", "duration", "changes", "project"}
+    assert set(sch["required"]) == {"outcome", "gains", "effort", "duration", "changes"}     # project is optional
     assert set(sch["properties"]["gains"]["properties"]) == set(cfg.character["needs"])
     assert sorted(sch["properties"]["gains"]["properties"]["joy"]["enum"]) == ["+", "++", "0"]
 

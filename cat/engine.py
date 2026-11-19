@@ -15,6 +15,7 @@ from typing import Callable
 from collections import deque
 
 from cat import brain, character, clock, db, downtime, effects, logs, narrator, sleep
+from cat import projects as PJ
 from cat.config import Config, load_config
 from cat.devcontrol import DevControl
 from cat.devqueue import CommandError
@@ -156,7 +157,7 @@ class Engine:
             objects_here=self.world.here(st["area"]), inventory=self.world.inventory(),
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
             recent_actions=recent, preferences=prefs, self_image=self._self_image_lines(),
-            stale_here=self._stale_here(),
+            stale_here=self._stale_here(), projects=PJ.brain_view(cfg, self.conn, st["sim_time"]),
             just_woke_from_doze=self.last_kind in ("doze", "catchup"),
             long_memories=[m["text"] for m in (long_mems or [])],
             short_memories=[m["text"] for m in self.memory.recent_short()])
@@ -177,7 +178,8 @@ class Engine:
     def _narrator_context(self) -> str:
         st = self.state
         return narrator.describe_world(self.cfg, st["sim_time"], st["area"], self.world.weather,
-                                       self.world.here(st["area"]), self.world.inventory(), st["needs"])
+                                       self.world.here(st["area"]), self.world.inventory(), st["needs"],
+                                       PJ.narrator_view(self.cfg, self.conn))
 
     def _repetition_multiplier(self, action: str, area: str) -> float:
         """Embed the action; shrink the gains of the repetition-penalised needs if it resembles a
@@ -296,6 +298,11 @@ class Engine:
             minutes = n["duration"]
             fx = effects.apply_changes(n["changes"], self.world, st["area"], cfg, now)
             mult = self._repetition_multiplier(b["action"], st["area"])
+            # project work is exempt from the repetition penalty: its progress (tapering) replaces it
+            adv = PJ.plan_advance(cfg, PJ.active(self.conn), n.get("project"))
+            exempt = bool(adv and adv.get("ok") and adv["advanced"])
+            if exempt:
+                mult = 1.0
             needs = character.decay(before, minutes, cfg)
             drains = character.event_drains(fired)
             needs = character.apply_drains(needs, drains)
@@ -303,7 +310,11 @@ class Engine:
             needs = character.apply_drains(needs, dis)
             needs = character.apply_gains(needs, n["gains"], cfg,
                                           consumed=fx.consumed, multiplier=mult)
+            if adv and adv.get("ok") and adv["completed"]:        # finishing a project feels good (code, not the narrator)
+                needs = character.add_points(needs, cfg.settings["projects"]["completion_gains"])
             energy = character.spend_energy(st["energy"], n["effort"], cfg)
+            if adv is not None:
+                self.tracer.set_project({**adv, "repetition_exempt": exempt})
             self.tracer.set_effects(fx.log)
             self.tracer.set_need_math(character.explain_needs(
                 before, minutes, n["gains"], cfg, needs, consumed=fx.consumed, multiplier=mult,
@@ -315,6 +326,7 @@ class Engine:
                    "gains": n["gains"], "effort": n["effort"], "duration": minutes,
                    "changes": fx.applied, "rejected": fx.rejected}
         else:
+            adv = None
             minutes = s["doze"]["sim_minutes"]
             needs = character.decay(before, minutes, cfg)
             drains = character.event_drains(fired)
@@ -349,6 +361,13 @@ class Engine:
         if result:
             why = notable_reasons(cfg, before, needs, feeling,
                                   row["changes"], row["rejected"])
+            if adv and adv.get("ok"):
+                if adv["completed"]:
+                    why.append(f"finished a project: {adv['title']}")
+                elif adv["milestones"]:
+                    why.append(f"a milestone in a project: {adv['title']}")
+                if adv["artifact"]:
+                    why.append("made something")
             if why:
                 t = clock.time_label(dt)
                 text = (f"{t}, {cfg.world['areas'][st['area']]['name']}: {row['action']}. "
@@ -359,7 +378,7 @@ class Engine:
                     short_mem = self.memory.prepare(text, importance_for(cfg, len(why)), now)
 
         info = self._commit(row, fired, now, st["area"], new_state, short_mem, recalled,
-                            online, sleep_start=falls_asleep)
+                            online, sleep_start=falls_asleep, project_adv=adv)
         if result:
             self.last_outcome = row["outcome"]
         if falls_asleep:
@@ -441,7 +460,7 @@ class Engine:
     # ---------- recording ----------
     def _commit(self, row: dict, fired: list[dict], now: str, area: str, new_state: dict,
                 short_mem: dict | None, recalled: list[dict], online: bool,
-                sleep_start: bool = False, wake: bool = False) -> dict:
+                sleep_start: bool = False, wake: bool = False, project_adv: dict | None = None) -> dict:
         """Record the tick: one transaction; a crash leaves the previous state intact."""
         for e in fired:  # event-spawned objects are world changes too (audit trail)
             if e["spawned"]:   # recorded from spawn time: the narrator may consume it this tick
@@ -471,9 +490,17 @@ class Engine:
                 db.set_meta(self.conn, "sleep_started", now)
                 db.set_meta(self.conn, "sleep_tick_id", tick_id)
                 db.set_meta(self.conn, "sleep_pending", 1)
+            if project_adv and project_adv.get("ok"):
+                aid = PJ.commit_advance(self.conn, project_adv, tick_id, new_state["sim_time"])
+                if aid:
+                    project_adv["artifact_id"] = aid
             if row["kind"] == "tick":      # time spent in this place (a move resets it)
                 stayed = new_state["area"] == area
-                db.set_meta(self.conn, "ticks_in_area", self._ticks_in_area() + 1 if stayed else 0)
+                working = bool(project_adv and project_adv.get("ok") and project_adv["advanced"])
+                if not stayed:
+                    db.set_meta(self.conn, "ticks_in_area", 0)
+                elif not working:          # working on a project is not a place going stale
+                    db.set_meta(self.conn, "ticks_in_area", self._ticks_in_area() + 1)
             if wake:
                 db.set_meta(self.conn, "sleep_started", "")
             db.save_state(self.conn, new_state, real)
