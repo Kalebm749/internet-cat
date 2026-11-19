@@ -1,0 +1,27 @@
+# PLACEHOLDER — replace. A generic cat; engine works with any character that follows the schema.
+name: Cat
+pronoun: she
+species: small grey cat
+appearance: "A small grey cat with white paws."
+backstory: "PLACEHOLDER backstory."
+core_traits: [curious, playful]        # never change
+voice: "short, simple sentences"
+portrait: img/cat.png
+
+tendencies:                            # 0..1, drift a little each night
+  boldness: 0.5
+  sociability: 0.5
+  tidiness: 0.5
+tendency_labels:
+  boldness: [timid, bold]
+  sociability: [solitary, social]
+  tidiness: [scruffy, tidy]
+
+start_area: living_room
+
+needs:                                 # 0..100, decay per sim hour
+  food:        {start: 60, decay: 6,   requires_consume: true, energy_weight: 1}
+  rest:        {start: 80, decay: 4,   effort_drain: true, sleep_restore: true, energy_weight: 3, label: "rest"}
+  fun:         {start: 50, decay: 7}
+  cleanliness: {start: 70, decay: 2}
+  curiosity:   {start: 50, decay: 5}

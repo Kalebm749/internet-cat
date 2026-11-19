@@ -1,0 +1,81 @@
+# All tuning numbers live here. See docs/config-reference.md.
+
+# --- LLM host (laptop) ---
+ollama_host: http://192.168.1.50:11434
+brain_model: qwen3:8b
+narrator_model: qwen3:8b
+sleep_model: qwen3:8b
+embed_model: nomic-embed-text
+ollama_think: false            # qwen3: disable thinking so JSON `format` output stays clean
+llm_timeout_seconds: 120
+health_timeout_seconds: 3
+llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
+
+# --- storage ---
+db_path: data/cat.db
+
+# --- pacing ---
+tick_interval_seconds: 90      # real seconds between ticks (0 = as fast as possible)
+sim_start: "2026-11-18T07:00"  # sim clock at the creature's first tick
+sim_minutes_per_tick_default: 20
+sim_minutes_min: 5             # narrator duration is clamped to this range
+sim_minutes_max: 90
+phases:                        # sim hour at which each phase starts
+  dawn: 5
+  day: 8
+  dusk: 18
+  night: 21
+
+# --- needs, effects ---
+gain_values: {"0": 0, "+": 15, "++": 30}
+effort_energy_cost: {low: 2, medium: 6, high: 12}   # applied to the need flagged effort_drain
+repetition_penalty: {window: 6, similarity_threshold: 0.85, multiplier: 0.4}
+create_limit_per_tick: 1
+allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet]
+state_value_max_length: 40
+
+# --- mood ---
+mood:
+  w_level: 0.4
+  w_trend: 0.6
+  w_event: 0.3
+  w_reaction: 0.2              # how much the brain's own `feeling` is blended in
+  event_decay: 0.7             # per-tick decay of the event nudge
+  feeling_values: {negative: -0.5, neutral: 0.0, positive: 0.5}
+  trend_scale: 20              # need change per tick that counts as a "full" trend
+
+# --- doze / sleep ---
+doze:
+  energy_restore: 2            # points of the sleep_restore need per dozing tick
+  sim_minutes: 20
+sleep:
+  fall_asleep_energy_below: 25     # energy below this at night => falls asleep
+  wants_sleep_energy_below: 60     # brain's wants_sleep honoured below this (or at night)
+  wake_energy_at_least: 90
+  wake_not_before_hour: 6
+  restore_per_sim_hour: 12     # sleep_restore need points per sim hour asleep
+  sim_minutes_per_tick: 60
+  tendency_max_step: 0.05
+  max_new_memories: 5
+
+# --- memory ---
+recall: {k: 5, w_recency: 1.0, w_importance: 1.0, w_relevance: 1.5}
+recency_half_life_sim_hours: 48
+short_term_shown: 8
+notable:                       # a tick is notable if any of these hold
+  need_change: 20
+  strong_feelings: [negative, positive]
+  new_object: true
+  rejected_changes: true
+long_term_cap: 500
+
+# --- brain prompt ---
+recent_actions_shown: 5
+
+# --- web ---
+web_port: 8080
+diary_page_size: 20
+keepsakes_first_page: 6
+
+# --- backup (deploy/backup.sh reads these via env, kept here for reference) ---
+backup_keep: 14
