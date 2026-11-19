@@ -55,22 +55,8 @@ def test_bands_follow_the_thresholds(cfg):
     assert ch.energy_word(-40, cfg) == "exhausted" and ch.energy_word(40, cfg) == "wide awake"
 
 
-def test_mood_trend_outweighs_level(cfg):
-    low = {k: 20.0 for k in cfg.character["needs"]}
-    rising = {k: 30.0 for k in low}
-    falling = {k: 10.0 for k in low}
-    up = ch.compute_mood(rising, low, 0, None, 0, cfg)
-    down = ch.compute_mood(falling, {k: 30.0 for k in low}, 0, None, 0, cfg)
-    assert up["valence"] > down["valence"]
-    assert -1 <= down["valence"] <= 1 and 0 <= up["arousal"] <= 1
-    assert up["word"] and up["description"]
 
 
-def test_mood_reaction_blended_lightly(cfg):
-    n = {k: 50.0 for k in cfg.character["needs"]}
-    pos = ch.compute_mood(n, n, 0, "positive", 0, cfg)["valence"]
-    neg = ch.compute_mood(n, n, 0, "negative", 0, cfg)["valence"]
-    assert 0 < pos < 0.5 and -0.5 < neg < 0
 
 
 def test_consume_gives_floor_and_penalty_only_hits_the_listed_needs(cfg):

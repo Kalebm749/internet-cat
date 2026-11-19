@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS memories(
   last_recalled TEXT, embedding BLOB, embed_model TEXT);
 
 CREATE TABLE IF NOT EXISTS preferences(
-  id INTEGER PRIMARY KEY, subject TEXT, valence REAL,  -- -1..1
+  id INTEGER PRIMARY KEY, subject TEXT, valence REAL,  -- -1..1 (a like is +, a dislike -)
   reason TEXT, updated_at TEXT);
 
 -- what the entity currently thinks it is: short text lines, learned during sleep, revisable

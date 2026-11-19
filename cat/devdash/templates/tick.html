@@ -130,15 +130,19 @@
 {% set m = d.mood_math %}{% set i = m.inputs %}
 <section class="card" id="mood">
   <h2>7 · Mood math</h2>
+  <p class="dim small">Mood is two numbers, valence and arousal, each −50..50. It is worked out from need <b>bands</b> (never raw levels), the event nudge, the brain's own feeling and the energy.</p>
   <table class="data num">
-    <tr><th>input</th><th>value</th><th>weight</th><th>term</th></tr>
-    <tr><td>need levels (mean {{ i.mean_need }} → −1..1)</td><td>{{ i.level }}</td><td>{{ i.weights.w_level }}</td><td>{{ i.terms.level }}</td></tr>
-    <tr><td>need trend (change this tick)</td><td>{{ i.trend }}</td><td>{{ i.weights.w_trend }}</td><td>{{ i.terms.trend }}</td></tr>
-    <tr><td>event nudge (decaying)</td><td>{{ i.event_nudge }}</td><td>{{ i.weights.w_event }}</td><td>{{ i.terms.event }}</td></tr>
-    <tr><td>brain's own feeling: <b>{{ i.feeling }}</b></td><td>{{ i.feeling_value }}</td><td>{{ i.weights.w_reaction }}</td><td>{{ i.terms.reaction }}</td></tr>
-    <tr><td colspan="3"><b>valence</b> = sum of terms, clamped to −1..1</td><td><b>{{ i.valence_unclamped }} → {{ m.valence }}</b></td></tr>
-    <tr><td colspan="3"><b>arousal</b> = {{ i.arousal_formula }} (energy {{ i.energy }})</td><td><b>{{ m.arousal }}</b></td></tr>
-    <tr><td colspan="3"><b>word</b> (|valence| &gt; {{ i.thresholds.word_threshold }}; arousal ≥ {{ i.thresholds.arousal_high }} is lively)</td><td><b>{{ m.word }}</b></td></tr>
+    <tr><th>valence input</th><th>band / value</th><th>points</th></tr>
+    {% for nid, pts in i.valence_terms.items() %}<tr><td>{{ d.need_labels.get(nid, nid) }}</td><td>{{ i.bands[nid] }}</td><td>{{ pts }}</td></tr>{% endfor %}
+    <tr><td>event nudge (decaying)</td><td>{{ i.event_nudge }}</td><td>{{ i.event_points }}</td></tr>
+    <tr><td>brain's own feeling: <b>{{ i.feeling }}</b></td><td></td><td>{{ i.feeling_points }}</td></tr>
+    <tr><td colspan="2"><b>valence</b> = sum, clamped to −50..50</td><td><b>{{ i.valence_unclamped }} → {{ m.valence }}</b></td></tr>
+    <tr><th>arousal input</th><th>band / value</th><th>points</th></tr>
+    <tr><td>base</td><td></td><td>{{ i.arousal_terms.base }}</td></tr>
+    <tr><td>energy</td><td>{{ i.energy }}</td><td>{{ i.arousal_terms.energy }}</td></tr>
+    {% for r in i.arousal_terms.rules %}<tr><td>rule: {% for nid, bs in r.when.items() %}{{ nid }} {{ bs|join('/') }}{{ ' and ' if not loop.last }}{% endfor %}</td><td></td><td>{{ r.add }}</td></tr>{% endfor %}
+    <tr><td colspan="2"><b>arousal</b> = sum, clamped to −50..50</td><td><b>{{ i.arousal_unclamped }} → {{ m.arousal }}</b></td></tr>
+    <tr><td colspan="2"><b>word</b> (|valence| &gt; {{ i.thresholds.word_threshold }}; arousal ≥ {{ i.thresholds.arousal_high }} is lively)</td><td><b>{{ m.word }}</b></td></tr>
   </table>
 </section>
 {% endif %}

@@ -330,19 +330,19 @@ def _presence(cfg, valence, arousal, state):
 
 
 def test_presence_colour_follows_valence(cfg):
-    low, mid, high = (_presence(cfg, v, 0.5, "awake")["hue"] for v in (-1, 0, 1))
+    low, mid, high = (_presence(cfg, v, 0, "awake")["hue"] for v in (-50, 0, 50))
     p = cfg.settings["web_ui"]["presence"]
     assert low == p["hue_low_valence"] and high == p["hue_high_valence"] and high < mid < low
 
 
 def test_presence_motion_follows_arousal(cfg):
-    calm, lively = (_presence(cfg, 0, a, "awake")["pulse_seconds"] for a in (0, 1))
+    calm, lively = (_presence(cfg, 0, a, "awake")["pulse_seconds"] for a in (-50, 50))
     p = cfg.settings["web_ui"]["presence"]
     assert calm == p["pulse_seconds_calm"] and lively == p["pulse_seconds_aroused"] and lively < calm
 
 
 def test_presence_dims_asleep_and_desaturates_dozing(cfg):
-    awake, asleep, dozing = (_presence(cfg, 0.2, 0.4, s) for s in ("awake", "asleep", "dozing"))
+    awake, asleep, dozing = (_presence(cfg, 10, 5, s) for s in ("awake", "asleep", "dozing"))
     assert asleep["lightness"] < awake["lightness"] and asleep["saturation"] == awake["saturation"]
     assert dozing["saturation"] < awake["saturation"] and dozing["lightness"] < awake["lightness"]
 

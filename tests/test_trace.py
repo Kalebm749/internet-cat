@@ -104,7 +104,7 @@ def test_mock_tick_writes_complete_trace(cfg):
     mood_after = json.loads(tick_row["mood_after"])
     assert (mm["word"], mm["valence"], mm["arousal"]) == (mood_after["word"], mood_after["valence"], mood_after["arousal"])
     inp = json.loads(mm["inputs"])
-    assert {"level", "trend", "event_nudge", "feeling", "weights", "terms", "valence_unclamped"} <= set(inp)
+    assert {"bands", "valence_terms", "event_nudge", "feeling", "arousal_terms", "valence_unclamped", "arousal_unclamped"} <= set(inp)
     assert inp["feeling"] == "positive"
 
     ev = rows(e, "SELECT * FROM event_rolls WHERE tick_id=?", tid)

@@ -326,7 +326,7 @@ class Engine:
                    "duration": minutes, "changes": [], "rejected": []}
 
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, before, nudge, feeling, energy, cfg, trace=mood_inputs)
+        mood = character.compute_mood(needs, nudge, feeling, energy, cfg, trace=mood_inputs)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes),
                      "needs": needs, "mood": mood, "energy": energy,
@@ -388,7 +388,7 @@ class Engine:
                        and not clock.is_night(new_dt, s["phases"]))
             wake = (rested and morning) or slept_h >= sl["max_hours"]
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, before, nudge, None, energy, cfg, trace=mood_inputs)
+        mood = character.compute_mood(needs, nudge, None, energy, cfg, trace=mood_inputs)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": new_time, "needs": needs, "mood": mood,
                      "energy": energy, "weather": self.world.weather,
@@ -533,7 +533,7 @@ class Engine:
             before, minutes, None, cfg, needs,
             decay_multiplier=(s["sleep"]["decay_multiplier"] if st["is_asleep"] else s["catch_up_decay_multiplier"])))
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, before, 0.0, None, energy, cfg, trace=mood_inputs)
+        mood = character.compute_mood(needs, 0.0, None, energy, cfg, trace=mood_inputs)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs, "mood": mood,
                      "energy": energy}

@@ -104,18 +104,23 @@ max_objects_per_area: 12       # event spawns are skipped when the area is this 
 allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet]
 state_value_max_length: 40
 
-# --- mood ---
+# --- mood: two numbers, valence (unpleasant..pleasant) and arousal (calm..lively), each -50..50 ---
+# Computed from need BANDS (never raw levels). Valence = the points below for each need's band
+# + event nudge + the brain's own feeling. Needs not listed here add nothing.
 mood:
-  w_level: 0.4
-  w_trend: 0.6
-  w_event: 0.3
-  w_reaction: 0.2              # how much the brain's own `feeling` is blended in
+  valence_bands:               # points added to valence by a need's band (a missing band adds 0)
+    sustenance: {empty: -20, low: -6}                  # sustenance empty lowers valence
+    joy:        {empty: -15, low: -6, okay: 4, full: 15}   # joy and peace raise valence
+    peace:      {empty: -12, low: -5, okay: 3, full: 12}
+  arousal_base: -10
+  arousal_energy_weight: 0.4   # arousal points per point of energy (-50..50)
+  arousal_rules:               # when every listed need is in one of its bands, add points to arousal
+    - {when: {curiosity: [full], peace: [low, empty]}, add: 25}    # curious and unsettled: lively
+  event_points: 20             # valence points per unit of an event's mood nudge (events say -1..1)
   event_decay: 0.7             # per-tick decay of the event nudge
-  feeling_values: {negative: -0.5, neutral: 0.0, positive: 0.5}
-  trend_scale: 20              # need change per tick that counts as a "full" trend
-  word_threshold: 0.25         # |valence| above this picks a happy/low word instead of calm
-  arousal_high: 0.5            # arousal at/above this => excited/tense instead of content/low
-  low_need_below: 35           # description mentions the lowest need when under this
+  feeling_values: {negative: -10, neutral: 0, positive: 10}   # the brain's own `feeling`, in valence points
+  word_threshold: 12           # |valence| above this picks a happy/low word instead of calm
+  arousal_high: 5              # arousal at/above this => excited/tense instead of content/low
 
 # --- words (value is below the key => that word; first match wins) ---
 energy_words: {-25: exhausted, 0: tired, 25: fine, 51: wide awake}   # energy is -50..50

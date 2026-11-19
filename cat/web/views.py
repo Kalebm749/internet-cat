@@ -140,8 +140,8 @@ def presence_view(cfg: Config, mood: dict, state: str, name: str) -> dict:
     """The abstract presence: colour follows valence, motion follows arousal, it dims when
     asleep and desaturates when dozing. All numbers come from settings.yaml web_ui.presence."""
     p = _ui(cfg)["presence"]
-    v = max(-1.0, min(1.0, float(mood["valence"])))
-    a = max(0.0, min(1.0, float(mood["arousal"])))
+    v = max(-1.0, min(1.0, float(mood["valence"]) / character.MOOD_MAX))      # mood is -50..50
+    a = max(0.0, min(1.0, (float(mood["arousal"]) - character.MOOD_MIN) / (character.MOOD_MAX - character.MOOD_MIN)))
     hue = round(p["hue_low_valence"] + (p["hue_high_valence"] - p["hue_low_valence"]) * (v + 1) / 2)
     sat = p["saturation_dozing"] if state == "dozing" else p["saturation_awake"]
     light = {"awake": p["lightness_awake"], "asleep": p["lightness_asleep"],
@@ -320,7 +320,8 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
     diary, next_before = diary_view(conn, cfg)
     keepsakes, more = keepsakes_view(conn, cfg)
     mood = st["mood"]
-    pad_x, pad_y = (mood["valence"] + 1) / 2 * 100, (1 - mood["arousal"]) * 100
+    pad_x = (mood["valence"] - character.MOOD_MIN) / (character.MOOD_MAX - character.MOOD_MIN) * 100
+    pad_y = (character.MOOD_MAX - mood["arousal"]) / (character.MOOD_MAX - character.MOOD_MIN) * 100
     return {
         "creature": {"name": ch["name"], "core_traits": ch["core_traits"],
                      "pronoun": ch.get("pronoun", "they")},
@@ -340,8 +341,8 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
                  "valence": mood["valence"], "arousal": mood["arousal"],
                  "pad_x": round(pad_x, 1), "pad_y": round(pad_y, 1),
                  "aria": f"Mood map: {mood['word']}, leaning "
-                         f"{'pleasant' if mood['valence'] > 0.25 else 'unpleasant' if mood['valence'] < -0.25 else 'neutral'} "
-                         f"and {'lively' if mood['arousal'] >= 0.5 else 'quiet'}"},
+                         f"{'pleasant' if mood['valence'] > cfg.settings['mood']['word_threshold'] else 'unpleasant' if mood['valence'] < -cfg.settings['mood']['word_threshold'] else 'neutral'} "
+                         f"and {'lively' if mood['arousal'] >= cfg.settings['mood']['arousal_high'] else 'quiet'}"},
         "energy": {"value": round(energy), "pct": round(energy - character.ENERGY_MIN),
                    "word": character.energy_word(energy, cfg),
                    "aria": f"energy: {character.energy_word(energy, cfg)}, {energy:.0f} on a scale from -50 to 50"},
