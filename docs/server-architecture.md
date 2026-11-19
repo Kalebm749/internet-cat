@@ -2,7 +2,7 @@
 
 How Internet Cat is built and run. Read `creature-architecture.md` first: it defines the concepts (brain, narrator, needs, mood, memory, sleep). This doc says **how they are built** and **how the system is deployed**. The website is specified in `web-gui.md`; every config field is in `config-reference.md`.
 
-Everything runs on **one machine**: an Ubuntu laptop (HP Omen 15, GTX 1060 6GB, 16GB RAM) under **Docker Compose**. Ollama, the engine, the public website and (Part B of phase 2) the dev dashboard are all containers on that host. There is no separate server and no Raspberry Pi.
+Everything runs on **one machine**: an Ubuntu laptop (HP Omen 15, GTX 1060 6GB, 16GB RAM) under **Docker Compose**. Ollama, the engine, the public website and the dev dashboard are all containers on that host. There is no separate server and no Raspberry Pi.
 
 ---
 
@@ -36,7 +36,7 @@ Everything runs on **one machine**: an Ubuntu laptop (HP Omen 15, GTX 1060 6GB, 
 | LLM client | `httpx` → Ollama HTTP API (`/api/chat` with a JSON-schema `format`, `/api/embed`, `/api/tags`) |
 | Vector math | `numpy` (cosine similarity over a few thousand vectors is trivial) |
 | Web | `FastAPI` + `uvicorn`, Jinja2 templates, light vanilla JS polling `/api/state` |
-| Deployment | Docker Compose: `ollama`, `engine`, `web` (+ `devdash` in phase 2 part B) |
+| Deployment | Docker Compose: `ollama`, `engine`, `web`, `devdash` |
 | Tests | `pytest`, with a `MockBackend` so everything runs without Ollama |
 
 **Models.** A 4–8B instruct model at ~Q4 (e.g. `qwen3:8b`, `llama3.1:8b`, `gemma3:4b` as the lighter fallback), plus `nomic-embed-text`. Use **one chat model for brain, narrator and sleep** so only one big model is resident. Check the Ollama library for newer small models before pulling. To choose, compare candidates on saved prompts: JSON validity (should be 100% with `format`), seconds per call, the narrator's rejected-change rate, and read the diary text for voice and variety.
@@ -52,14 +52,16 @@ Everything runs on **one machine**: an Ubuntu laptop (HP Omen 15, GTX 1060 6GB, 
 │                                                        ▼                        │
 │                                              data/cat.db (SQLite, WAL)          │
 │                                                        ▲ reads                  │
-│  browser (LAN) ──►  web  (FastAPI :8080)  ─────────────┘                        │
+│  browser (LAN) ──►  web  (FastAPI :8080)  ─────────────┤                        │
+│  you (laptop)  ──►  devdash (:8090, 127.0.0.1)  ───────┘  + data/devdash.db     │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **ollama**: the official image with the NVIDIA GPU. Not published to the network.
 - **engine**: the only writer of game state. Runs the tick loop forever.
 - **web**: read-only. Never calls the LLM. Port 8080 is the only port exposed to the LAN.
-- They share nothing except the database file. Each can restart independently. `restart: unless-stopped` and healthchecks on all of them.
+- **devdash**: the developer dashboard (§17). Read-only on `cat.db`; published on 127.0.0.1 only unless you opt in (then Basic auth is mandatory).
+- They share nothing except the data directory. Each can restart independently. `restart: unless-stopped` and healthchecks on all of them.
 
 ---
 
@@ -74,11 +76,13 @@ internet-cat/
   cat/
     config.py clock.py world.py character.py effects.py memory.py
     brain.py narrator.py sleep.py llm.py db.py engine.py main.py
+    trace.py logs.py devqueue.py devcontrol.py downtime.py healthcheck.py pullmodels.py
     web/       app.py views.py templates/ static/
+    devdash/   app.py auth.py data.py playground.py templates/ static/ (vendor/uPlot)
   scripts/     seed_db.py add_ticks.py show_diary.py check_ollama.py reembed.py make_placeholder_assets.py
   deploy/      backup.sh  update.sh  pull-models.sh
   tests/
-  data/        cat.db  backups/  logs/                # bind mount, git-ignored
+  data/        cat.db  devdash.db  logs/  backups/     # bind mount, git-ignored
 ```
 
 ---
@@ -102,6 +106,8 @@ memories(id, kind,                          -- 'short' | 'long'
 preferences(id, subject, valence, reason, updated_at)      -- valence -1..1
 sleep_log(id, sim_date, summary, tick_id,   -- tick_id: where the sleep began
           tendency_changes JSON, new_memories JSON, new_preferences JSON)
+-- tracing (§17): tick_traces, llm_calls, embed_calls, recall_logs, effect_logs, need_math, mood_math,
+--                event_rolls, sleep_traces;  memories also carry tick_id (which tick wrote them)
 ```
 
 **Energy is not stored as a need.** It is derived from the needs (`energy_weight`) and cached in `state.energy`.
@@ -236,6 +242,17 @@ Docker Compose. See `README.md` for the full walkthrough.
 6. Sleep. ✔
 7. Offline handling. ✔
 8. Website. ✔
-9. **Docker Compose deployment (phase 2, part A)**, then the dev dashboard (part B).
+9. **Docker Compose deployment (phase 2, part A).** ✔
+10. **Dev dashboard (phase 2, part B).** ✔
 
 **Done for v1:** it runs for 7 days unattended, the diary reads like a life, and nothing in the world appears or disappears without an effect causing it.
+
+---
+
+## 17. Tracing and the dev dashboard
+
+**Tracing** (`cat/trace.py`): every tick is fully explainable. While a tick runs the engine hands the tracer everything it does; after the tick commits, the tracer writes it in its own transaction. Tracing never breaks the creature (a failed write is a warning). What is stored: stage timings; every LLM *attempt* with the exact system prompt, user prompt, JSON schema, raw response, parsed JSON, token counts and Ollama's own durations; embedding calls (with their purpose); the full recall scoring; every proposed effect with its accept/reject reason; the per-need arithmetic (before, decay, bucket, raw gain, repetition multiplier, effort, clamp, after) and the mood inputs; event rolls; and the sleep steps (LLM output, proposed vs clamped). `trace_level: summary` drops text, `trace_retention_days` prunes the large tables during sleep. Structured JSON logs go to stdout and `data/logs/`.
+
+**Dev commands** (`cat/devqueue.py`, `cat/devcontrol.py`): the dashboard never writes game state. It inserts rows into `dev_commands` in `data/devdash.db`; the engine polls them (every `dev_poll_seconds`, also while paused) and runs pause / resume / step / set_interval / force_sleep / reload_settings / inject_event / snapshot, publishing `engine_status` and the loaded config back to the same file. Keeping these in a separate database means `cat.db` has exactly one writer.
+
+**Dashboard** (`cat/devdash/`): server-rendered Jinja + a little vanilla JS, vendored uPlot for charts, no CDN. Pages: Overview, Ticks, Tick detail, LLM calls, Memory & embeddings, Needs & mood, Behaviour, Sleep, World, Logs, Config, Playground; each has a JSON twin under `/api/dev/`. The playground replays stored prompts against Ollama and saves the runs in `devdash.db`; replays are never applied to the world. Access: loopback by default; LAN exposure needs Basic auth (the service refuses to start without credentials); POSTs need `X-Requested-With: devdash` and explicit confirmation.

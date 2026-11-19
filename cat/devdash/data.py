@@ -994,7 +994,7 @@ def _norm_yaml(obj: Any) -> str:
 
 
 def config_view(cfg: Config) -> dict:
-    """The config as the engine loaded it (from dev.db), compared with the files on disk now."""
+    """The config as the engine loaded it (from devdash.db), compared with the files on disk now."""
     import difflib
     import hashlib
     import yaml

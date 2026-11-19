@@ -1,7 +1,7 @@
 """Prompt playground: replay a saved LLM call (edited or not) against Ollama and compare.
 
 Read-only replay: nothing here is ever applied to the world. It never touches cat.db; results are
-saved in dev.db's `playground_runs` so they can be compared later."""
+saved in devdash.db's `playground_runs` so they can be compared later."""
 from __future__ import annotations
 
 import json

@@ -106,7 +106,7 @@ Every tick is fully traceable. The engine records, in `cat.db`:
 All services log JSON lines (`ts, level, service, tick_id, event, message, extra`) to stdout (`docker logs`) and to `data/logs/<service>.jsonl`, rotated by size. This is switched on by `CAT_STRUCTURED_LOGS=1` (set in `compose.yaml`); plain console logging is used otherwise.
 
 ## Dev commands (`cat/devqueue.py`, `cat/devcontrol.py`)
-The dev dashboard never writes game state. It inserts rows into `dev_commands` in **`data/dev.db`** (a separate file, so `cat.db` stays strictly single-writer). The engine polls the queue at the start of every loop iteration, and every `dev_poll_seconds` while waiting between ticks or paused, runs each command and records `status` (`pending → running → done | failed | rejected`) and a `result`. `dev.db` also holds `playground_runs`, `engine_status` (what the engine publishes: state, tick id/duration, interval, pid, heartbeat) and `engine_config` (the config exactly as the engine loaded it).
+The dev dashboard never writes game state. It inserts rows into `dev_commands` in **`data/devdash.db`** (a separate file, so `cat.db` stays strictly single-writer). The engine polls the queue at the start of every loop iteration, and every `dev_poll_seconds` while waiting between ticks or paused, runs each command and records `status` (`pending → running → done | failed | rejected`) and a `result`. `devdash.db` also holds `playground_runs`, `engine_status` (what the engine publishes: state, tick id/duration, interval, pid, heartbeat) and `engine_config` (the config exactly as the engine loaded it).
 
 | Command | Args | Effect |
 |---|---|---|

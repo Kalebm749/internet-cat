@@ -30,7 +30,7 @@
       <button data-command="inject_event" data-ask="event">Inject event…</button>
       <button data-command="snapshot" data-confirm="Back up the database now?">Snapshot DB</button>
     </div>
-    <p class="dim small">The dashboard never writes game state: these are queued in <code>dev.db</code> and run by the engine at the next poll (≤ {{ cfg.settings.dev_poll_seconds }}s).</p>
+    <p class="dim small">The dashboard never writes game state: these are queued in <code>devdash.db</code> and run by the engine at the next poll (≤ {{ cfg.settings.dev_poll_seconds }}s).</p>
     <h3>Recent commands</h3>
     <table class="data" id="commands">
       <tr><th>#</th><th>when</th><th>command</th><th>status</th><th>result</th></tr>

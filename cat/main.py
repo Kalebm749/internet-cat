@@ -6,7 +6,7 @@ import logging
 import random
 
 from cat import clock, db, logs
-from cat.config import load_config
+from cat.config import load_config, sibling_overrides
 from cat.engine import Engine
 from cat.llm import LLMBackend, MockBackend
 
@@ -48,7 +48,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-q", "--quiet", action="store_true", help="don't print each tick")
     args = p.parse_args(argv)
 
-    overrides = {k: v for k, v in (("db_path", args.db), ("ollama_host", args.ollama_host)) if v}
+    overrides = sibling_overrides(args.db) if args.db else {}      # --db: keep devdash.db / logs / heartbeat beside it
+    if args.ollama_host:
+        overrides["ollama_host"] = args.ollama_host
     cfg = load_config(args.config_dir, overrides or None)
     if logs.structured_enabled():          # containers: JSON lines to stdout + data/logs/engine.jsonl
         logs.setup_logging("engine", cfg)

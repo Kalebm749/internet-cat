@@ -28,7 +28,7 @@ log_level: INFO
 log_max_bytes: 5000000
 log_backup_count: 5
 log_tick_events: true           # one INFO line per tick (structured logs only)
-dev_db_path: data/dev.db        # dev_commands, playground_runs, engine_status: the dashboard's only writable DB
+dev_db_path: data/devdash.db        # dev_commands, playground_runs, engine_status: the dashboard's only writable DB
 dev_commands_enabled: true
 dev_poll_seconds: 2             # the engine checks the command queue this often while waiting or paused
 paused_alive_seconds: 30        # while paused the engine refreshes its last-alive time (a pause is not downtime)

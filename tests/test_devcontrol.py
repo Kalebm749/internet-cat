@@ -1,4 +1,4 @@
-"""Part B2: the dev-command queue. The dashboard only inserts rows into dev.db; the engine (the
+"""Part B2: the dev-command queue. The dashboard only inserts rows into devdash.db; the engine (the
 only writer of game state) runs them."""
 import json
 import random
@@ -373,7 +373,7 @@ def test_engine_runs_without_a_dev_queue(cfg, tmp_path):
     waits = []
     assert e.run(ticks=3, interval=4, sleep=waits.append) == 3 and waits == [4, 4]
     cfg.settings["dev_commands_enabled"] = True
-    cfg.settings["dev_db_path"] = str(tmp_path / "afile" / "dev.db")
+    cfg.settings["dev_db_path"] = str(tmp_path / "afile" / "devdash.db")
     (tmp_path / "afile").write_text("not a directory")                       # cannot be created
     e2 = Engine(cfg, MockBackend(), conn=db.connect(cfg.db_path))
     assert not e2.dev.enabled and e2.run(ticks=2, interval=0) == 2

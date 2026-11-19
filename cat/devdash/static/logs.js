@@ -22,7 +22,9 @@
     tr.appendChild(m); return tr;
   }
   function poll() {
-    var q = new URLSearchParams(new FormData(form)); q.delete("limit"); q.set("limit", "200");
+    var q = new URLSearchParams();
+    new FormData(form).forEach(function (v, k) { if (String(v).trim() !== "") q.set(k, v); });   // drop empty fields
+    q.set("limit", "200");
     if (newest) q.set("since", newest);
     fetch("/api/dev/logs?" + q.toString(), { headers: { "X-Requested-With": "devdash" }, cache: "no-store" })
       .then(function (r) { return r.json(); })

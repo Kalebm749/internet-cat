@@ -71,7 +71,7 @@ const ids = (w) => entries(w).map((e) => parseFloat(e.dataset.id));
     // ---------- seeded DB ----------
     server.kill(); await sleep(400);
     for (const f of [DB, DB + "-wal", DB + "-shm"]) fs.rmSync(f, { force: true });
-    py("scripts/seed_db.py", "--db", DB, "--ticks", "120", "--seed", "3");
+    py("scripts/seed_db.py", "--db", DB, "--ticks", "120", "--seed", "3", "--force");
     fs.writeFileSync(path.join(tmp, "config", "settings.yaml"), fs.readFileSync(sp, "utf8")); // keep 1s poll
     startServer(); await waitUp();
 

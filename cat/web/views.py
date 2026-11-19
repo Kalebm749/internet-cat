@@ -161,7 +161,8 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
     prev = conn.execute("SELECT needs_after FROM ticks WHERE id<? ORDER BY id DESC LIMIT 1",
                         (r["id"],)).fetchone()
     now_n = json.loads(r["needs_after"])
-    prev_n = json.loads(prev["needs_after"]) if prev else now_n
+    # the very first tick has no predecessor: it starts from the configured initial needs
+    prev_n = json.loads(prev["needs_after"]) if prev else character.initial_needs(cfg)
     chips = []
     for nid in cfg.character["needs"]:
         d = now_n.get(nid, 0) - prev_n.get(nid, 0)

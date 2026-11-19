@@ -1,23 +1,27 @@
 """The developer dashboard: see everything the system does. Separate service, port 8090, bound to
-127.0.0.1 by default (see auth.py). Read-only on cat.db; its only writes go to dev.db."""
+127.0.0.1 by default (see auth.py). Read-only on cat.db; its only writes go to devdash.db."""
 from __future__ import annotations
 
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BeforeValidator
 
 from cat import logs
-from cat.config import Config, load_config
+from cat.config import Config, load_config, sibling_overrides
 from cat.devdash import auth, data, playground
 from cat.devqueue import CommandError
 
 HERE = Path(__file__).parent
+
+# Browsers submit an empty number box as `name=`: treat that as "no filter", not as an error.
+OptInt = Annotated[int | None, BeforeValidator(lambda v: None if v in ("", None) else v)]
 
 NAV = [("overview", "Overview", "/"), ("ticks", "Ticks", "/ticks"), ("llm", "LLM calls", "/llm"),
        ("memory", "Memory", "/memory"), ("needs", "Needs & mood", "/needs"),
@@ -29,7 +33,7 @@ SECURITY_HEADERS = {"X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
 
 def create_app(cfg: Config | None = None) -> FastAPI:
     cfg = cfg or load_config(os.environ.get("CAT_CONFIG_DIR"),
-                             {"db_path": os.environ["CAT_DB"]} if os.environ.get("CAT_DB") else None)
+                             sibling_overrides(os.environ["CAT_DB"]) if os.environ.get("CAT_DB") else None)
     auth.check_startup()                       # refuse to start LAN-exposed without credentials
     if logs.structured_enabled():
         logs.setup_logging("devdash", cfg)
@@ -72,7 +76,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.get("/ticks", response_class=HTMLResponse)
     def ticks_page(request: Request, status: str = "", kind: str = "", area: str = "", q: str = "",
-                   rejections: int = 0, errors: int = 0, slow_ms: int | None = None, page_no: int = Query(1, alias="page", ge=1)):
+                   rejections: int = 0, errors: int = 0, slow_ms: OptInt = None, page_no: int = Query(1, alias="page", ge=1)):
         f = {"status": status, "kind": kind, "area": area, "q": q, "rejections": rejections, "errors": errors,
              "slow_ms": slow_ms}
         return page(request, "ticks.html", "ticks", "Ticks", t=data.ticks_list(cfg, f, page_no), f=f)
@@ -86,7 +90,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.get("/llm", response_class=HTMLResponse)
     def llm_page(request: Request, kind: str = "", model: str = "", valid: str = "", errors: int = 0,
-                 slow_ms: int | None = None, tick_id: int | None = None, page_no: int = Query(1, alias="page", ge=1)):
+                 slow_ms: OptInt = None, tick_id: OptInt = None, page_no: int = Query(1, alias="page", ge=1)):
         f = {"kind": kind, "model": model, "valid": valid, "errors": errors, "slow_ms": slow_ms, "tick_id": tick_id}
         return page(request, "llm.html", "llm", "LLM calls", t=data.llm_list(cfg, f, page_no), f=f)
 
@@ -123,7 +127,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return page(request, "world.html", "world", "World state", w=data.world_state(cfg, object, page_no), object=object)
 
     @app.get("/logs", response_class=HTMLResponse)
-    def logs_page(request: Request, service: str = "", level: str = "", tick_id: int | None = None, q: str = "",
+    def logs_page(request: Request, service: str = "", level: str = "", tick_id: OptInt = None, q: str = "",
                   limit: int = Query(300, ge=1, le=2000)):
         f = {"service": service, "level": level, "tick_id": tick_id, "q": q, "limit": limit}
         return page(request, "logs.html", "logs", "Logs", L=data.read_logs(cfg, service, level, tick_id, q, limit), f=f,
@@ -134,7 +138,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return page(request, "config.html", "config", "Config", c=data.config_view(cfg))
 
     @app.get("/playground", response_class=HTMLResponse)
-    def playground_page(request: Request, call_id: int | None = None):
+    def playground_page(request: Request, call_id: OptInt = None):
         src = data.llm_detail(cfg, call_id) if call_id is not None else None
         if call_id is not None and src is None:
             raise HTTPException(404, f"no LLM call {call_id}")
@@ -171,7 +175,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.get("/api/dev/ticks")
     def api_ticks(status: str = "", kind: str = "", area: str = "", q: str = "", rejections: int = 0,
-                  errors: int = 0, slow_ms: int | None = None, page_no: int = Query(1, alias="page", ge=1),
+                  errors: int = 0, slow_ms: OptInt = None, page_no: int = Query(1, alias="page", ge=1),
                   limit: int = Query(50, ge=1, le=500)):
         f = {"status": status, "kind": kind, "area": area, "q": q, "rejections": rejections, "errors": errors,
              "slow_ms": slow_ms}
@@ -203,8 +207,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return j({"id": cid, "status": "pending"}, 202)
 
     @app.get("/api/dev/llm")
-    def api_llm(kind: str = "", model: str = "", valid: str = "", errors: int = 0, slow_ms: int | None = None,
-                tick_id: int | None = None, page_no: int = Query(1, alias="page", ge=1), limit: int = Query(50, ge=1, le=500)):
+    def api_llm(kind: str = "", model: str = "", valid: str = "", errors: int = 0, slow_ms: OptInt = None,
+                tick_id: OptInt = None, page_no: int = Query(1, alias="page", ge=1), limit: int = Query(50, ge=1, le=500)):
         f = {"kind": kind, "model": model, "valid": valid, "errors": errors, "slow_ms": slow_ms, "tick_id": tick_id}
         return j(data.llm_list(cfg, f, page_no, limit))
 
@@ -251,7 +255,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return j(data.world_state(cfg, object, page_no, limit))
 
     @app.get("/api/dev/logs")
-    def api_logs(service: str = "", level: str = "", tick_id: int | None = None, q: str = "", since: str = "",
+    def api_logs(service: str = "", level: str = "", tick_id: OptInt = None, q: str = "", since: str = "",
                  limit: int = Query(300, ge=1, le=2000)):
         return j(data.read_logs(cfg, service, level, tick_id, q, limit, since))
 
@@ -277,7 +281,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.post("/api/dev/playground/run")
     def api_pg_run_post(body: dict):
-        """Replay a prompt on 1-3 models. Never applied to the world; saved to dev.db for comparison."""
+        """Replay a prompt on 1-3 models. Never applied to the world; saved to devdash.db for comparison."""
         try:
             req = playground.validate(body)
         except playground.PlaygroundError as e:

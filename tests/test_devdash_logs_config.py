@@ -283,3 +283,19 @@ def test_config_page_is_read_only(cfg):
     assert "<textarea" not in html and "<form" not in html and html.count('class="copy"') >= 3
     assert "settings.yaml" in html and "character.yaml" in html and "world.yaml" in html and "matches disk" in html
     assert client(cfg).get("/api/dev/config").json()["files"][0]["state"] == "same"
+
+
+# ================== filter forms as a browser submits them ==================
+def test_empty_filter_fields_are_treated_as_unset_not_as_errors(cfg):
+    """A browser sends an empty number box as `name=`; that used to 422 the whole page."""
+    e, b = make_engine(cfg)
+    e.run(ticks=10, interval=0)
+    write(cfg, "engine.jsonl", [line("2026-11-18T10:00:00.000", tick=3)])
+    c = client(cfg)
+    for url in ("/ticks?status=&kind=&area=&q=&slow_ms=", "/llm?kind=&model=&valid=&slow_ms=&tick_id=",
+                "/logs?service=&level=&tick_id=&q=&limit=300", "/api/dev/ticks?slow_ms=&q=", "/api/dev/llm?tick_id=&slow_ms=",
+                "/api/dev/logs?tick_id=&since=&q=", "/playground?call_id="):
+        assert c.get(url).status_code == 200, url
+    assert c.get("/ticks?slow_ms=abc").status_code == 422 and c.get("/logs?tick_id=x").status_code == 422   # real errors still are
+    assert len(c.get("/api/dev/logs?tick_id=").json()["lines"]) == 1
+    assert c.get("/api/dev/ticks?slow_ms=").json()["total"] == 10

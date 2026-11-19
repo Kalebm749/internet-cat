@@ -3,7 +3,7 @@
 {% block content %}
 <section class="card">
   <h2>Prompt playground</h2>
-  <p class="dim">Replays a prompt against Ollama and shows the new answer next to the original. <b>Nothing here is ever applied to the world</b>; runs are saved in <code>dev.db</code> so you can compare them later.
+  <p class="dim">Replays a prompt against Ollama and shows the new answer next to the original. <b>Nothing here is ever applied to the world</b>; runs are saved in <code>devdash.db</code> so you can compare them later.
      Ollama answers one request at a time, so while a run is going the engine's own calls wait behind it.</p>
   {% if src %}<p>Source: <a href="/llm/{{ src.id }}">LLM call #{{ src.id }}</a> ({{ src.kind }}, tick <a href="/ticks/{{ src.tick_id }}">#{{ src.tick_id }}</a>, <span class="mono">{{ src.model }}</span>)</p>
   {% elif not src %}<p class="dim">Start from any call on the <a href="/llm">LLM calls</a> page ("Open in playground"), or paste prompts below.</p>{% endif %}
@@ -41,9 +41,9 @@
 
 <section class="card">
   <h2>Recent runs <a class="small" href="/playground/runs">all runs</a></h2>
-  <table class="data"><tr><th>run</th><th>when</th><th>model</th><th>result</th><th>total</th><th>group</th></tr>
-    {% for r in runs %}<tr><td><a href="/api/dev/playground/runs/{{ r.id }}">#{{ r.id }}</a></td><td class="dim nowrap">{{ r.created_at[5:] }}</td><td class="mono">{{ r.model }}</td><td>{{ pill(r.status, 'ok' if r.status == 'ok' else 'bad') }}</td><td>{{ ms(r.total_ms) }}</td><td><a href="/playground/groups/{{ r.group_id }}">compare</a></td></tr>
-    {% else %}<tr><td colspan="6" class="dim">no runs yet</td></tr>{% endfor %}
+  <table class="data"><tr><th>run</th><th>when</th><th>model</th><th>label</th><th>result</th><th>total</th><th>group</th></tr>
+    {% for r in runs %}<tr><td><a href="/api/dev/playground/runs/{{ r.id }}">#{{ r.id }}</a></td><td class="dim nowrap">{{ r.created_at[5:] }}</td><td class="mono">{{ r.model }}</td><td class="dim">{{ r.label or '' }}</td><td>{{ pill(r.status, 'ok' if r.status == 'ok' else 'bad') }}</td><td>{{ ms(r.total_ms) }}</td><td><a href="/playground/groups/{{ r.group_id }}">compare</a></td></tr>
+    {% else %}<tr><td colspan="7" class="dim">no runs yet</td></tr>{% endfor %}
   </table>
 </section>
 <script type="application/json" id="pg-src">{{ ({'id': src.id, 'parsed': src.parsed_obj} if src else None)|tojson }}</script>

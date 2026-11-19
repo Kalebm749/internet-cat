@@ -160,6 +160,14 @@ def validate(settings: dict, character: dict, world: dict) -> None:
             raise ConfigError(f"settings.yaml gain_values: missing bucket '{b}'")
 
 
+def sibling_overrides(db_path: Path | str) -> dict[str, str]:
+    """Settings that keep every runtime file next to a given database: a run with `--db X` then
+    writes <dir>/devdash.db, <dir>/logs/ and <dir>/engine.heartbeat beside X instead of the defaults."""
+    base = Path(db_path).resolve().parent
+    return {"db_path": str(Path(db_path).resolve()), "dev_db_path": str(base / "devdash.db"),
+            "log_dir": str(base / "logs"), "heartbeat_file": str(base / "engine.heartbeat")}
+
+
 def load_config(config_dir: Path | str | None = None, overrides: dict | None = None) -> Config:
     d = Path(config_dir or os.environ.get("CAT_CONFIG_DIR") or CONFIG_DIR)
     settings = _load_yaml(d / "settings.yaml")

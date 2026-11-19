@@ -1,4 +1,4 @@
-"""The dev dashboard's small writable database (data/dev.db).
+"""The dev dashboard's small writable database (data/devdash.db).
 
 The dashboard NEVER writes game state. It inserts rows into `dev_commands`; the engine, the only
 writer of `cat.db`, polls the queue, runs the commands and records the result here. This file also
@@ -90,7 +90,7 @@ def validate(command: str, args: dict | None, allowed_tags: list[str] | None = N
 
 
 class DevQueue:
-    """Thin wrapper over dev.db used by both the engine and the dashboard."""
+    """Thin wrapper over devdash.db used by both the engine and the dashboard."""
 
     def __init__(self, path: Path | str):
         self.path = Path(path)

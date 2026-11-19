@@ -2,16 +2,16 @@
 {% from "_macros.html" import pill, ms %}
 {% block content %}
 <section class="card">
-  <h2>Playground runs <span class="dim small">saved in dev.db · never applied to the world</span></h2>
+  <h2>Playground runs <span class="dim small">saved in devdash.db · never applied to the world</span></h2>
   <table class="data">
-    <tr><th>run</th><th>when</th><th>from call</th><th>model</th><th>result</th><th>tokens in/out</th><th>total</th><th>compare group</th></tr>
+    <tr><th>run</th><th>when</th><th>from call</th><th>model</th><th>label</th><th>result</th><th>tokens in/out</th><th>total</th><th>compare group</th></tr>
     {% for r in runs %}
     <tr><td><a href="/api/dev/playground/runs/{{ r.id }}">#{{ r.id }}</a></td><td class="dim nowrap">{{ r.created_at }}</td>
         <td>{% if r.source_call_id %}<a href="/llm/{{ r.source_call_id }}">#{{ r.source_call_id }}</a>{% else %}–{% endif %}</td>
-        <td class="mono">{{ r.model }}</td><td>{{ pill(r.status, 'ok' if r.status == 'ok' else 'bad') }}</td>
+        <td class="mono">{{ r.model }}</td><td class="dim">{{ r.label or '' }}</td><td>{{ pill(r.status, 'ok' if r.status == 'ok' else 'bad') }}</td>
         <td>{{ r.prompt_tokens if r.prompt_tokens is not none else '–' }} / {{ r.completion_tokens if r.completion_tokens is not none else '–' }}</td>
         <td>{{ ms(r.total_ms) }}</td><td><a href="/playground/groups/{{ r.group_id }}">{{ r.group_id }}</a></td></tr>
-    {% else %}<tr><td colspan="8" class="dim">no runs yet</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="9" class="dim">no runs yet</td></tr>{% endfor %}
   </table>
 </section>
 {% endblock %}

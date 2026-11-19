@@ -1,8 +1,8 @@
 """Runs dev-dashboard commands inside the engine (the only writer of game state).
 
-The dashboard inserts rows into dev.db's `dev_commands`; the engine polls them at the start of every
+The dashboard inserts rows into devdash.db's `dev_commands`; the engine polls them at the start of every
 loop iteration (and every `dev_poll_seconds` while waiting or paused), runs them here and records
-the result. It also publishes `engine_status` and the loaded config back to dev.db."""
+the result. It also publishes `engine_status` and the loaded config back to devdash.db."""
 from __future__ import annotations
 
 import hashlib
@@ -61,6 +61,7 @@ class DevControl:
                 self.q.mark(cmd["id"], status, result)
             except Exception:
                 log.warning("could not record dev command result", exc_info=True)
+            self.publish(force=True)             # the dashboard must see 'paused' etc. immediately, not 1s later
             log.info("dev command %s -> %s: %s", cmd["command"], status, result,
                      extra={"event": "dev_command", "extra": {"id": cmd["id"], "command": cmd["command"],
                                                               "status": status, "result": result}})
