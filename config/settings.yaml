@@ -9,6 +9,8 @@ embed_model: nomic-embed-text
 ollama_think: false            # qwen3: disable thinking so JSON `format` output stays clean
 llm_timeout_seconds: 120
 health_timeout_seconds: 3
+llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5}
+llm_num_ctx: 4096
 llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
 
 # --- storage ---
@@ -83,6 +85,8 @@ notable:                       # a tick is notable if any of these hold
 long_term_cap: 500
 
 # --- brain prompt ---
+tendency_words: {low_below: 0.35, high_above: 0.65}   # tendency value -> label end
+preferences_shown: 5           # likes and dislikes each
 recent_actions_shown: 5
 
 # --- web ---

@@ -62,9 +62,15 @@ def test_resumes_from_db(cfg):
     assert e.conn.execute("SELECT COUNT(*) FROM ticks").fetchone()[0] == 6
 
 
-def test_backend_failure_becomes_doze_not_crash(cfg):
+def test_single_failure_is_retried_not_dozed(cfg):
     e, b = make_engine(cfg)
     b.fail_next = 1
+    assert e.tick()["kind"] == "tick"
+
+
+def test_backend_failure_becomes_doze_not_crash(cfg):
+    e, b = make_engine(cfg)
+    b.fail_next = 2          # llm_retries=1 => two attempts, both fail
     info = e.tick()
     assert info["kind"] == "doze" and info["outcome"] == "dozing"
     assert db.get_state(e.conn)["brain_online"] == 0

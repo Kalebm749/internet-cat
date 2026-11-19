@@ -5,13 +5,18 @@ OllamaBackend arrives in M4; MockBackend lets everything run and be tested offli
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
 import math
 import random
 import re
 from abc import ABC, abstractmethod
 from typing import Any, Callable
 
+import httpx
 import numpy as np
+
+log = logging.getLogger("cat.llm")
 
 EMBED_DIM = 64
 
@@ -33,6 +38,86 @@ class LLMBackend(ABC):
     @abstractmethod
     def embed(self, model: str, texts: list[str]) -> list[list[float]]:
         """Raises BackendError on failure."""
+
+
+def call_json(backend: LLMBackend, task: str, model: str, messages: list[dict], schema: dict,
+              parse: Callable[[dict], Any], retries: int) -> Any:
+    """chat_json + parse, retried `retries` times on any BackendError (timeout, bad JSON,
+    unusable content). After the last failure raises BackendError => the engine dozes."""
+    last: BackendError | None = None
+    for attempt in range(retries + 1):
+        try:
+            return parse(backend.chat_json(task, model, messages, schema))
+        except BackendError as e:
+            last = e
+            log.warning("%s call failed (attempt %d/%d): %s", task, attempt + 1, retries + 1, e)
+    assert last is not None
+    raise last
+
+
+def extract_json(text: str) -> dict:
+    """Parse model output as a JSON object. Tolerates <think> blocks and ``` fences."""
+    t = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S).strip()
+    t = re.sub(r"^```(?:json)?\s*|\s*```$", "", t)
+    try:
+        v = json.loads(t)
+    except json.JSONDecodeError as e:
+        raise BackendError(f"invalid JSON from model: {e}") from None
+    if not isinstance(v, dict):
+        raise BackendError("model JSON is not an object")
+    return v
+
+
+class OllamaBackend(LLMBackend):
+    """Talks to Ollama over HTTP: /api/chat (JSON-schema `format`), /api/embed, /api/tags."""
+
+    def __init__(self, cfg, client: httpx.Client | None = None):
+        s = cfg.settings
+        self.s = s
+        self.base = s["ollama_host"].rstrip("/")
+        self.client = client or httpx.Client(
+            timeout=httpx.Timeout(s["llm_timeout_seconds"], connect=s["health_timeout_seconds"]))
+
+    def is_online(self) -> bool:
+        try:
+            r = self.client.get(f"{self.base}/api/tags", timeout=self.s["health_timeout_seconds"])
+            return r.status_code == 200
+        except httpx.HTTPError:
+            return False
+
+    def _post(self, path: str, payload: dict) -> dict:
+        try:
+            r = self.client.post(f"{self.base}{path}", json=payload)
+            r.raise_for_status()
+            return r.json()
+        except httpx.TimeoutException as e:
+            raise BackendError(f"timeout calling {path}") from e
+        except httpx.HTTPStatusError as e:
+            raise BackendError(f"{path} returned HTTP {e.response.status_code}: "
+                               f"{e.response.text[:200]}") from e
+        except (httpx.HTTPError, ValueError) as e:
+            raise BackendError(f"{path} failed: {e}") from e
+
+    def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
+        payload: dict[str, Any] = {
+            "model": model, "messages": messages, "stream": False, "format": schema,
+            "options": {"temperature": self.s["llm_temperature"].get(
+                "sleep" if task in ("consolidate", "tendencies", "preferences") else task, 0.7),
+                "num_ctx": self.s["llm_num_ctx"]}}
+        if "ollama_think" in self.s:
+            payload["think"] = bool(self.s["ollama_think"])
+        data = self._post("/api/chat", payload)
+        content = (data.get("message") or {}).get("content")
+        if not isinstance(content, str):
+            raise BackendError("no message content in /api/chat response")
+        return extract_json(content)
+
+    def embed(self, model: str, texts: list[str]) -> list[list[float]]:
+        data = self._post("/api/embed", {"model": model, "input": texts})
+        vecs = data.get("embeddings")
+        if not isinstance(vecs, list) or len(vecs) != len(texts) or not all(vecs):
+            raise BackendError("unexpected /api/embed response")
+        return vecs
 
 
 def hash_embed(text: str, dim: int = EMBED_DIM) -> list[float]:

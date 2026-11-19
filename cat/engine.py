@@ -64,40 +64,29 @@ class Engine:
             "SELECT outcome FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT 1").fetchone()
         self.last_outcome = row["outcome"] if row else None
 
-    # ---------- prompts (M4 replaces these with the full overview) ----------
-    def _situation(self, fired: list[dict]) -> str:
-        cfg, st = self.cfg, self.state
-        dt = clock.parse(st["sim_time"])
-        area = cfg.world["areas"][st["area"]]
-        lines = [f"It is {clock.time_label(dt)} ({clock.part_of_day(dt)}). Weather: {self.world.weather}.",
-                 f"You are in {area['name']}: {area['description']}",
-                 f"Energy: {character.energy_word(st['energy'], cfg)}. Mood: {st['mood']['word']}."]
-        for k, v in st["needs"].items():
-            lines.append(f"{character.need_label(k, cfg)}: {character.need_word(k, v, cfg)}")
-        objs = [f"{o['name']} [{', '.join(o['tags'])}]" for o in self.world.here(st["area"])]
-        lines.append("Here: " + (", ".join(objs) or "nothing"))
-        if fired:
-            lines.append("Just now: " + " ".join(e["text"] for e in fired))
-        if self.last_outcome:
-            lines.append(f"Last thing that happened: {self.last_outcome}")
-        return "\n".join(lines)
+    # ---------- prompts ----------
+    def _brain_context(self, fired: list[dict]) -> brain.BrainContext:
+        cfg, st, s = self.cfg, self.state, self.cfg.settings
+        n = s["recent_actions_shown"]
+        recent = [r["action"] for r in self.conn.execute(
+            "SELECT action FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT ?", (n,))][::-1]
+        k = s["preferences_shown"]
+        prefs = [dict(r) for r in self.conn.execute(
+            "SELECT subject, valence, reason FROM preferences WHERE valence>0 "
+            "ORDER BY valence DESC LIMIT ?", (k,))] + [dict(r) for r in self.conn.execute(
+            "SELECT subject, valence, reason FROM preferences WHERE valence<0 "
+            "ORDER BY valence ASC LIMIT ?", (k,))]
+        return brain.BrainContext(
+            sim_time=st["sim_time"], area_id=st["area"], needs=st["needs"], energy=st["energy"],
+            mood=st["mood"], tendencies=st["tendencies"], weather=self.world.weather,
+            objects_here=self.world.here(st["area"]), inventory=self.world.inventory(),
+            last_outcome=self.last_outcome, events=[e["text"] for e in fired],
+            recent_actions=recent, preferences=prefs)
 
     def _narrator_context(self) -> str:
-        st, cfg = self.state, self.cfg
-        dt = clock.parse(st["sim_time"])
-        areas = cfg.world["areas"]
-
-        def fmt(o):
-            state = ", ".join(f"{k}={v}" for k, v in o["state"].items()) or "none"
-            return f"- {o['id']}: {o['name']} | tags: {', '.join(o['tags']) or 'none'} | state: {state}"
-
-        here = [fmt(o) for o in self.world.here(st["area"])] or ["(nothing)"]
-        inv = [fmt(o) for o in self.world.inventory()] or ["(empty)"]
-        exits = "; ".join(f"{a} ({areas[a]['name']})" for a in areas[st["area"]]["exits"])
-        return (f"Location: {st['area']} ({areas[st['area']]['name']}). Time: "
-                f"{clock.time_label(dt)}. Weather: {self.world.weather}.\n"
-                f"Exits: {exits}\nObjects here:\n" + "\n".join(here)
-                + "\nInventory:\n" + "\n".join(inv))
+        st = self.state
+        return narrator.describe_world(self.cfg, st["sim_time"], st["area"], self.world.weather,
+                                       self.world.here(st["area"]), self.world.inventory())
 
     def _repetition_multiplier(self, action: str) -> float:
         """Embed the action; shrink gains if it resembles a recent one. Embedding trouble just
@@ -136,7 +125,7 @@ class Engine:
         online = self.backend.is_online()
         if online:
             try:
-                b = brain.think(self.backend, cfg, self._situation(fired))
+                b = brain.think(self.backend, cfg, self._brain_context(fired))
                 n = narrator.resolve(self.backend, cfg, b["action"], self._narrator_context())
                 result = (b, n)
             except BackendError as e:

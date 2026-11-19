@@ -20,6 +20,13 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m cat.main --mock --ticks 100    # run the engine with the mock brain
 ```
 
+Real brain (needs Ollama reachable at `ollama_host`):
+```
+.venv/bin/python scripts/check_ollama.py                  # tags + one chat + one embed
+.venv/bin/python -m cat.main --ticks 50 --interval 0      # real brain, 50 ticks
+.venv/bin/python scripts/show_diary.py -n 50              # read the diary
+```
+
 ## Conventions
 - Python 3.11+, pure-Python deps only (must pip install on a Pi without compiling).
 - All tuning numbers live in `config/settings.yaml`, never hard-coded.
