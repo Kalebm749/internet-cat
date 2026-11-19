@@ -41,6 +41,12 @@ CREATE TABLE IF NOT EXISTS preferences(
   id INTEGER PRIMARY KEY, subject TEXT, valence REAL,  -- -1..1
   reason TEXT, updated_at TEXT);
 
+-- what the entity currently thinks it is: short text lines, learned during sleep, revisable
+CREATE TABLE IF NOT EXISTS self_image(
+  id INTEGER PRIMARY KEY, text TEXT, confidence REAL,  -- 0..1
+  formed_day TEXT,                                     -- sim date the line was formed (YYYY-MM-DD)
+  updated_at TEXT);
+
 CREATE TABLE IF NOT EXISTS sleep_log(
   id INTEGER PRIMARY KEY, sim_date TEXT, summary TEXT, tick_id INT,   -- tick at which the sleep began
   tendency_changes JSON, new_memories JSON, new_preferences JSON);
@@ -55,7 +61,7 @@ CREATE TABLE IF NOT EXISTS tick_traces(
 
 CREATE TABLE IF NOT EXISTS llm_calls(
   id INTEGER PRIMARY KEY, tick_id INT,
-  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | other
+  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | sleep_self_image | other
   model TEXT, options JSON, system_prompt TEXT, user_prompt TEXT, schema JSON,
   raw_response TEXT, parsed JSON, valid_json INT, attempt INT, error TEXT,
   prompt_tokens INT, completion_tokens INT,

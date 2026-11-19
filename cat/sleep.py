@@ -1,4 +1,5 @@
-"""The sleep cycle: consolidate the day's memories, drift tendencies a little, learn preferences.
+"""The sleep cycle: consolidate the day's memories, drift tendencies a little, learn preferences,
+and (at most one line a night) revise what it thinks it is.
 
 `plan()` does all the LLM/embedding work and writes nothing. `commit()` applies the result in
 ONE transaction. If any LLM call fails, nothing is written and the engine retries later, so a
@@ -51,6 +52,17 @@ PREFERENCES_SCHEMA = {
 }
 
 
+SELF_IMAGE_SCHEMA = {
+    "type": "object",
+    "properties": {"self_image": {"type": "array", "maxItems": 1, "items": {
+        "type": "object",
+        "properties": {"text": {"type": "string"}, "confidence": {"type": "number"},
+                       "replaces": {"type": "integer"}},
+        "required": ["text", "confidence"]}}},
+    "required": ["self_image"],
+}
+
+
 @dataclass
 class SleepPlan:
     summary: str
@@ -58,6 +70,7 @@ class SleepPlan:
     tendencies: dict[str, float] = field(default_factory=dict)  # full new tendency values
     tendency_changes: dict[str, dict] = field(default_factory=dict)  # {name: {from, to}}
     preferences: list[dict] = field(default_factory=list)       # {subject, valence, reason, previous}
+    self_image: dict = field(default_factory=lambda: {"action": "none"})   # see decide_self_image()
     last_tick_id: int = 0
     trace_steps: list[dict] = field(default_factory=list)   # for the dev dashboard (sleep_traces)
 
@@ -117,6 +130,51 @@ def merge_preferences(cfg: Config, existing: dict[str, dict], proposed: Any) -> 
     return out
 
 
+def decide_self_image(cfg: Config, existing: list[dict], proposed: Any, sim_date: str) -> dict:
+    """At most one proposal -> an outcome the commit applies. `existing` rows are
+    {id, text, confidence, formed_day}. A proposal that names an existing line in `replaces`
+    revises or contradicts it (the old line is replaced). Over the cap, the least confident
+    lines are forgotten, the new one included. Always returns a dict with an `action`:
+    none | rejected | added | revised | dropped_at_cap; plus text/confidence/replaced/dropped."""
+    sl = cfg.settings["sleep"]
+    items = proposed if isinstance(proposed, list) else []
+    p = next((x for x in items if isinstance(x, dict)), None)
+    if p is None:
+        return {"action": "none", "reason": "no proposal"}
+    text = " ".join(str(p.get("text") or "").split())[:sl["max_self_image_length"]].strip()
+    conf = p.get("confidence")
+    if not text:
+        return {"action": "rejected", "reason": "empty text"}
+    if isinstance(conf, bool) or not isinstance(conf, (int, float)) or not math.isfinite(conf):
+        return {"action": "rejected", "text": text, "reason": "confidence is not a number"}
+    conf = round(max(0.0, min(1.0, float(conf))), 3)
+    if conf < sl["self_image_min_confidence"]:
+        return {"action": "rejected", "text": text, "confidence": conf,
+                "reason": f"confidence below {sl['self_image_min_confidence']}"}
+    dup = next((e for e in existing if e["text"].strip().lower() == text.lower()), None)
+    if dup:
+        return {"action": "rejected", "text": text, "confidence": conf,
+                "reason": f"already a line (id {dup['id']})"}
+    rid = p.get("replaces")
+    old = next((e for e in existing if not isinstance(rid, bool) and e["id"] == rid), None)
+    rows = [e for e in existing if e is not old]
+    new = {"id": None, "text": text, "confidence": conf, "formed_day": sim_date}
+    # least confident first to go; among equals the older one goes
+    order = sorted(rows + [new], key=lambda e: (e["confidence"], e["formed_day"] or "", e["id"] or 0))
+    drop = order[:max(0, len(order) - sl["max_self_image_lines"])]
+    out = {"action": "revised" if old else "added", "text": text, "confidence": conf,
+           "formed_day": sim_date, "replaced": ({"id": old["id"], "text": old["text"],
+                                                  "confidence": old["confidence"]} if old else None),
+           "dropped": [{"id": e["id"], "text": e["text"], "confidence": e["confidence"]}
+                       for e in drop if e["id"] is not None]}
+    if any(e["id"] is None for e in drop):
+        out["action"] = "dropped_at_cap"
+        out["reason"] = "less confident than every line kept at the cap"
+        out["replaced"] = None   # the old line stays: nothing replaced it
+        out["dropped"] = []
+    return out
+
+
 # ---------- gathering ----------
 def _last_sleep_tick_id(conn: Connection) -> int:
     from cat.db import get_meta
@@ -140,6 +198,27 @@ def _sys(cfg: Config, job: str) -> str:
     c = cfg.character
     return (f"You are the sleeping mind of {c['name']} "
             f"(core traits: {', '.join(c['core_traits'])}). {job} Reply with JSON only.")
+
+
+def self_image_messages(cfg: Config, summary: str, shorts: list[str], log_lines: list[str],
+                        existing: list[dict]) -> list[dict]:
+    ex = "\n".join(f"- [{e['id']}] {e['text']} (confidence {e['confidence']:.1f})"
+                   for e in existing) or "(nothing yet)"
+    seed = (cfg.character.get("self_image") or {}).get("seed", "")
+    user = (f"Summary of the day: {summary}\n\nToday's short-term memories:\n"
+            + ("\n".join(f"- {t}" for t in shorts) or "(none)")
+            + "\n\nToday's log:\n" + ("\n".join(f"- {t}" for t in log_lines) or "(nothing)")
+            + (f"\n\nA hint you started with: {seed}" if seed else "")
+            + f"\n\nWhat you currently think you are:\n{ex}\n\n"
+              "Did today give you a reason to believe something new about what you are, or about your "
+              "own situation and limits? Propose at most ONE short line in the first person, or return "
+              "an empty list. Only say what today's memories actually support; a tentative line is "
+              "better than a confident one, and \"I don't seem to be able to...\" is as good as "
+              "\"I am...\". Do not invent a form, species or body that nothing today points to. "
+              "confidence: 0 to 1. To revise or contradict a line above, set `replaces` to its id "
+              "(otherwise 0).")
+    return [{"role": "system", "content": _sys(cfg, "You reflect on what you are.")},
+            {"role": "user", "content": user}]
 
 
 def consolidate_messages(cfg: Config, shorts: list[str], log_lines: list[str]) -> list[dict]:
@@ -228,6 +307,16 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
                       PREFERENCES_SCHEMA, lambda r: r.get("preferences"), retries)
     prefs = merge_preferences(cfg, existing, raw_p)
 
+    si_rows = [dict(r) for r in conn.execute(
+        "SELECT id, text, confidence, formed_day FROM self_image ORDER BY id")]
+    raw_s = call_json(backend, "self_image", model,
+                      self_image_messages(cfg, summary, shorts, lines, si_rows),
+                      SELF_IMAGE_SCHEMA, lambda r: r.get("self_image"), retries)
+    from cat.db import get_meta
+    day = (get_meta(conn, "sleep_started") or sim_time)[:10]       # the day the sleep began, as in sleep_log
+    si = decide_self_image(cfg, si_rows, raw_s, day)
+    log.info("self-image proposal: %s", si["action"], extra={"event": "self_image", "extra": si})
+
     prepared = [memory.prepare(text, imp, sim_time) for text, imp in mems]   # embeddings
     steps = [
         {"step": "consolidate", "input": {"short_memories": shorts, "day_log": lines},
@@ -241,8 +330,11 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
                      for k in current_tendencies}},
         {"step": "preferences", "input": {"summary": summary, "existing": list(existing.values())},
          "output": raw_p, "proposed": raw_p, "clamped": prefs},
+        {"step": "self_image", "input": {"summary": summary, "short_memories": shorts,
+                                         "existing": si_rows},
+         "output": raw_s, "proposed": raw_s, "clamped": si},
     ]
-    return SleepPlan(summary, prepared, new_t, t_changes, prefs, top_id, steps)
+    return SleepPlan(summary, prepared, new_t, t_changes, prefs, si, top_id, steps)
 
 
 def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time: str,
@@ -270,6 +362,14 @@ def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time
     conn.execute(
         "DELETE FROM preferences WHERE id NOT IN (SELECT id FROM preferences "
         "ORDER BY abs(valence) DESC, id DESC LIMIT ?)", (sl["max_preferences_total"],))
+    si = p.self_image
+    if si["action"] in ("added", "revised"):
+        if si["replaced"]:
+            conn.execute("DELETE FROM self_image WHERE id=?", (si["replaced"]["id"],))
+        conn.execute("INSERT INTO self_image(text,confidence,formed_day,updated_at) VALUES(?,?,?,?)",
+                     (si["text"], si["confidence"], si["formed_day"], sim_time))
+        for d in si["dropped"]:
+            conn.execute("DELETE FROM self_image WHERE id=?", (d["id"],))
     cur = conn.execute(
         "INSERT INTO sleep_log(sim_date,summary,tick_id,tendency_changes,new_memories,"
         "new_preferences) VALUES(?,?,?,?,?,?)",

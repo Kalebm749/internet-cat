@@ -123,6 +123,9 @@ sleep:
   max_preferences_total: 40
   preference_min_abs: 0.1          # preferences weaker than this are forgotten
   max_preference_subject_length: 60
+  max_self_image_lines: 5          # self-image lines kept; over the cap the least confident are forgotten
+  self_image_min_confidence: 0.2   # proposals less confident than this are ignored
+  max_self_image_length: 160       # characters per self-image line
 
 # --- memory ---
 recall: {k: 5, w_recency: 1.0, w_importance: 1.0, w_relevance: 1.5}

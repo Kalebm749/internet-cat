@@ -22,7 +22,8 @@ from cat.db import dumps
 log = logging.getLogger("cat.trace")
 
 KIND = {"brain": "brain", "narrator": "narrator", "consolidate": "sleep_consolidate",
-        "tendencies": "sleep_tendencies", "preferences": "sleep_preferences"}
+        "tendencies": "sleep_tendencies", "preferences": "sleep_preferences",
+        "self_image": "sleep_self_image"}
 
 
 def _now() -> str:

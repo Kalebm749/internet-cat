@@ -120,10 +120,17 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             if b not in {str(k) for k in st["gain_values"]}:
                 errs.append(f"settings.yaml gain_values: missing bucket '{b}'")
     sl = st.get("sleep")
-    if isinstance(sl, dict) and "max_self_image_lines" in sl:
-        n = sl["max_self_image_lines"]
-        if isinstance(n, bool) or not isinstance(n, int) or n < 1:
-            errs.append("settings.yaml sleep.max_self_image_lines: must be an integer >= 1")
+    if isinstance(sl, dict):
+        for k in ("max_self_image_lines", "self_image_min_confidence", "max_self_image_length"):
+            if k not in sl:
+                errs.append(f"settings.yaml sleep: missing required field '{k}'")
+        for k in ("max_self_image_lines", "max_self_image_length"):
+            n = sl.get(k, 1)
+            if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+                errs.append(f"settings.yaml sleep.{k}: must be an integer >= 1")
+        c = sl.get("self_image_min_confidence", 0)
+        if not _num(c) or not 0 <= c <= 1:
+            errs.append("settings.yaml sleep.self_image_min_confidence: must be 0..1")
 
     # ---- world: areas, objects, events ----
     areas: dict = {}
