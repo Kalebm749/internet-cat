@@ -23,6 +23,7 @@ SPEC: dict[str, set[str]] = {
     "brain.situation.self_image": {"self_image"},
     "brain.situation.self_image_empty": set(),
     "brain.situation.tendencies": {"tendencies"},
+    "brain.situation.habits": {"habits"},
     "brain.situation.likes": {"items"},
     "brain.situation.dislikes": {"items"},
     "brain.situation.heading_now": set(),
@@ -71,6 +72,8 @@ SPEC: dict[str, set[str]] = {
     "sleep.jobs.preferences": set(),
     "sleep.jobs.self_image": set(),
     "sleep.jobs.projects": set(),
+    "sleep.jobs.habits": set(),
+    "habits.fallback": {"label", "part"},
     "sleep.none_likes": set(),
     "sleep.none_existing_projects": set(),
     "sleep.none_shorts": set(),
@@ -82,6 +85,7 @@ SPEC: dict[str, set[str]] = {
     "sleep.tendencies": {"summary", "tendencies"},
     "sleep.preferences": {"summary", "log", "existing", "n"},
     "sleep.self_image": {"summary", "shorts", "log", "seed_hint", "existing"},
+    "sleep.habits": {"summary", "candidates"},
     "sleep.projects": {"summary", "log", "likes", "existing", "max_active"},
 }
 

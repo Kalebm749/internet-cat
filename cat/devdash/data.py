@@ -1052,7 +1052,7 @@ def config_view(cfg: Config) -> dict:
 def projects_page(cfg: Config, limit: int = 50) -> dict:
     """Every project with its progress number, idle counters and artifacts, and the settings behind them."""
     pc = cfg.settings["projects"]
-    out: dict[str, Any] = {"projects": [], "artifacts": [], "settings": {
+    out: dict[str, Any] = {"projects": [], "artifacts": [], "habits": [], "habit_candidates": [], "settings": {
         k: pc[k] for k in ("max_active", "progress_values", "taper", "milestone_every", "completion_gains",
                            "pause_after_idle_nights", "stages")}}
     with game_db(cfg) as conn:
@@ -1064,6 +1064,9 @@ def projects_page(cfg: Config, limit: int = 50) -> dict:
                 p["artifact_count"] = (one(conn, "SELECT COUNT(*) n FROM artifacts WHERE project_id=?", p["id"]) or {}).get("n", 0)
                 out["projects"].append(p)
             out["artifacts"] = rows(conn, "SELECT * FROM artifacts ORDER BY id DESC LIMIT ?", limit)
+            out["habits"] = rows(conn, "SELECT * FROM habits ORDER BY share*count DESC, id")
+            from cat import habits as HB
+            out["habit_candidates"] = HB.mine(conn, cfg)     # what the next sleep would see right now
         except Exception:                        # an old database without the tables
             pass
     return out

@@ -258,7 +258,7 @@ def test_sleep_nights_show_inputs_outputs_proposed_vs_clamped(cfg):
     s = data.sleep_nights(cfg)
     assert s["total"] == 3 and len(s["nights"]) == 3 and s["nights"][0]["id"] > s["nights"][-1]["id"]
     night = s["nights"][0]
-    assert night["tick_id"] and night["summary"] and set(night["traces"]) == {"consolidate", "tendencies", "preferences", "self_image", "projects"}
+    assert night["tick_id"] and night["summary"] and set(night["traces"]) == {"consolidate", "tendencies", "preferences", "self_image", "projects", "habits"}
     step = cfg.settings["sleep"]["tendency_max_step"]
     t = {x["id"]: x for x in night["tendency_table"]}
     assert t["boldness"]["proposed"] == 1 and t["boldness"]["applied"] == pytest.approx(step) and not t["boldness"]["clamped"]
@@ -267,7 +267,7 @@ def test_sleep_nights_show_inputs_outputs_proposed_vs_clamped(cfg):
     assert t["tidiness"]["applied"] == pytest.approx(0.2 * step)
     assert night["traces"]["consolidate"]["input"]["day_log"] and night["traces"]["consolidate"]["output"]["memories"]
     assert night["new_memories"] and night["pref_table"][0]["subject"] == "the rain"
-    assert [c["kind"] for c in night["calls"]] == ["sleep_consolidate", "sleep_tendencies", "sleep_preferences", "sleep_self_image", "sleep_projects"]
+    assert [c["kind"] for c in night["calls"]] == ["sleep_consolidate", "sleep_tendencies", "sleep_preferences", "sleep_self_image", "sleep_projects", "sleep_habits"]
     assert s["nights"][-1]["pref_table"][0]["previous"] is None                             # the first night it is liked
     assert s["nights"][0]["pref_table"][0]["previous"] == s["nights"][1]["pref_table"][0]["valence"]   # blended with last night
 

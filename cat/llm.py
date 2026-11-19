@@ -176,7 +176,7 @@ class OllamaBackend(LLMBackend):
 
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
         options = {"temperature": self.s["llm_temperature"].get(
-            "sleep" if task in ("consolidate", "tendencies", "preferences", "self_image", "projects") else task, 0.7),
+            "sleep" if task in ("consolidate", "tendencies", "preferences", "self_image", "projects", "habits") else task, 0.7),
             "num_ctx": self.s["llm_num_ctx"]}
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False,
                                    "format": schema, "options": options}
@@ -341,6 +341,10 @@ class MockBackend(LLMBackend):
             if r.random() < 0.25:
                 out["spawn"] = {"name": "a smooth pebble", "tags": ["movable"]}
             return {"happening": out}
+        if task == "habits":
+            text = messages[-1]["content"] if messages else ""
+            ids = [int(m) for m in re.findall(r"^- \[(\d+)\] ", text, re.M)]
+            return {"habits": [{"id": i, "text": "Tends to come back to this around the same time."} for i in ids]}
         if task == "projects":
             text = messages[-1]["content"] if messages else ""
             r = random.Random(len(text))        # own stream: leaves the seeded tick sequence untouched

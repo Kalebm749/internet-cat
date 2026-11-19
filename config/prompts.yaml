@@ -34,6 +34,7 @@ brain:
     self_image: "What you currently think you are (your self-image): {self_image}"   # {self_image}
     self_image_empty: "Your self-image is empty: you have no picture yet of what you are or whether you have a form."
     tendencies: "Your tendencies lately: {tendencies}."       # {tendencies}
+    habits: "Things you have found yourself doing again and again: {habits}"   # {habits}
     likes: "You like: {items}."                               # {items}
     dislikes: "You dislike: {items}."                         # {items}
     heading_now: "## Now"
@@ -110,6 +111,9 @@ director:
   none_actions: "(nothing yet)"
   stale_note: "The entity has been in this place for a while, doing much the same things. A small change here would be welcome."
 
+habits:
+  fallback: "You tend to {label} in the {part}."                 # {label} {part}; used when the model gives no line
+
 sleep:
   system: "You are the sleeping mind of {name} (core traits: {core_traits}). {job} Reply with JSON only."   # {name} {core_traits} {job}
   jobs:
@@ -118,6 +122,7 @@ sleep:
     preferences: "You work out what the creature has come to like or dislike."
     self_image: "You reflect on what you are."
     projects: "You notice what the entity keeps coming back to, and whether it deserves a long-term project."
+    habits: "You put into a few plain words what the entity keeps doing."
   none_shorts: "(none)"
   none_log: "(nothing)"
   none_existing_preferences: "(none yet)"
@@ -163,6 +168,13 @@ sleep:
     {existing}
 
     Did today give you a reason to believe something new about what you are, or about your own situation and limits? Propose at most ONE short line in the first person, or return an empty list. Only say what today's memories actually support; a tentative line is better than a confident one, and "I don't seem to be able to..." is as good as "I am...". Do not invent a form, species or body that nothing today points to. confidence: 0 to 1. To revise or contradict a line above, set `replaces` to its id (otherwise 0).
+  habits: |-                                                  # {summary} {candidates}
+    Summary of the day: {summary}
+
+    These are things it has really been doing again and again (found by counting, not guessed):
+    {candidates}
+
+    For each one, write one short line in the second person that says what it tends to do and when, like "You tend to settle down by the window in the evening." Keep it plain and true to the count; do not add reasons or feelings that are not there. Return each line with the number in brackets as its id.
   projects: |-                                                # {summary} {log} {likes} {existing} {max_active}
     Summary of the day: {summary}
 

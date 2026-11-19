@@ -146,6 +146,14 @@
       </div>
     </section>
 
+    <section class="card" id="habits-card">
+      <h2 class="section-title">Habits</h2>
+      <p id="habits-empty" class="empty" {% if not s.habits.empty %}hidden{% endif %}>{{ s.habits.empty_text }}</p>
+      <ul class="pref-list habits" id="habits">
+        {% for h in s.habits.rows %}<li title="{{ h.title }}">{{ h.text }}</li>{% endfor %}
+      </ul>
+    </section>
+
     <section class="card" id="projects-card">
       <h2 class="section-title">Projects</h2>
       <p id="projects-empty" class="empty" {% if not s.projects.empty %}hidden{% endif %}>{{ s.projects.empty_text }}</p>
@@ -225,6 +233,8 @@
 <template id="tpl-project"><li class="project" data-f-class="cls" data-f-attr="title:title_attr"><span class="pj-title" data-f="title"></span><span class="pj-stage"><span data-f="status_label"></span> · <span data-f="stage"></span></span><span class="pj-note" data-f="note" data-show="note"></span></li></template>
 
 <template id="tpl-artifact"><li class="artifact"><p class="af-head"><b data-f="title"></b> <span class="af-meta"><span data-f="kind"></span> · <span data-f="project"></span> · <span data-f="day_text"></span></span></p><p class="af-text" data-f="text"></p></li></template>
+
+<template id="tpl-habit"><li data-f="text" data-f-attr="title:title"></li></template>
 
 <template id="tpl-self-image"><li data-f="text" data-f-attr="title:title"></li></template>
 

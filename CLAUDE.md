@@ -17,7 +17,12 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 - `config-reference.md` — every config field (`settings.yaml`, `character.yaml`, `world.yaml`, `prompts.yaml`)
 - `phase-2-docker-and-devdash.md` — the plan for the Docker Compose deployment (part A, done) and the dev dashboard (part B, done)
 
-Decided: "open actions, closed effects" (server-architecture §9). Need levels shape the brain's prompt
+Decided (revised): **closed moves**. The brain picks from a menu built by code (`config/moves.yaml`, `cat/moves.py`);
+code resolves the effects; the narrator only writes prose. The menu is never ranked or marked by need
+(server-architecture §9 still describes the older "open actions" design and is out of date).
+A move longer than `activity.step_minutes` runs as one activity with hidden carry ticks (no LLM calls);
+any event or a newly empty need interrupts it. Habits (`cat/habits.py`) are found by code, worded in sleep,
+and shown as "you tend to...". Docs for these are still to be written (see README/TODO). Need levels shape the brain's prompt
 (band words for the most pressing needs), never its choices: code never picks, suggests or ranks actions
 by need. Energy is a **separate resource** (-50..50: effort spends it, sleep restores it), never a need.
 Mood is one number, a slider from -50 (negative) to 50 (positive), computed from need bands.

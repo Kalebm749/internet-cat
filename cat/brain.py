@@ -49,6 +49,7 @@ class BrainContext:
     just_woke_from_doze: bool = False
     self_image: list[str] = field(default_factory=list)          # what it currently thinks it is (text only)
     stale_here: bool = False                                     # it has stayed in this area for a while
+    habits: list[str] = field(default_factory=list)              # code-found patterns, worded in sleep
     projects: list[dict] = field(default_factory=list)           # active projects (words only, see projects.brain_view)
     menu: list = field(default_factory=list)                     # the moves on offer (cat.moves.Move)
 
@@ -160,6 +161,8 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     if ctx.tendencies:
         L.append(R("tendencies", tendencies="; ".join(
             tendency_phrase(cfg, k, v) for k, v in ctx.tendencies.items())))
+    if ctx.habits:
+        L.append(R("habits", habits=" ".join(ctx.habits)))
     loves = [p for p in ctx.preferences if p["valence"] > 0]
     dislikes = [p for p in ctx.preferences if p["valence"] < 0]
     if loves:

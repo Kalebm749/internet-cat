@@ -221,7 +221,7 @@ def test_force_sleep_runs_the_cycle_and_attaches_it_to_the_latest_tick(cfg):
     assert {"sleep_consolidate", "sleep_tendencies", "sleep_preferences", "sleep_self_image", "sleep_projects"} <= kinds
     stages = json.loads(e.conn.execute("SELECT stage_timings FROM tick_traces WHERE tick_id=?", (last,)).fetchone()[0])
     assert "sleep" in stages and "brain" in stages
-    assert e.conn.execute("SELECT COUNT(*) FROM sleep_traces WHERE sleep_log_id=?", (log[0]["id"],)).fetchone()[0] == 5
+    assert e.conn.execute("SELECT COUNT(*) FROM sleep_traces WHERE sleep_log_id=?", (log[0]["id"],)).fetchone()[0] == 6
 
 
 def test_force_sleep_fails_clearly_when_offline_or_empty(cfg):

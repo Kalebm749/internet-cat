@@ -68,7 +68,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "dislike_drain", "projects", "director", "moves", "activity", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "projects", "habits", "director", "moves", "activity", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -352,6 +352,19 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                 errs.append("settings.yaml director.stale_every_ticks: must not exceed every_ticks")
         elif "director" in st:
             errs.append("settings.yaml director: must be a mapping")
+        hb = st.get("habits")
+        if isinstance(hb, dict):
+            for k in ("window_ticks", "min_count", "max_stored", "max_shown", "text_max_length"):
+                v = hb.get(k)
+                if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+                    errs.append(f"settings.yaml habits.{k}: must be an integer >= 1")
+            ms = hb.get("min_share")
+            if isinstance(ms, bool) or not isinstance(ms, (int, float)) or not 0 < ms <= 1:
+                errs.append("settings.yaml habits.min_share: must be a number above 0 and up to 1")
+            if not isinstance(hb.get("enabled"), bool):
+                errs.append("settings.yaml habits.enabled: must be true or false")
+        elif "habits" in st:
+            errs.append("settings.yaml habits: must be a mapping")
         pj = st.get("projects")
         if isinstance(pj, dict):
             for k, lo in (("max_active", 1), ("milestone_every", 1), ("title_max_length", 1), ("why_max_length", 1),

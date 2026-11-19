@@ -186,6 +186,14 @@ def projects_view(conn, cfg: Config) -> dict:
             "empty_text": "no projects yet.", "artifacts_empty_text": "nothing made yet."}
 
 
+def habits_view(conn, cfg: Config) -> dict:
+    """The patterns it keeps repeating, in the words it was given in sleep."""
+    rows = _safe(conn, lambda c: [dict(r) for r in c.execute(
+        "SELECT text, part FROM habits ORDER BY share*count DESC, id")], [])
+    return {"rows": [{"text": r["text"], "title": f"most often in the {r['part']}"} for r in rows],
+            "empty": not rows, "empty_text": "none noticed yet."}
+
+
 def keepsakes_view(conn, cfg: Config, offset: int = 0, limit: int | None = None) -> tuple[list[dict], bool]:
     limit = limit if limit is not None else cfg.settings["keepsakes_first_page"]
     first = first_dt(conn, cfg)
@@ -397,6 +405,7 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
         "tendencies": tendencies_view(conn, cfg, st),
         "preferences": preferences_view(conn, cfg),
         "projects": projects_view(conn, cfg),
+        "habits": habits_view(conn, cfg),
         "self_image": self_image_view(conn, cfg, first),
         "latest_tick_id": latest,
         "diary": diary, "diary_next_before": next_before,

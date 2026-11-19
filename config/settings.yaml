@@ -111,6 +111,15 @@ dislike_drain:
   max_matches: 2               # at most this many dislikes count in one tick (the strongest)
 
 # --- long-term projects (formed in sleep, advanced by the narrator, leave artifacts) ---
+habits:
+  enabled: true
+  window_ticks: 150            # the last N decisions are looked at (carried-on ticks are not decisions)
+  min_count: 4                 # a move must recur at least this often in one part of the day...
+  min_share: 0.4               # ...and make up at least this share of the decisions made in that part
+  max_stored: 6                # habits kept
+  max_shown: 3                 # habit lines in the brain prompt
+  text_max_length: 120
+
 projects:
   max_active: 1                # projects it can be working on at once
   work_bucket: "+"             # progress bucket for one "work on" move (a key of progress_values)

@@ -133,7 +133,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.get("/projects", response_class=HTMLResponse)
     def projects_page(request: Request):
-        return page(request, "projects.html", "projects", "Projects", p=data.projects_page(cfg))
+        return page(request, "projects.html", "projects", "Projects", p=data.projects_page(cfg), cfg_habits=cfg.settings["habits"])
 
     @app.get("/world", response_class=HTMLResponse)
     def world_page(request: Request, object: str = "", page_no: int = Query(1, alias="page", ge=1)):

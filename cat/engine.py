@@ -16,6 +16,7 @@ from typing import Callable
 from cat import brain, character, clock, db, downtime, effects, logs, narrator, sleep
 from cat import moves as MV
 from cat import director as DR
+from cat import habits as HB
 from cat import projects as PJ
 from cat import prompts as P
 from cat.config import Config, load_config
@@ -160,7 +161,7 @@ class Engine:
             objects_here=self.world.here(st["area"]), inventory=self.world.inventory(),
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
             recent_actions=recent, preferences=prefs, self_image=self._self_image_lines(),
-            stale_here=self._stale_here(), projects=PJ.brain_view(cfg, self.conn, st["sim_time"]),
+            stale_here=self._stale_here(), habits=HB.shown(self.conn, cfg), projects=PJ.brain_view(cfg, self.conn, st["sim_time"]),
             menu=self._menu() if menu is None else menu,
             just_woke_from_doze=self.last_kind in ("doze", "catchup"),
             long_memories=[m["text"] for m in (long_mems or [])],

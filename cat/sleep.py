@@ -13,6 +13,7 @@ from sqlite3 import Connection
 from typing import Any
 
 from cat import clock
+from cat import habits as HB
 from cat import projects as PJ
 from cat import prompts as P
 from cat.config import Config
@@ -75,6 +76,7 @@ class SleepPlan:
     self_image: dict = field(default_factory=lambda: {"action": "none"})   # see decide_self_image()
     project_op: dict = field(default_factory=lambda: {"action": "none"})   # see projects.decide_ops()
     project_upkeep: list[dict] = field(default_factory=list)               # see projects.idle_upkeep()
+    habits: list[dict] | None = None                                       # None = leave as is (see habits.decide())
     last_tick_id: int = 0
     trace_steps: list[dict] = field(default_factory=list)   # for the dev dashboard (sleep_traces)
 
@@ -326,6 +328,19 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
     pj_op = PJ.decide_ops(cfg, open_rows, raw_pj, day)
     log.info("project proposal: %s", pj_op["action"], extra={"event": "projects", "extra": pj_op})
 
+    new_habits = None
+    habit_step = None
+    if s["habits"]["enabled"]:
+        cands = HB.mine(conn, cfg)
+        raw_h = None
+        if cands:
+            raw_h = call_json(backend, "habits", model, HB.messages(cfg, summary, cands),
+                              HB.HABITS_SCHEMA, lambda r: r.get("habits"), retries)
+        old_h = {r["key"]: dict(r) for r in conn.execute("SELECT * FROM habits")}
+        new_habits = HB.decide(cfg, old_h, cands, raw_h, day)
+        habit_step = {"step": "habits", "input": {"candidates": cands}, "output": raw_h, "proposed": raw_h,
+                      "clamped": new_habits}
+
     prepared = [memory.prepare(text, imp, sim_time) for text, imp in mems]   # embeddings
     steps = [
         {"step": "consolidate", "input": {"short_memories": shorts, "day_log": lines},
@@ -345,7 +360,9 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
         {"step": "projects", "input": {"summary": summary, "likes": likes, "open": open_rows},
          "output": raw_pj, "proposed": raw_pj, "clamped": {"op": pj_op, "idle_upkeep": upkeep}},
     ]
-    return SleepPlan(summary, prepared, new_t, t_changes, prefs, si, pj_op, upkeep, top_id, steps)
+    if habit_step:
+        steps.append(habit_step)
+    return SleepPlan(summary, prepared, new_t, t_changes, prefs, si, pj_op, upkeep, new_habits, top_id, steps)
 
 
 def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time: str,
@@ -382,6 +399,8 @@ def commit(conn: Connection, cfg: Config, memory: Memory, p: SleepPlan, sim_time
         for d in si["dropped"]:
             conn.execute("DELETE FROM self_image WHERE id=?", (d["id"],))
     PJ.commit_sleep(conn, p.project_upkeep, p.project_op, sim_time)
+    if p.habits is not None:
+        HB.commit(conn, p.habits, sim_time)
     cur = conn.execute(
         "INSERT INTO sleep_log(sim_date,summary,tick_id,tendency_changes,new_memories,"
         "new_preferences) VALUES(?,?,?,?,?,?)",

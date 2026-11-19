@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS self_image(
   formed_day TEXT,                                     -- sim date the line was formed (YYYY-MM-DD)
   updated_at TEXT);
 
+-- habits: patterns found by code in what it did, worded in sleep, shown to the brain as "you tend to..."
+CREATE TABLE IF NOT EXISTS habits(
+  id INTEGER PRIMARY KEY, key TEXT, text TEXT, part TEXT, count INT, share REAL,
+  formed_day TEXT, updated_at TEXT);
+
 -- long-term projects: formed in sleep, advanced by the narrator, with the pieces they leave behind
 CREATE TABLE IF NOT EXISTS projects(
   id INTEGER PRIMARY KEY, title TEXT, activity TEXT, why TEXT,
@@ -73,7 +78,7 @@ CREATE TABLE IF NOT EXISTS tick_traces(
 
 CREATE TABLE IF NOT EXISTS llm_calls(
   id INTEGER PRIMARY KEY, tick_id INT,
-  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | sleep_self_image | sleep_projects | director | create | other
+  kind TEXT,                                   -- brain | narrator | sleep_consolidate | sleep_tendencies | sleep_preferences | sleep_self_image | sleep_projects | sleep_habits | director | create | other
   model TEXT, options JSON, system_prompt TEXT, user_prompt TEXT, schema JSON,
   raw_response TEXT, parsed JSON, valid_json INT, attempt INT, error TEXT,
   prompt_tokens INT, completion_tokens INT,

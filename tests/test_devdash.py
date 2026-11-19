@@ -462,7 +462,7 @@ def test_tick_detail_sleep_section_shows_proposed_vs_clamped(cfg):
     e.state["energy"] = -45.0
     tid = e.tick()["id"]
     d = data.tick_detail(cfg, tid)
-    assert d["sleep_logs"] and {t["step"] for t in d["sleep_logs"][0]["traces"]} == {"consolidate", "tendencies", "preferences", "self_image", "projects"}
+    assert d["sleep_logs"] and {t["step"] for t in d["sleep_logs"][0]["traces"]} == {"consolidate", "tendencies", "preferences", "self_image", "projects", "habits"}
     page = dash(cfg).get(f"/ticks/{tid}").text
     assert "Sleep cycle" in page and "LLM proposed" in page and "applied change" in page and "sleep_tendencies" in page
 

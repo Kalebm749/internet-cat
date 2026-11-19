@@ -249,7 +249,7 @@ def test_sleep_cycle_traced_with_proposed_vs_clamped(cfg):
     assert "sleep" in json.loads(rows(e, "SELECT stage_timings s FROM tick_traces WHERE tick_id=?", info["id"])[0]["s"])
     log_id = rows(e, "SELECT id FROM sleep_log")[0]["id"]
     st = {r["step"]: r for r in rows(e, "SELECT * FROM sleep_traces WHERE sleep_log_id=?", log_id)}
-    assert set(st) == {"consolidate", "tendencies", "preferences", "self_image", "projects"}
+    assert set(st) == {"consolidate", "tendencies", "preferences", "self_image", "projects", "habits"}
     prop, clamped = json.loads(st["tendencies"]["proposed"]), json.loads(st["tendencies"]["clamped"])
     step = cfg.settings["sleep"]["tendency_max_step"]
     assert prop["boldness"] == 1 and clamped["boldness"]["applied_delta"] == pytest.approx(step)
