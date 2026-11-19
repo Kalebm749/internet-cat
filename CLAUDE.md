@@ -15,6 +15,7 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 - `server-architecture.md` — how it is built and deployed, incl. host setup (wins for implementation)
 - `web-gui.md` — the website (wins for the web)
 - `config-reference.md` — every config field (`settings.yaml`, `character.yaml`, `world.yaml`, `prompts.yaml`)
+- `cognitive-architecture-plan.md` — the plan for emotion, beliefs, expectation, fast/slow decisions, reflection (phase 1 first) and the parked backlog
 - `phase-2-docker-and-devdash.md` — the plan for the Docker Compose deployment (part A, done) and the dev dashboard (part B, done)
 
 Decided (revised): **closed moves**. The brain picks from a menu built by code (`config/moves.yaml`, `cat/moves.py`);
@@ -24,7 +25,8 @@ A move longer than `activity.step_minutes` runs as one activity with hidden carr
 any event or a newly empty need interrupts it. Habits (`cat/habits.py`) are found by code, worded in sleep,
 and shown as "you tend to...". Need levels shape the brain's prompt
 (band words for the most pressing needs), never its choices: code never picks, suggests or ranks actions
-by need. Energy is a **separate resource** (-50..50: effort spends it, sleep restores it), never a need.
+by need. **Relaxed (decided): emotion and impulse may change what is offered, how it is shown and sometimes the
+final pick** (see the cognitive plan); every override must be traced and visible in the diary. Energy is a **separate resource** (-50..50: effort spends it, sleep restores it), never a need.
 Mood is one number, a slider from -50 (negative) to 50 (positive), computed from need bands.
 
 ## Commands
