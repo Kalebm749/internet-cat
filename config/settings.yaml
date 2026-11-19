@@ -75,7 +75,6 @@ gain_values: {"0": 0, "+": 15, "++": 30}
 effort_energy_cost: {low: 2, medium: 6, high: 12}   # energy points an action's effort spends
 repetition_penalty:
   window: 6
-  similarity_threshold: 0.85
   multiplier: 0.4
   needs: [wonder, curiosity]   # only these needs' gains shrink when an action repeats
 create_limit_per_tick: 1
@@ -106,6 +105,7 @@ dislike_drain:
 # --- long-term projects (formed in sleep, advanced by the narrator, leave artifacts) ---
 projects:
   max_active: 1                # projects it can be working on at once
+  work_bucket: "+"             # progress bucket for one "work on" move (a key of progress_values)
   progress_values: {"+": 8, "++": 16}   # progress points per narrator bucket (0..100 per project)
   taper: 0.5                   # a step is multiplied by 1 - taper*progress/100: slower as it nears the end
   milestone_every: 25          # crossing each multiple of this is a notable moment (a short-term memory)

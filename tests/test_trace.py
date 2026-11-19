@@ -10,6 +10,7 @@ import pytest
 from cat import brain, character, db, logs, narrator, trace
 from cat.engine import Engine
 from cat.llm import BackendError, MockBackend, OllamaBackend, call_json, hash_embed
+from tests.helpers import pick
 
 T0 = "2026-11-18T08:00"
 
@@ -25,19 +26,17 @@ def rows(e, sql, *a):
     return [dict(r) for r in e.conn.execute(sql, a)]
 
 
-def scripted(b, action="watch the rain", feeling="positive", changes=None, gains=None, wants_sleep=False):
+def scripted(b, label="go to the kitchen", feeling="positive"):
     """Handlers that also capture exactly what the engine sent."""
     seen = {"brain": [], "narrator": []}
 
     def br(m, s):
         seen["brain"].append((m, s))
-        return {"reaction": "wow", "thought": "hm", "action": action, "intent": "x", "feeling": feeling,
-                "wants_sleep": wants_sleep}
+        return pick(m, label, feeling=feeling)
 
     def na(m, s):
         seen["narrator"].append((m, s))
-        return {"outcome": "It rains softly.", "gains": gains or {"joy": "+"}, "effort": "medium",
-                "duration": 20, "changes": changes or []}
+        return {"outcome": "It rains softly."}
     b.handlers["brain"], b.handlers["narrator"] = br, na
     return seen
 
@@ -45,7 +44,7 @@ def scripted(b, action="watch the rain", feeling="positive", changes=None, gains
 # ---------- a mock tick writes a COMPLETE trace ----------
 def test_mock_tick_writes_complete_trace(cfg):
     e, b = make(cfg)
-    seen = scripted(b, changes=[{"op": "move_self", "area": "kitchen"}, {"op": "consume", "object_id": "ghost"}])
+    seen = scripted(b)
     long_mem = e.memory.prepare("the rain on the window was lovely", 0.8, "2026-11-17T10:00")
     with db.transaction(e.conn):
         e.memory.save(long_mem, "long")
@@ -71,7 +70,7 @@ def test_mock_tick_writes_complete_trace(cfg):
     assert "You remember: the rain on the window was lovely" in llm[0]["user_prompt"]
 
     purposes = [r["purpose"] for r in rows(e, "SELECT purpose FROM embed_calls WHERE tick_id=?", tid)]
-    assert {"recall_query", "repetition_check", "memory_write"} <= set(purposes)
+    assert "recall_query" in set(purposes) and "repetition_check" not in set(purposes)   # repetition is by move key now
     for r in rows(e, "SELECT * FROM embed_calls WHERE tick_id=?", tid):
         assert r["dims"] == 64 and r["input_text"] and r["model"] == "nomic-embed-text"
 
@@ -81,8 +80,7 @@ def test_mock_tick_writes_complete_trace(cfg):
     assert {"memory_id", "recency", "importance", "relevance", "score", "selected"} <= set(cands[0])
 
     fx = rows(e, "SELECT * FROM effect_logs WHERE tick_id=? ORDER BY id", tid)
-    assert [(f["op"], f["accepted"]) for f in fx] == [("move_self", 1), ("consume", 0)]
-    assert "no such object" in fx[1]["reason"] and fx[0]["reason"] is None
+    assert [(f["op"], f["accepted"]) for f in fx] == [("move_self", 1)] and fx[0]["reason"] is None
 
     tick_row = rows(e, "SELECT * FROM ticks WHERE id=?", tid)[0]
     needs_after = json.loads(tick_row["needs_after"])
@@ -94,11 +92,11 @@ def test_mock_tick_writes_complete_trace(cfg):
             - (r["event_drain"] or 0) - (r["dislike_drain"] or 0) + r["clamp_adjust"]
         assert r["effort_cost"] == 0                          # effort spends energy, not needs
         assert rebuilt == pytest.approx(r["after"], abs=2e-3)
-    joy = next(r for r in nm if r["need"] == "joy")
-    assert joy["bucket"] == "+" and joy["gain_raw"] == cfg.settings["gain_values"]["+"]
+    cur = next(r for r in nm if r["need"] == "curiosity")          # going somewhere new: novelty gains
+    assert cur["bucket"] == "+" and cur["gain_raw"] == cfg.settings["gain_values"]["+"]
     prev = rows(e, "SELECT energy_after FROM ticks WHERE id<? ORDER BY id DESC LIMIT 1", tid)
     start = prev[0]["energy_after"] if prev else cfg.settings["energy_start"]
-    assert tick_row["energy_after"] == pytest.approx(start - cfg.settings["effort_energy_cost"]["medium"])
+    assert tick_row["energy_after"] == pytest.approx(start - cfg.settings["effort_energy_cost"]["low"])
 
     mm = rows(e, "SELECT * FROM mood_math WHERE tick_id=?", tid)[0]
     mood_after = json.loads(tick_row["mood_after"])
@@ -158,13 +156,12 @@ def test_unparseable_reply_then_good_reply_records_both_attempts(cfg):
 
     def flaky(m, s):
         o = next(outs)
-        return o if o is not None else {"reaction": "", "thought": "", "action": "sit", "intent": "",
-                                        "feeling": "neutral", "wants_sleep": False}
+        return o if o is not None else pick(m)
     b.handlers["brain"] = flaky
     info = e.tick()
     calls = rows(e, "SELECT attempt, error, valid_json FROM llm_calls WHERE kind='brain' AND tick_id=?", info["id"])
     assert [c["attempt"] for c in calls] == [1, 2]
-    assert "no action" in calls[0]["error"] and calls[0]["valid_json"] == 1   # valid JSON, unusable content
+    assert "not on the menu" in calls[0]["error"] and calls[0]["valid_json"] == 1   # valid JSON, unusable content
     assert calls[1]["error"] is None and info["kind"] == "tick"
 
 

@@ -352,6 +352,8 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                 errs.append("settings.yaml projects.idle_hours_note: must be a number >= 0")
             if not _num(pj.get("taper")) or not 0 <= pj["taper"] <= 1:
                 errs.append("settings.yaml projects.taper: must be a number 0..1")
+            if pj.get("work_bucket") not in (pj.get("progress_values") or {}):
+                errs.append("settings.yaml projects.work_bucket: must be a key of progress_values")
             pv = pj.get("progress_values")
             if not isinstance(pv, dict) or not pv or not all(_num(v) and 0 < v <= 100 for v in pv.values()):
                 errs.append("settings.yaml projects.progress_values: must map buckets to numbers 0..100 (> 0)")

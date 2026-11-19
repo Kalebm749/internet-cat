@@ -11,6 +11,7 @@ from cat import db, devqueue
 from cat.devqueue import CommandError, DevQueue
 from cat.engine import Engine
 from cat.llm import MockBackend
+from tests.helpers import pick
 
 HOUR = 3600.0
 
@@ -205,8 +206,7 @@ def test_interval_change_applies_to_a_wait_in_progress(cfg):
 def test_force_sleep_runs_the_cycle_and_attaches_it_to_the_latest_tick(cfg):
     cfg.settings["sleep"]["fall_asleep_energy_below"] = 0                    # no natural sleep in this test
     e, b, q = make(cfg)
-    b.handlers["brain"] = lambda m, s: {"reaction": "ok", "thought": "", "action": "watch the rain", "intent": "",
-                                        "feeling": "positive", "wants_sleep": False}
+    b.handlers["brain"] = lambda m, s: pick(m, feeling="positive")
     e.run(ticks=12, interval=0)
     last = e.conn.execute("SELECT MAX(id) FROM ticks").fetchone()[0]
     nights_before = e.conn.execute("SELECT COUNT(*) FROM sleep_log").fetchone()[0]
@@ -260,7 +260,7 @@ def test_reload_settings_applies_live_and_reports_changes(cfg):
     st, res = status_of(q, c)
     assert st == "done" and "tick_interval_seconds" in res and "brain_model" in res and "repetition_penalty" in res
     assert e.cfg.settings is same_dict and e.cfg.settings["tick_interval_seconds"] == 12 != before
-    assert e.recent_action_vecs.maxlen == 3
+    assert e.cfg.settings["repetition_penalty"]["window"] == 3          # read live by the repetition check
     e.tick()
     assert e.conn.execute("SELECT model FROM llm_calls WHERE kind='brain'").fetchone()[0] == "llama3.1:8b"
     assert "llama3.1:8b" in q.get_config()["settings"]["content"]            # the snapshot is refreshed
@@ -296,8 +296,7 @@ def test_reload_keeps_cli_overrides(cfg):
 def test_inject_event_reaches_the_next_tick_prompt_events_and_trace(cfg):
     e, b, q = make(cfg)
     prompts = []
-    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), {
-        "reaction": "", "thought": "", "action": "sit", "intent": "", "feeling": "neutral", "wants_sleep": False})[1]
+    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), pick(m))[1]
     cfg.world["events"] = []
     c = cmd(q, "inject_event", text="A stranger leaves a parcel.",
             spawn={"name": "a parcel", "tags": ["movable", "not_allowed"], "area": "living_room"})

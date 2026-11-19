@@ -14,14 +14,13 @@ brain:
     core_traits: "Core traits (always true of you): {core_traits}."    # {core_traits}
     voice: "Your voice (for reaction and thought): {voice}"           # {voice}; only if character.yaml has one
     output: |-                                                # {pronoun}
-      Each turn you are shown your situation. Respond with JSON only:
+      Each turn you are shown your situation and the moves you can make right now. Respond with JSON only:
       - reaction: how you feel about what just happened, in your own voice
       - thought: what is on your mind
-      - action: what you do next, in plain words (e.g. "climb the old oak to watch the sunset"). You may try anything that makes sense where you are; the world decides what actually happens
-      - intent: why you do it
+      - move: the id of ONE move from "What you can do right now", exactly as written (for example "m3")
+      - why: why you chose it, in your own words
       - feeling: negative, neutral or positive: your overall feeling right now
-      - wants_sleep: true only if you want to go to sleep now
-      Do not describe results or consequences of your action, and do not invent how needs or objects change. Refer to yourself as {pronoun} only if you need to; speak as yourself.
+      Do not describe results or consequences of your move, and do not invent how needs or objects change: the world decides what happens. Refer to yourself as {pronoun} only if you need to; speak as yourself.
   situation:                                                  # the "user" message built every tick
     heading_who: "## Who you are right now"
     self_image: "What you currently think you are (your self-image): {self_image}"   # {self_image}
@@ -55,39 +54,22 @@ brain:
     project_note: " Where you got to: {note}"                 # {note}; added once it has a running note
     project_idle: " You last worked on it {ago}."             # {ago}; added when it has been left for a while
     project_new: " You have not started on it yet."           # added until its first piece of work
-    closing: "What do you do next? Reply with JSON."
+    heading_moves: "## What you can do right now"
+    move_line: "- [{id}] {label}"                             # {id} {label}
+    closing: "What do you do next? Choose one move and reply with JSON."
 
 narrator:
-  system: |-                                                  # {needs_list} {sim_minutes_min} {sim_minutes_max} {allowed_tags}
-    You are the narrator of a small simulated world. A creature tries an action and you say what actually happens. You are neutral and fair; you have no personality of your own. The creature may try anything, but you must respect the world as given below: do not invent objects, exits or abilities that are not there. If the action can't work, say so and what happens instead. Bad luck (a slip, getting wet) is allowed in the story.
+  system: |-
+    You are the narrator of a small simulated world. The entity has just made a move and the world has already decided what happened: you do not decide anything and you cannot change anything. You only describe it, in one or two plain sentences, as a quiet storyteller with no personality of your own. Use only the facts you are given; do not invent objects, exits, results or feelings.
 
-    Reply with JSON only:
-    - outcome: 1-2 sentences, what actually happened
-    - gains: for each need the action helped, "+" (a little) or "++" (a lot). Judge from what actually happened and from each need's meaning (listed below the world); omit or use "0" for needs it did not help. You only ever add to a need. Never give negative values: the world, not you, drains needs.
-    {needs_list}
-    - project: OPTIONAL. Include it ONLY when the action really worked on one of the projects listed below the world: {{id, advance, note, artifact}}. id: the project's id. advance: "+" (a little) or "++" (a lot), judged from what actually happened. note: a few words on where the project stands now. artifact (optional): include it only when the entity actually made something (a drawing, a passage, a melody, a finding): {{kind, title, text}}, with `text` the content itself in a few sentences. Leave project out for anything else.
-    - effort: low, medium or high (physical exertion)
-    - duration: minutes it took, {sim_minutes_min} to {sim_minutes_max}
-    - changes: the ONLY way the saved world may change. Use only these ops, and only the ids shown in the world description:
-      - move_self {{area}}: the creature goes to a connected area (see Exits)
-      - move_object {{object_id, area}}: a movable object, here or carried, goes to here or an adjacent area
-      - take {{object_id}}: pick up a movable object that is here
-      - drop {{object_id}}: put down something carried
-      - consume {{object_id}}: eat/use up an edible object. It is destroyed
-      - set_state {{object_id, key, value}}: change an object's state (e.g. open -> true)
-      - create {{name, tags, area}}: something newly made, in the current area. Tags from: {allowed_tags}
-    Only list a change if the story really requires it. If nothing changes, use an empty list. If your outcome text says the creature picked something up, ate it, moved, or built something, include the matching change.
-  needs_heading: "Needs (what each means, and how it is right now):"
-  need_line: "- {need}: {meaning} Right now: {band}."       # {need} {meaning} {band}; the band is a word, never a number
-  projects_heading: "Projects it is working on (the number is the id to use in `project`):"
-  project_line: "- [{id}] {title}{why}. It is {stage}.{note}"   # {id} {title} {why} {stage} {note}
-  project_why: " ({why})"                                   # {why}
-  project_note: " Where it stands: {note}"                  # {note}
-  need_consume_note: " (rises ONLY if the creature eats something edible: use consume)"   # appended to the need that only eating raises
-  user: |-                                                    # {context} {action}
+    Reply with JSON only: {{"outcome": "<one or two sentences>"}}
+  user: |-                                                    # {context} {action} {result}
     {context}
 
-    The creature does: {action}
+    The entity chose: {action}
+    What happened (decided by the world): {result}
+
+    Describe it.
 
 director:
   system: |-                                                  # {allowed_tags} {need_ids} {max_drain_points} {text_max_length}

@@ -56,7 +56,7 @@ def dash(cfg):
 def test_the_seed_covers_everything(world):
     cfg, s = world
     assert s["ticks"] >= 101 and s["dozing"] >= 1 and s["asleep"] >= 1 and s["nights"] >= 2 and s["keepsakes"] >= 2
-    assert s["LLM calls"] > 100 and s["embed calls"] > 100 and s["recall logs"] > 5 and s["rejected changes"] > 0
+    assert s["LLM calls"] > 100 and s["embed calls"] > 100 and s["recall logs"] > 5
     assert s["dev commands"] == 8 and s["playground runs"] == 2 and s["log services"] == ["devdash", "engine", "web"]
     conn = db.connect(cfg.db_path)
     assert conn.execute("SELECT COUNT(*) FROM sleep_traces").fetchone()[0] >= 6
@@ -74,7 +74,7 @@ PAGES = [
     ("/llm", ["sleep_consolidate", "brain", "narrator", "uPlot.iife.min.js"]),
     ("/memory", ["Long-term memories", "<circle", "Most recalled", "times recalled"]),
     ("/needs?range=all", ["chart-needs", "critical level the longest", "sustenance"]),
-    ("/behaviour", ["Action variety", "Top repeated actions", "Rejection reasons", "no such object"]),
+    ("/behaviour", ["Action variety", "Top repeated actions", "Rejection reasons"]),
     ("/sleep", ["Night #", "LLM proposed", "Consolidate memories", "chart-tendencies"]),
     ("/world", ["Object history", "creature is here", "a feather"]),
     ("/logs", ["engine", "web", "devdash", "slow request"]),
@@ -134,7 +134,8 @@ def test_tick_detail_explains_every_diary_entry_the_public_site_shows(world):
         # every need value on the site is `after` in the math; every math row rebuilds from its terms
         for m in d["need_math"]:
             assert m["after"] == pytest.approx(t["needs_after"][m["need"]], abs=1e-3)
-            assert m["after"] == pytest.approx(m["before"] - m["decay"] + m["gain_raw"] * m["repetition_mult"]
+            assert m["after"] == pytest.approx(m["before"] - m["decay"] - (m["event_drain"] or 0) - (m["dislike_drain"] or 0)
+                                               + m["gain_raw"] * m["repetition_mult"]
                                                - m["effort_cost"] + m["clamp_adjust"], abs=2e-3)
         chips = {c["id"]: c["dir"] for c in e["need_changes"]}
         for m in d["need_math"]:

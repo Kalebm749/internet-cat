@@ -42,44 +42,56 @@ def test_brain_prompt_optional_sections(cfg, conn):
 
 def test_brain_system_prompt_has_identity_not_numbers(cfg):
     s = brain.system_prompt(cfg)
-    assert cfg.character["name"] in s and "curious" in s and "wants_sleep" in s
+    assert cfg.character["name"] in s and "curious" in s and "move" in s and "why" in s
+    assert "wants_sleep" not in s and "- action:" not in s
 
 
-def test_brain_parse_defaults_and_errors(cfg):
+def test_brain_parse_picks_from_the_menu_and_rejects_everything_else(cfg):
     import pytest
+    from cat import moves as M
     from cat.llm import BackendError
-    out = brain.parse({"action": " nap ", "feeling": "weird", "wants_sleep": "yes"})
-    assert out["action"] == "nap" and out["feeling"] == "neutral" and out["wants_sleep"] is False
-    with pytest.raises(BackendError):
-        brain.parse({"action": "  "})
+    menu = [M.Move("m1", "wait", "wait", None, "", "sit quietly"), M.Move("m2", "go:kitchen", "go", "kitchen", "the kitchen", "go to the kitchen")]
+    out = brain.parse({"move": " m2 ", "why": " hungry ", "feeling": "weird", "reaction": "r"}, menu)
+    assert out["move"].key == "go:kitchen" and out["why"] == "hungry" and out["feeling"] == "neutral"
+    for bad in ({"move": "m9"}, {"move": ""}, {"move": "eat:bowl"}, {}, {"action": "nap"}):
+        with pytest.raises(BackendError):
+            brain.parse(bad, menu)
 
 
-def test_narrator_prompt_lists_ops_ids_and_rules(cfg, conn):
+def test_the_brain_menu_is_in_the_prompt_in_order(cfg, conn):
+    from cat import moves as M
+    menu = [M.Move("m1", "wait", "wait", None, "", "sit quietly"), M.Move("m2", "go:kitchen", "go", "kitchen", "the kitchen", "go to the kitchen")]
+    p = brain.situation_prompt(cfg, ctx(cfg, conn, menu=menu))
+    assert "## What you can do right now\n- [m1] sit quietly\n- [m2] go to the kitchen" in p
+    assert p.rstrip().endswith("Choose one move and reply with JSON.")
+    assert "What you can do right now" not in brain.situation_prompt(cfg, ctx(cfg, conn))
+
+
+def test_the_brain_output_schema_is_move_and_why():
+    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling"}
+    assert set(brain.BRAIN_SCHEMA["required"]) == {"reaction", "thought", "move", "why", "feeling"}
+
+
+def test_narrator_is_prose_only(cfg, conn):
     sysmsg = narrator.system_prompt(cfg)
-    for op in narrator.OPS:
-        assert op in sysmsg
-    assert "ONLY if the creature eats" in sysmsg and "sustenance" in sysmsg
-    assert "personality" in sysmsg
+    assert "you do not decide anything and you cannot change anything" in sysmsg
+    assert "gains" not in sysmsg and "consume" not in sysmsg and "changes" not in sysmsg
     w = WorldState.seed(conn, cfg, "2026-11-18T19:40")
     d = narrator.describe_world(cfg, "2026-11-18T19:40", "kitchen", "rain", w.here("kitchen"), [])
-    assert "- bowl: a bowl of fish | tags: edible, movable" in d and "Exits: living_room (" in d
-    msgs = narrator.build_messages(cfg, "eat the fish", d)
-    assert msgs[1]["content"].endswith("The creature does: eat the fish")
+    assert "a bowl of fish (edible, movable)" in d and "Place: the kitchen" in d
+    msgs = narrator.build_messages(cfg, "eat a bowl of fish", d, "You ate a bowl of fish.")
+    assert "The entity chose: eat a bowl of fish" in msgs[1]["content"]
+    assert "What happened (decided by the world): You ate a bowl of fish." in msgs[1]["content"]
 
 
-def test_narrator_schema_matches_config(cfg):
-    sc = narrator.schema(cfg)
-    assert set(sc["properties"]["gains"]["properties"]) == set(cfg.character["needs"])
-    assert sc["properties"]["changes"]["items"]["properties"]["op"]["enum"] == narrator.OPS
-
-
-def test_narrator_parse_clamps_and_filters(cfg):
-    out = narrator.parse({"outcome": "x", "gains": {"joy": "++", "bogus": "+", "rest": "+++"},
-                          "effort": "huge", "duration": "9999", "changes": [{"op": "take"}, 5]}, cfg)
-    assert out["gains"] == {"joy": "++"} and out["effort"] == "medium"
-    assert out["duration"] == cfg.settings["sim_minutes_max"] and out["changes"] == [{"op": "take"}]
-    assert narrator.parse({"outcome": "x", "gains": None, "changes": None, "duration": "a"},
-                          cfg)["duration"] == cfg.settings["sim_minutes_per_tick_default"]
+def test_narrator_schema_and_parse_are_just_an_outcome(cfg):
+    import pytest
+    from cat.llm import BackendError
+    assert narrator.schema(cfg)["required"] == ["outcome"]
+    assert narrator.parse({"outcome": "  A  quiet  moment. ", "gains": {"joy": "++"}, "changes": [{"op": "take"}]}, cfg) == \
+        {"outcome": "A quiet moment."}
+    with pytest.raises(BackendError):
+        narrator.parse({"outcome": "  "}, cfg)
 
 
 def test_system_prompt_says_it_does_not_know_what_it_is(cfg):
@@ -108,6 +120,3 @@ def test_seed_hint_comes_from_config(cfg):
     assert brain.seed_self_image(cfg) == ["Something quiet."]
 
 
-def test_brain_output_schema_unchanged(cfg):
-    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "action", "intent",
-                                                     "feeling", "wants_sleep"}

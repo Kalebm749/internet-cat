@@ -82,19 +82,18 @@ def test_editing_the_yaml_changes_the_prompts(tmp_path):
     def edit(d):
         d["brain"]["system"]["intro"] = "Hello {name}, this is custom."
         d["brain"]["situation"]["closing"] = "Go on."
-        d["narrator"]["user"] = "{context}\n--\nDid: {action}"
+        d["narrator"]["user"] = "{context}\n--\nDid: {action} -> {result}"
         d["sleep"]["jobs"]["consolidate"] = "Custom job."
         d["sleep"]["consolidate"] = "Memories: {shorts} | {log} | {name} | {n}"
     cfg = load_config(_edit(tmp_path, edit))
     assert brain.system_prompt(cfg).startswith(f"Hello {cfg.character['name']}, this is custom.")
-    assert narrator.build_messages(cfg, "eat", "CTX")[1]["content"] == "CTX\n--\nDid: eat"
+    assert narrator.build_messages(cfg, "eat", "CTX", "RES")[1]["content"] == "CTX\n--\nDid: eat -> RES"
     msgs = sleep.consolidate_messages(cfg, ["a"], ["b"])
     assert "Custom job." in msgs[0]["content"] and msgs[1]["content"].startswith("Memories: - a | - b |")
 
 
 def test_literal_braces_survive_in_the_narrator_prompt(cfg):
-    s = narrator.system_prompt(cfg)
-    assert "move_self {area}" in s and "create {name, tags, area}" in s
+    assert '{"outcome":' in narrator.system_prompt(cfg)
 
 
 def test_the_situation_prompt_text_is_editable(tmp_path, conn):
@@ -123,4 +122,4 @@ def test_reload_applies_edited_prompts_live(cfg):
 
 def test_prompts_contain_no_need_numbers_or_action_lists(cfg):
     text = yaml.safe_dump(cfg.prompts).lower()
-    assert "you could" not in text and "options:" not in text and "choose one" not in text
+    assert "you could" not in text and "you should" not in text and "options:" not in text and "recommended" not in text

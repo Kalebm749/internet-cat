@@ -12,9 +12,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Callable
 
-from collections import deque
 
 from cat import brain, character, clock, db, downtime, effects, logs, narrator, sleep
+from cat import moves as MV
 from cat import director as DR
 from cat import projects as PJ
 from cat.config import Config, load_config
@@ -22,7 +22,7 @@ from cat.devcontrol import DevControl
 from cat.devqueue import CommandError
 from cat.db import dumps
 from cat.healthcheck import write_heartbeat
-from cat.llm import BackendError, LLMBackend, cosine
+from cat.llm import BackendError, LLMBackend
 from cat.memory import Memory, build_query, importance_for, notable_reasons
 from cat.trace import Tracer, prune
 from cat.world import WorldState
@@ -44,7 +44,7 @@ class Engine:
         self.time = time.time          # injectable for tests
         self.stop_requested = False
         self._online_cache: bool | None = None
-        self.recent_action_vecs: deque = deque(maxlen=self.cfg.settings["repetition_penalty"]["window"])   # (area, vec)
+        self.move_rng = random.Random(self.rng.getrandbits(32))        # durations of moves: its own stream
         # dev-dashboard state (see cat/devcontrol.py)
         self.paused = False
         self.step_pending = False
@@ -141,7 +141,8 @@ class Engine:
         rows = self.conn.execute("SELECT text FROM self_image ORDER BY formed_day, id").fetchall()
         return brain.seed_self_image(self.cfg) + [r["text"] for r in rows]
 
-    def _brain_context(self, fired: list[dict], long_mems: list[dict] | None = None) -> brain.BrainContext:
+    def _brain_context(self, fired: list[dict], long_mems: list[dict] | None = None,
+                       menu: list | None = None) -> brain.BrainContext:
         cfg, st, s = self.cfg, self.state, self.cfg.settings
         n = s["recent_actions_shown"]
         recent = [r["action"] for r in self.conn.execute(
@@ -159,6 +160,7 @@ class Engine:
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
             recent_actions=recent, preferences=prefs, self_image=self._self_image_lines(),
             stale_here=self._stale_here(), projects=PJ.brain_view(cfg, self.conn, st["sim_time"]),
+            menu=self._menu() if menu is None else menu,
             just_woke_from_doze=self.last_kind in ("doze", "catchup"),
             long_memories=[m["text"] for m in (long_mems or [])],
             short_memories=[m["text"] for m in self.memory.recent_short()])
@@ -179,19 +181,59 @@ class Engine:
     def _narrator_context(self) -> str:
         st = self.state
         return narrator.describe_world(self.cfg, st["sim_time"], st["area"], self.world.weather,
-                                       self.world.here(st["area"]), self.world.inventory(), st["needs"],
-                                       PJ.narrator_view(self.cfg, self.conn))
+                                       self.world.here(st["area"]), self.world.inventory())
 
-    def _repetition_multiplier(self, action: str, area: str) -> float:
-        """Embed the action; shrink the gains of the repetition-penalised needs if it resembles a
-        recent action taken in this same place. Embedding trouble just means no penalty this tick."""
-        vec = self.memory.embed_one(action, "repetition_check")
-        if vec is None:
-            return 1.0
-        here = [v for a, v in self.recent_action_vecs if a == area]
-        mult = effects.repetition_multiplier(vec, here, self.cfg, cosine)
-        self.recent_action_vecs.append((area, vec))
-        return mult
+    def _menu(self, st: dict | None = None) -> list:
+        """The moves on offer right now: built from what is possible, in a fixed order, never by need."""
+        cfg, s = self.cfg, self.cfg.settings
+        st = st or self.state
+        dt = clock.parse(st["sim_time"])
+        inv = self.world.inventory()
+        can_sleep = (st["energy"] < s["sleep"]["wants_sleep_energy_below"]
+                     or clock.is_night(dt, s["phases"]))
+        return MV.offered(cfg, area_id=st["area"], here=self.world.here(st["area"]), inventory=inv,
+                          projects=PJ.active(self.conn), can_sleep=can_sleep,
+                          inventory_full=len(inv) >= s["inventory_max"])
+
+    def _is_new_area(self, area_id: str, now: str) -> bool:
+        """Somewhere not visited for `moves.novelty_hours` sim hours (or never) counts as new."""
+        r = self.conn.execute("SELECT MAX(sim_time) AS t FROM ticks WHERE area=?", (area_id,)).fetchone()
+        if not r or not r["t"]:
+            return True
+        hours = (clock.parse(now) - clock.parse(r["t"])).total_seconds() / 3600
+        return hours >= self.cfg.settings["moves"]["novelty_hours"]
+
+    def _resolve_move(self, mv, why: str, now: str) -> dict:
+        """What the chosen move does, decided by code (cat.moves.resolve)."""
+        cfg = self.cfg
+        pool = self.world.here(self.state["area"]) + self.world.inventory()
+        tags = next((o["tags"] for o in pool if o["id"] == mv.target_id), []) if mv.target_id else []
+        novel = bool(cfg.moves["verbs"][mv.verb].get("novelty")) and self._is_new_area(mv.target_id, now)
+        bucket = cfg.settings["projects"]["work_bucket"]
+        res = MV.resolve(cfg, mv, target_tags=tags, rng=self.move_rng, novel=novel, project_progress_bucket=bucket)
+        res["project"] = ({"id": int(mv.target_id), "advance": bucket, "note": why}
+                          if res["does"] == "work_on" and str(mv.target_id).isdigit() else None)
+        return res
+
+    def _narrate(self, mv, res: dict) -> str:
+        """One cheap prose call for the diary. It decides nothing; if it fails the plain template is used."""
+        if not self.cfg.settings["moves"]["narrate"]:
+            return res["template"]
+        try:
+            return narrator.resolve(self.backend, self.cfg, mv.label, self._narrator_context(),
+                                    res["template"])["outcome"]
+        except BackendError as e:
+            log.warning("narration unavailable (%s): using the templated outcome", e)
+            return res["template"]
+
+    def _repetition_multiplier(self, key: str, area: str) -> float:
+        """Shrink the gains of the repetition-penalised needs if this same move (same verb and target) was
+        made in this same place within the last `window` moves. Deterministic and kept in the database,
+        so a restart does not forget it."""
+        rp = self.cfg.settings["repetition_penalty"]
+        rows = self.conn.execute("SELECT move_key, area FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT ?",
+                                 (rp["window"],)).fetchall()
+        return rp["multiplier"] if any(r["area"] == area and r["move_key"] == key for r in rows) else 1.0
 
     def _dislike_drains(self, minutes: float, action: str | None) -> tuple[dict[str, float], list[dict]]:
         """What the world drains this tick because something disliked is here."""
@@ -284,11 +326,16 @@ class Engine:
                         "ticks_in_area": self._ticks_in_area(), "stale_after_ticks": s["stale_after_ticks"],
                         "stale_text": cfg.character.get("stale_here") if ctx.stale_here else None})
                     b = brain.think(self.backend, cfg, ctx)
+                mv = b["move"]
+                res = self._resolve_move(mv, b["why"], now)
                 with self.tracer.stage("narrator"):
-                    n = narrator.resolve(self.backend, cfg, b["action"], self._narrator_context())
+                    outcome = self._narrate(mv, res)
+                n = {"outcome": outcome, "gains": res["gains"], "effort": res["effort"],
+                     "duration": res["duration"], "changes": res["changes"], "project": res["project"],
+                     "does": res["does"]}
                 result = (b, n)
             except BackendError as e:
-                log.warning("brain/narrator unavailable (%s): dozing", e)
+                log.warning("brain unavailable (%s): dozing", e)
                 online = False
                 self._online_cache = False
 
@@ -299,7 +346,7 @@ class Engine:
             b, n = result
             minutes = n["duration"]
             fx = effects.apply_changes(n["changes"], self.world, st["area"], cfg, now)
-            mult = self._repetition_multiplier(b["action"], st["area"])
+            mult = self._repetition_multiplier(b["move"].key, st["area"])
             # project work is exempt from the repetition penalty: its progress (tapering) replaces it
             adv = PJ.plan_advance(cfg, PJ.active(self.conn), n.get("project"))
             exempt = bool(adv and adv.get("ok") and adv["advanced"])
@@ -308,7 +355,7 @@ class Engine:
             needs = character.decay(before, minutes, cfg)
             drains = character.event_drains(fired)
             needs = character.apply_drains(needs, drains)
-            dis, _ = self._dislike_drains(minutes, b["action"])
+            dis, _ = self._dislike_drains(minutes, b["move"].label)
             needs = character.apply_drains(needs, dis)
             needs = character.apply_gains(needs, n["gains"], cfg,
                                           consumed=fx.consumed, multiplier=mult)
@@ -324,7 +371,7 @@ class Engine:
             feeling = b["feeling"]
             new_area = fx.area
             row = {"kind": "tick", "reaction": b["reaction"], "thought": b["thought"],
-                   "action": b["action"], "intent": b["intent"], "outcome": n["outcome"],
+                   "action": b["move"].label, "intent": b["why"], "move_key": b["move"].key, "outcome": n["outcome"],
                    "gains": n["gains"], "effort": n["effort"], "duration": minutes,
                    "changes": fx.applied, "rejected": fx.rejected}
         else:
@@ -353,9 +400,7 @@ class Engine:
         self.tracer.add_stage("apply", t_apply)
 
         # the creature chose to sleep (honoured when tired enough, or at night)
-        falls_asleep = bool(result) and result[0]["wants_sleep"] and (
-            new_state["energy"] < s["sleep"]["wants_sleep_energy_below"]
-            or clock.is_night(dt, s["phases"]))
+        falls_asleep = bool(result) and result[1]["does"] == "sleep"      # offered only when allowed
         new_state["is_asleep"] = falls_asleep
 
         # notable moment -> short-term memory (embedding is an HTTP call: do it before the txn)
@@ -474,11 +519,11 @@ class Engine:
             cur = self.conn.execute(
                 "INSERT INTO ticks(kind,sim_time,real_time,area,reaction,thought,action,intent,"
                 "outcome,gains,effort,duration,changes,rejected_changes,needs_after,mood_after,"
-                "energy_after) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "energy_after,move_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (row["kind"], now, real, area, row["reaction"], row["thought"],
                  row["action"], row["intent"], row["outcome"], dumps(row["gains"]), row["effort"],
                  row["duration"], dumps(row["changes"]), dumps(row["rejected"]), dumps(needs),
-                 dumps(mood), new_state["energy"]))
+                 dumps(mood), new_state["energy"], row.get("move_key")))
             tick_id = cur.lastrowid
             for e in fired:
                 self.conn.execute("INSERT INTO events(tick_id,sim_time,area,text) VALUES(?,?,?,?)",
@@ -705,8 +750,6 @@ class Engine:
         self.cfg.prompts.update(new.prompts)               # prompt text is live too
         self.cfg.moves.clear()
         self.cfg.moves.update(new.moves)                   # and so are the moves
-        self.recent_action_vecs = deque(self.recent_action_vecs,
-                                        maxlen=self.cfg.settings["repetition_penalty"]["window"])
         self.dev.publish_config(("settings", "prompts", "moves"))
         log.info("settings reloaded; changed: %s", changed, extra={"event": "settings_reloaded",
                                                                    "extra": {"changed": changed}})

@@ -7,6 +7,7 @@ import pytest
 from cat import db, director as DR
 from cat.engine import Engine
 from cat.llm import BackendError, MockBackend
+from tests.helpers import pick
 
 
 # ---------- pure: cadence ----------
@@ -110,10 +111,8 @@ def make(cfg, answer=None, seed=1):
     b = MockBackend(seed=seed)
     b.need_ids = list(cfg.character["needs"])
     b.tendency_names = list(cfg.character["tendencies"])
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "sit", "intent": "",
-                                        "feeling": "neutral", "wants_sleep": False}
-    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {}, "effort": "low", "duration": 6,
-                                           "changes": []}
+    b.handlers["brain"] = lambda m, s: pick(m, "look closely at")          # feeds curiosity only
+    b.handlers["narrator"] = lambda m, s: {"outcome": "ok"}
     calls = []
     if answer is not None:
         b.handlers["director"] = lambda m, s: (calls.append(m) or {"happening": answer})
@@ -156,8 +155,7 @@ def test_its_happening_is_perceived_nudges_mood_and_is_recorded(cfg):
     e, b, calls = make(cfg, {"text": "A bell rings twice.", "mood": 0.4})
     seen = []
     b.handlers["brain"] = lambda m, s: (seen.append(m[-1]["content"]) or
-                                        {"reaction": "", "thought": "", "action": "sit", "intent": "",
-                                         "feeling": "neutral", "wants_sleep": False})
+                                        pick(m))
     e.tick()
     e.tick()
     assert any("The world: A bell rings twice." in s for s in seen)           # the brain perceives it
@@ -192,7 +190,8 @@ def test_its_drains_apply_like_event_drains_and_are_traced(cfg):
     e.tick()
     before = dict(e.state["needs"])
     e.tick()
-    decay = cfg.character["needs"]["peace"]["decay_per_hour"] * 6 / 60
+    minutes = e.conn.execute("SELECT duration FROM ticks ORDER BY id DESC LIMIT 1").fetchone()[0]
+    decay = cfg.character["needs"]["peace"]["decay_per_hour"] * minutes / 60
     assert e.state["needs"]["peace"] == pytest.approx(before["peace"] - decay - 4)
     r = e.conn.execute("SELECT event_drain FROM need_math WHERE need='peace' ORDER BY id DESC LIMIT 1").fetchone()
     assert r["event_drain"] == 4

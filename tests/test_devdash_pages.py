@@ -13,6 +13,7 @@ from cat.devdash import data
 from cat.devdash.app import create_app
 from cat.engine import Engine
 from cat.llm import MockBackend
+from tests.helpers import pick
 
 STATIC = Path(__file__).resolve().parent.parent / "cat" / "devdash" / "static"
 
@@ -227,7 +228,7 @@ def test_behaviour_on_a_real_run_is_consistent(cfg):
     assert sum(a["minutes"] for a in r["areas"]) == conn.execute("SELECT SUM(duration) FROM ticks").fetchone()[0]
     assert r["total_actions"] == conn.execute("SELECT COUNT(*) FROM ticks WHERE kind='tick' AND action IS NOT NULL").fetchone()[0]
     assert sum(o["n"] for o in r["ops"]) == conn.execute("SELECT COUNT(*) FROM effect_logs").fetchone()[0]
-    assert sum(o["rejected"] for o in r["ops"]) == sum(x["count"] for x in r["reasons"]) > 0
+    assert sum(o["rejected"] for o in r["ops"]) == sum(x["count"] for x in r["reasons"])
     assert r["penalty"]["hits"] > 0 and all(0 < d["variety"] <= 1 for d in r["days"])
     html = client(cfg).get("/behaviour").text
     for needle in ("Action variety", "Top repeated actions", "Time spent per area", "Effect ops", "Rejection reasons", "Repetition-penalty hits"):
@@ -243,7 +244,7 @@ def test_behaviour_empty(cfg):
 def slept_engine(cfg, nights=3, proposals=(1, -5, 0.2)):
     e, b = make_engine(cfg)
     cfg.settings["sleep"]["fall_asleep_energy_below"] = 0                                  # only the forced cycles
-    b.handlers["brain"] = lambda m, s: {"reaction": "wow", "thought": "", "action": "watch the rain", "intent": "", "feeling": "positive", "wants_sleep": False}
+    b.handlers["brain"] = lambda m, s: pick(m, feeling="positive")
     b.handlers["tendencies"] = lambda m, s: {"changes": {"boldness": proposals[0], "sociability": proposals[1], "tidiness": proposals[2]}}
     b.handlers["preferences"] = lambda m, s: {"preferences": [{"subject": "the rain", "valence": 0.8, "reason": "so calming"}]}
     for _ in range(nights):
@@ -312,9 +313,11 @@ def test_sleep_page_and_pagination(cfg):
 # ================================== world ==================================
 def test_world_areas_objects_inventory(cfg):
     e, b = make_engine(cfg)
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "pick up the ball", "intent": "", "feeling": "neutral", "wants_sleep": False}
-    b.handlers["narrator"] = lambda m, s: {"outcome": "x", "gains": {}, "effort": "low", "duration": 10, "changes": [
-        {"op": "move_self", "area": "hallway"}, {"op": "take", "object_id": "ball"}]}
+    cfg.world["events"] = []
+    cfg.settings["director"]["enabled"] = False
+    script = iter(["go to the hallway", "pick up a red ball"])
+    b.handlers["brain"] = lambda m, s: pick(m, next(script))
+    e.tick()
     e.tick()
     w = data.world_state(cfg)
     assert [a["id"] for a in w["areas"]] == list(cfg.world["areas"]) and {a["id"] for a in w["areas"] if a["here"]} == {"hallway"}
@@ -329,26 +332,21 @@ def test_world_areas_objects_inventory(cfg):
 def test_object_history_from_recorded_changes(cfg):
     e, b = make_engine(cfg)
     cfg.world["events"] = []
-    script = iter([
-        [{"op": "create", "name": "a cushion fort", "tags": ["soft", "movable"]}],
-        [{"op": "set_state", "object_id": "cushion_fort", "key": "tidy", "value": "no"}, {"op": "take", "object_id": "cushion_fort"}],
-        [{"op": "move_self", "area": "kitchen"}, {"op": "drop", "object_id": "cushion_fort"}, {"op": "consume", "object_id": "bowl"}],
-        [{"op": "move_object", "object_id": "cushion_fort", "area": "living_room"}],
-    ])
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "tinker", "intent": "", "feeling": "neutral", "wants_sleep": False}
-    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {}, "effort": "low", "duration": 10, "changes": next(script)}
+    cfg.settings["director"]["enabled"] = False
+    script = iter(["go to the hallway", "pick up a red ball", "go to the living room", "put down a red ball",
+                   "go to the kitchen", "eat a bowl of fish"])
+    b.handlers["brain"] = lambda m, s: pick(m, next(script))
     e.state["area"] = "living_room"
-    for _ in range(4):
+    for _ in range(6):
         e.tick()
-    e.queue_injected_event({"text": "A parcel arrives.", "spawn": {"name": "a parcel", "tags": ["movable"], "area": "living_room"}})
-    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {}, "effort": "low", "duration": 10, "changes": []}
+    e.queue_injected_event({"text": "A parcel arrives.", "spawn": {"name": "a parcel", "tags": ["movable"], "area": "kitchen"}})
+    b.handlers["brain"] = lambda m, s: pick(m)
     e.tick()
-    w = data.world_state(cfg, object_id="cushion_fort")
-    assert [h["op"] for h in w["history"]] == ["move_object", "drop", "take", "set_state", "create"]          # newest first
+    w = data.world_state(cfg, object_id="ball")
+    assert [h["op"] for h in w["history"]] == ["drop", "take"]                                                 # newest first
     d = {h["op"]: h["detail"] for h in w["history"]}
-    assert d["create"] == "created 'a cushion fort' in the living room (by the creature)" and d["take"] == "picked up (now carried)"
-    assert d["drop"] == "put down in the kitchen" and d["move_object"] == "moved to the living room" and d["set_state"] == "state tidy = no"
-    assert w["object_row"]["name"] == "a cushion fort" and w["object_row"]["area_name"] == "the living room"
+    assert d["take"] == "picked up (now carried)" and d["drop"] == "put down in the living room"
+    assert w["object_row"]["name"] == "a red ball" and w["object_row"]["area_name"] == "the living room"
     gone = data.world_state(cfg, object_id="bowl")                                                           # consumed: row is gone, history stays
     assert gone["object_row"] is None and [h["op"] for h in gone["history"]] == ["consume"]
     allh = data.world_state(cfg)["history"]

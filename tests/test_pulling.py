@@ -6,6 +6,7 @@ import pytest
 from cat import brain
 from cat.config import load_config
 from cat.world import WorldState
+from tests.helpers import pick
 
 LEVELS = {"sustenance": 5, "wonder": 30, "joy": 10, "peace": 80, "curiosity": 20}   # empty, low, empty, full, low
 
@@ -122,8 +123,7 @@ def test_the_engine_feeds_the_prompt_real_levels(cfg, tmp_path):
     b.tendency_names = list(cfg.character["tendencies"])
     seen = []
     b.handlers["brain"] = lambda m, s: (seen.append(m[-1]["content"]) or
-                                        {"reaction": "", "thought": "", "action": "sit", "intent": "",
-                                         "feeling": "neutral", "wants_sleep": False})
+                                        pick(m))
     e = Engine(cfg, b, rng=random.Random(1))
     e.state["needs"]["sustenance"] = 3.0
     e.tick()

@@ -1,13 +1,15 @@
 """Brain (actor) call: builds the situation overview, parses the JSON reply.
 
-The brain gets a *situation*, not a menu. Words, never raw numbers. It never says how an action
-changes needs or the world; the narrator decides that."""
+The brain gets a *situation* in words, never raw numbers, plus the menu of moves the world offers right
+now (built from what is possible, in a fixed order, never ranked or marked by need). It picks ONE move by
+id and says why. It never says how a move changes needs or the world: code decides that."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
 from cat import character, clock
+from cat import moves as M
 from cat import prompts as P
 from cat.config import Config
 from cat.llm import BackendError, LLMBackend, call_json
@@ -19,12 +21,11 @@ BRAIN_SCHEMA = {
     "properties": {
         "reaction": {"type": "string"},
         "thought": {"type": "string"},
-        "action": {"type": "string"},
-        "intent": {"type": "string"},
+        "move": {"type": "string"},
+        "why": {"type": "string"},
         "feeling": {"type": "string", "enum": FEELINGS},
-        "wants_sleep": {"type": "boolean"},
     },
-    "required": ["reaction", "thought", "action", "intent", "feeling", "wants_sleep"],
+    "required": ["reaction", "thought", "move", "why", "feeling"],
 }
 
 
@@ -49,6 +50,7 @@ class BrainContext:
     self_image: list[str] = field(default_factory=list)          # what it currently thinks it is (text only)
     stale_here: bool = False                                     # it has stayed in this area for a while
     projects: list[dict] = field(default_factory=list)           # active projects (words only, see projects.brain_view)
+    menu: list = field(default_factory=list)                     # the moves on offer (cat.moves.Move)
 
 
 PRESSING_BANDS = ("empty", "low")      # the bands that pull at the entity, most pressing first
@@ -204,6 +206,10 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
         if ctx.short_memories:
             L.append(R("earlier_today", memories=" ".join(ctx.short_memories)))
 
+    if ctx.menu:
+        L.append("\n" + R("heading_moves"))
+        L.extend(R("move_line", id=m.id, label=m.label) for m in ctx.menu)
+
     L.append("\n" + R("closing"))
     return "\n".join(L)
 
@@ -213,18 +219,19 @@ def build_messages(cfg: Config, ctx: BrainContext) -> list[dict]:
             {"role": "user", "content": situation_prompt(cfg, ctx)}]
 
 
-def parse(raw: dict) -> dict[str, Any]:
-    action = str(raw.get("action") or "").strip()
-    if not action:
-        raise BackendError("brain returned no action")
+def parse(raw: dict, menu: list) -> dict[str, Any]:
+    """The reply -> {reaction, thought, move (a Move from this menu), why, feeling}. A move that is not on
+    the menu is an invalid reply (it is retried, then the tick dozes): nothing outside the menu happens."""
+    move = M.choose(menu, raw.get("move"))
+    if move is None:
+        raise BackendError(f"brain chose a move that is not on the menu: {raw.get('move')!r}")
     feeling = raw.get("feeling")
     return {"reaction": str(raw.get("reaction") or "").strip(),
             "thought": str(raw.get("thought") or "").strip(),
-            "action": action, "intent": str(raw.get("intent") or "").strip(),
-            "feeling": feeling if feeling in FEELINGS else "neutral",
-            "wants_sleep": raw.get("wants_sleep") is True}
+            "move": move, "why": str(raw.get("why") or "").strip(),
+            "feeling": feeling if feeling in FEELINGS else "neutral"}
 
 
 def think(backend: LLMBackend, cfg: Config, ctx: BrainContext) -> dict[str, Any]:
     return call_json(backend, "brain", cfg.settings["brain_model"], build_messages(cfg, ctx),
-                     BRAIN_SCHEMA, parse, cfg.settings["llm_retries"])
+                     BRAIN_SCHEMA, lambda raw: parse(raw, ctx.menu), cfg.settings["llm_retries"])

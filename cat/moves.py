@@ -37,7 +37,7 @@ class Move:
 
 # ---------- the menu ----------
 def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict],
-            projects: list[dict], can_sleep: bool) -> list[Move]:
+            projects: list[dict], can_sleep: bool, inventory_full: bool = False) -> list[Move]:
     """Every move possible right now, in a fixed order. `here` / `inventory` are world objects,
     `projects` the active projects, `can_sleep` whether going to sleep is allowed."""
     out: list[Move] = []
@@ -45,6 +45,8 @@ def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict
     for verb, v in cfg.moves["verbs"].items():
         if v.get("only_when", "always") == "can_sleep" and not can_sleep:
             continue
+        if inventory_full and v.get("does") == "take":
+            continue                                    # nothing to pick up with full hands
         kind = v["target"]
         targets: list[tuple[str | None, str]] = []
         if kind == "none":

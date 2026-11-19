@@ -173,14 +173,3 @@ def test_rejections_are_logged(cfg, world, caplog):
     with caplog.at_level("WARNING", logger="cat.effects"):
         run(cfg, world, [{"op": "consume", "object_id": "ghost"}])
     assert "rejected change" in caplog.text
-
-
-# ---- repetition ----
-def test_repetition_multiplier(cfg):
-    from cat.llm import cosine, hash_embed
-    v = hash_embed("bat the red ball")
-    rp = cfg.settings["repetition_penalty"]
-    assert fx.repetition_multiplier(v, [hash_embed("eat the fish bowl now")], cfg, cosine) == 1.0
-    assert fx.repetition_multiplier(v, [v], cfg, cosine) == rp["multiplier"]
-    assert fx.repetition_multiplier(None, [v], cfg, cosine) == 1.0
-    assert fx.repetition_multiplier(v, [], cfg, cosine) == 1.0

@@ -180,15 +180,3 @@ def apply_changes(changes: list[dict], world: WorldState, area: str, cfg: Config
                             "accepted": 0, "reason": str(e)})
             log.warning("rejected change %s: %s", raw, e)
     return res
-
-
-def repetition_multiplier(action_vec: list[float] | None, recent_vecs: list[list[float]],
-                          cfg: Config, similarity: Callable[[list, list], float]) -> float:
-    """Gains shrink when the action is similar to any of the last `window` actions."""
-    rp = cfg.settings["repetition_penalty"]
-    if not action_vec:
-        return 1.0
-    for v in recent_vecs[-rp["window"]:]:
-        if similarity(action_vec, v) >= rp["similarity_threshold"]:
-            return rp["multiplier"]
-    return 1.0

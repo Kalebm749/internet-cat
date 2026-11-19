@@ -144,6 +144,7 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) ->
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     _add_column(conn, "mood_math", "value", "REAL")        # the one mood number (valence/arousal are legacy)
+    _add_column(conn, "ticks", "move_key", "TEXT")          # the move chosen: "verb" or "verb:target"
     _add_column(conn, "tick_traces", "director", "JSON")   # the world director's proposal and what code did
     _add_column(conn, "tick_traces", "project", "JSON")    # the narrator's project report and what code did
     _add_column(conn, "tick_traces", "pressing", "JSON")   # the brain prompt's need selection and why

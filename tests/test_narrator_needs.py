@@ -1,4 +1,4 @@
-"""The narrator sees each need's meaning and band (as a word), no affinity table, and only ever adds."""
+"""The narrator is prose only: it decides nothing and changes nothing. Code decides what a move does."""
 import random
 import re
 
@@ -6,126 +6,95 @@ import pytest
 
 from cat import narrator
 from cat.engine import Engine
-from cat.llm import MockBackend
+from cat.llm import BackendError, MockBackend
 from cat.world import WorldState
+from tests.helpers import pick
 
-LEVELS = {"sustenance": 12, "wonder": 50, "joy": 90, "peace": 30, "curiosity": 60}
 
-
-def world_text(cfg, conn, needs=LEVELS):
+def world_text(cfg, conn):
     w = WorldState.seed(conn, cfg, "2026-11-18T19:40")
-    return narrator.describe_world(cfg, "2026-11-18T19:40", "kitchen", "rain", w.here("kitchen"), [], needs)
+    return narrator.describe_world(cfg, "2026-11-18T19:40", "kitchen", "rain", w.here("kitchen"), [])
 
 
-def needs_block(text):
-    return text[text.index(cfg_heading(text)):]
+def test_input_is_the_move_the_result_and_the_scene_never_needs(cfg, conn):
+    msgs = narrator.build_messages(cfg, "eat a bowl of fish", world_text(cfg, conn), "You ate a bowl of fish.")
+    blob = msgs[0]["content"] + msgs[1]["content"]
+    assert "The entity chose: eat a bowl of fish" in blob and "You ate a bowl of fish." in blob
+    assert "Place: the kitchen" in blob and "7:40 pm" in blob and "Weather: rain" in blob and "a bowl of fish (edible, movable)" in blob
+    for word in ("sustenance", "wonder", "needs", "mood", "energy", "affinit", "gain", "project"):
+        assert word not in blob.lower(), word
 
 
-def cfg_heading(text):
-    return "Needs (what each means"
+def test_the_narrator_cannot_decide_anything(cfg):
+    out = narrator.parse({"outcome": "ok", "gains": {"joy": "++"}, "effort": "high", "duration": 90,
+                          "changes": [{"op": "consume", "object_id": "bowl"}], "project": {"id": 1}}, cfg)
+    assert out == {"outcome": "ok"}
 
 
-def test_input_has_each_needs_meaning_and_band_word(cfg, conn):
-    text = world_text(cfg, conn)
-    for nid, spec in cfg.character["needs"].items():
-        assert f"- {nid}: {spec['meaning']}" in text
-    assert "sustenance: " in text and "Right now: empty." in text
-    assert "joy: Lightness and play: enjoyment for its own sake. Right now: full." in text
-    assert "peace: Inner calm and stillness: freedom from restlessness, noise and worry. Right now: low." in text
-
-
-def test_needs_block_shows_words_never_numbers(cfg, conn):
-    block = needs_block(world_text(cfg, conn))
-    assert not re.search(r"\d", block)
-
-
-def test_no_affinity_table_or_action_ranking(cfg, conn):
-    text = narrator.build_messages(cfg, "eat the fish", world_text(cfg, conn))
-    blob = (text[0]["content"] + text[1]["content"]).lower()
-    for word in ("affinit", "fed_by", "drained_by", "best action", "should do"):
-        assert word not in blob
-
-
-def test_input_still_has_action_place_objects_inventory_time_weather(cfg, conn):
-    msgs = narrator.build_messages(cfg, "eat the fish", world_text(cfg, conn))
-    user = msgs[1]["content"]
-    assert "The creature does: eat the fish" in user
-    assert "Location: kitchen" in user and "bowl" in user and "Inventory:" in user
-    assert "7:40 pm" in user and "Weather: rain" in user
-
-
-def test_the_engine_passes_current_bands_to_the_narrator(cfg):
+def make(cfg, label, outcome="It happens.", narrate=True):
+    cfg.world["events"] = []
+    cfg.settings["director"]["enabled"] = False
+    cfg.settings["moves"]["narrate"] = narrate
     b = MockBackend(seed=1)
     b.need_ids = list(cfg.character["needs"])
     b.tendency_names = list(cfg.character["tendencies"])
     seen = []
-    b.handlers["narrator"] = lambda m, s: (seen.append(m[-1]["content"]) or
-                                           {"outcome": "ok", "gains": {}, "effort": "low", "duration": 10, "changes": []})
-    e = Engine(cfg, b, rng=random.Random(1))
-    e.state["needs"]["peace"] = 5.0
-    e.tick()
-    assert "- peace: " in seen[0] and "Right now: empty." in seen[0]
-
-
-def test_system_prompt_says_the_narrator_only_adds(cfg):
-    s = narrator.system_prompt(cfg)
-    assert "You only ever add to a need" in s and "Never give negative values" in s
-
-
-def test_output_schema_is_unchanged(cfg):
-    sch = narrator.schema(cfg)
-    assert set(sch["properties"]) == {"outcome", "gains", "effort", "duration", "changes", "project"}
-    assert set(sch["required"]) == {"outcome", "gains", "effort", "duration", "changes"}     # project is optional
-    assert set(sch["properties"]["gains"]["properties"]) == set(cfg.character["needs"])
-    assert sorted(sch["properties"]["gains"]["properties"]["joy"]["enum"]) == ["+", "++", "0"]
-
-
-def test_negative_or_unknown_buckets_are_dropped(cfg):
-    out = narrator.parse({"outcome": "x", "gains": {"joy": "-", "peace": "--", "wonder": "++", "nope": "+"},
-                          "effort": "low", "duration": 10, "changes": []}, cfg)
-    assert out["gains"] == {"wonder": "++"}
-
-
-def _eat_engine(cfg, gains):
-    b = MockBackend(seed=1)
-    b.need_ids = list(cfg.character["needs"])
-    b.tendency_names = list(cfg.character["tendencies"])
-    b.handlers["brain"] = lambda m, s: {"reaction": "", "thought": "", "action": "eat the fish", "intent": "",
-                                        "feeling": "neutral", "wants_sleep": False}
-    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": gains, "effort": "low", "duration": 6,
-                                           "changes": s["changes"]}
+    b.handlers["brain"] = lambda m, s: pick(m, label)
+    b.handlers["narrator"] = lambda m, s: (seen.append(m[-1]["content"]), {"outcome": outcome})[1]
     e = Engine(cfg, b, rng=random.Random(1))
     e.world.events = None
-    cfg.world["events"] = []
-    e.state["area"] = "kitchen"
+    return e, b, seen
+
+
+def test_the_diary_gets_the_narrators_prose_and_the_narrator_gets_the_template(cfg):
+    e, b, seen = make(cfg, "go to the kitchen", outcome="She wandered into the kitchen, nose up.")
+    e.tick()
+    assert "What happened (decided by the world): You went to the kitchen." in seen[0]
+    assert e.conn.execute("SELECT outcome FROM ticks").fetchone()[0] == "She wandered into the kitchen, nose up."
+
+
+def test_a_failed_narration_uses_the_template_and_the_tick_carries_on(cfg):
+    e, b, _ = make(cfg, "go to the kitchen")
+    def down(m, s): raise BackendError("narrator down")
+    b.handlers["narrator"] = down
+    info = e.tick()
+    assert info["kind"] == "tick" and e.state["area"] == "kitchen"
+    assert e.conn.execute("SELECT outcome FROM ticks").fetchone()[0] == "You went to the kitchen."
+
+
+def test_narrate_false_makes_no_narrator_call(cfg):
+    e, b, seen = make(cfg, "go to the kitchen", narrate=False)
+    e.tick()
+    assert seen == [] and not any(t == "narrator" for t, _ in b.calls)
+    assert e.conn.execute("SELECT outcome FROM ticks").fetchone()[0] == "You went to the kitchen."
+
+
+def test_whatever_the_narrator_says_the_world_is_unchanged(cfg):
+    e, b, _ = make(cfg, "go to the kitchen")
+    b.handlers["narrator"] = lambda m, s: {"outcome": "x", "gains": {"joy": "++"}, "effort": "high", "duration": 90,
+                                           "changes": [{"op": "move_self", "area": "garden"}]}
+    before = dict(e.state["needs"])
+    e.tick()
+    assert e.state["area"] == "kitchen" and e.state["needs"]["joy"] < before["joy"]
+
+
+# ---------- the sustenance rule, now by construction ----------
+def test_only_eating_raises_sustenance(cfg):
+    e, b, _ = make(cfg, "sit quietly and do nothing for a while")
     e.state["needs"]["sustenance"] = 10.0
-    return e, b
+    for _ in range(4):
+        e.tick()
+    assert e.state["needs"]["sustenance"] < 10                                   # nothing but decay
+    cfg.settings["db_path"] = cfg.settings["db_path"] + "2"
+    e2, b2, _ = make(cfg, "eat a bowl of fish")
+    e2.state["area"] = "kitchen"
+    e2.state["needs"]["sustenance"] = 10.0
+    e2.tick()
+    assert e2.state["needs"]["sustenance"] > 10 + cfg.settings["gain_values"]["++"] - 3
 
 
-def test_sustenance_does_not_rise_unless_something_edible_is_consumed(cfg):
-    cfg.world["events"] = []
-    e, b = _eat_engine(cfg, {"sustenance": "++"})
-    b.handlers["narrator"] = lambda m, s: {"outcome": "It sniffs the bowl.", "gains": {"sustenance": "++"},
-                                           "effort": "low", "duration": 6, "changes": []}
-    e.tick()
-    decayed = 10 - cfg.character["needs"]["sustenance"]["decay_per_hour"] * 6 / 60
-    assert e.state["needs"]["sustenance"] == pytest.approx(decayed)
-
-
-def test_sustenance_rises_when_an_edible_object_is_consumed(cfg):
-    cfg.world["events"] = []
-    e, b = _eat_engine(cfg, {"sustenance": "++"})
-    b.handlers["narrator"] = lambda m, s: {"outcome": "It eats.", "gains": {"sustenance": "++"},
-                                           "effort": "low", "duration": 6,
-                                           "changes": [{"op": "consume", "object_id": "bowl"}]}
-    e.tick()
-    assert e.state["needs"]["sustenance"] > 10 + cfg.settings["gain_values"]["++"] - 2
-
-
-def test_consuming_guarantees_the_minimum_gain_even_if_the_narrator_forgets(cfg):
-    cfg.world["events"] = []
-    e, b = _eat_engine(cfg, {})
-    b.handlers["narrator"] = lambda m, s: {"outcome": "It eats.", "gains": {}, "effort": "low", "duration": 6,
-                                           "changes": [{"op": "consume", "object_id": "bowl"}]}
-    e.tick()
-    assert e.state["needs"]["sustenance"] > 10 + cfg.settings["gain_values"][cfg.settings["consume_min_gain"]] - 2
+def test_eating_is_not_offered_without_food(cfg):
+    e, b, _ = make(cfg, "sit quietly and do nothing for a while")
+    assert not any(m.verb == "eat" for m in e._menu())
+    e.state["area"] = "kitchen"
+    assert any(m.verb == "eat" for m in e._menu())
