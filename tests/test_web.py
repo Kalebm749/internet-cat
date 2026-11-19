@@ -173,15 +173,44 @@ def test_keepsakes_paging(cfg, seeded):
 
 
 # ---------- words, trends, status ----------
-def test_need_words_labels_and_trend(cfg, seeded):
+def test_need_rows_show_the_band_word_and_the_meaning_on_hover(cfg, seeded):
     conn = db.connect(cfg.db_path)
     st = db.get_state(conn)
     needs = views.needs_view(conn, cfg, st)
-    sust = next(n for n in needs if n["id"] == "sustenance")
-    assert sust["word"] in ("empty", "low", "okay", "full")
+    assert [n["id"] for n in needs] == list(cfg.character["needs"])             # five rows, config order
     for n in needs:
-        assert n["low"] == (n["value"] < 35) and n["critical"] == (n["value"] < 15)
+        spec = cfg.character["needs"][n["id"]]
+        assert n["word"] == n["band"] in ("empty", "low", "okay", "full")
+        assert n["title"] == n["meaning"] == spec["meaning"]                    # hover = the meaning
+        assert n["low"] == (n["band"] in ("low", "empty")) and n["critical"] == (n["band"] == "empty")
+        assert not any(ch.isdigit() for ch in n["aria"])                         # no number in the spoken label
         assert (n["trend"] == "flat") == (abs(n["delta"]) <= cfg.settings["web_ui"]["trend_min_delta"])
+
+
+def test_needs_panel_html_has_five_rows_with_band_words_and_meanings(cfg, seeded):
+    html = client(cfg).get("/").text
+    rows = re.findall(r'<li class="need[^"]*" title="([^"]*)">\s*<span class="n-label">([^<]*)</span>\s*<span class="n-word">([^<]*)</span>',
+                      re.sub(r"<template.*?</template>", "", html, flags=re.S))
+    assert len(rows) == 5
+    for title, label, word in rows:
+        assert title == cfg.character["needs"][label]["meaning"].replace("'", "&#39;") or title == cfg.character["needs"][label]["meaning"]
+        assert word in ("empty", "low", "okay", "full")
+
+
+def test_needs_api_has_band_and_meaning(cfg, seeded):
+    s = client(cfg).get("/api/state").json()
+    for n in s["needs"]:
+        assert {"id", "label", "band", "word", "meaning", "value"} <= set(n)
+
+
+def test_critical_means_the_empty_band(cfg, seeded):
+    conn = db.connect(cfg.db_path)
+    st = db.get_state(conn)
+    st["needs"]["joy"] = cfg.settings["need_bands"]["empty_below"] - 1
+    st["needs"]["peace"] = cfg.settings["need_bands"]["low_below"] - 1
+    byid = {n["id"]: n for n in views.needs_view(conn, cfg, st)}
+    assert byid["joy"]["critical"] and byid["joy"]["low"]
+    assert byid["peace"]["low"] and not byid["peace"]["critical"] and byid["peace"]["cls"] == "low"
 
 
 def test_tendency_previous_comes_from_last_night(cfg, seeded):

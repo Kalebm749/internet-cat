@@ -60,9 +60,10 @@ def _real_label(iso: str | None) -> str | None:
     return t if d.date() == datetime.now().date() else f"{d.strftime('%b')} {d.day}, {t}"
 
 
-def _need_word_cls(value: float, cfg: Config) -> tuple[bool, bool]:
-    ui = _ui(cfg)
-    return value < ui["need_low_below"], value < ui["need_critical_below"]
+def _need_band_cls(value: float, cfg: Config) -> tuple[bool, bool]:
+    """(low, critical) from the need's band: low or empty is low; empty is critical."""
+    band = character.need_band(value, cfg)
+    return band in ("low", "empty"), band == "empty"
 
 
 # ---------- panels ----------
@@ -75,16 +76,18 @@ def needs_view(conn, cfg: Config, st: dict) -> list[dict]:
     for nid in cfg.character["needs"]:
         v = float(st["needs"][nid])
         delta = round(float(cur.get(nid, v)) - float(prev.get(nid, v)), 1)
-        low, critical = _need_word_cls(v, cfg)
+        band = character.need_band(v, cfg)
+        low, critical = _need_band_cls(v, cfg)
         trend = "flat" if abs(delta) <= _ui(cfg)["trend_min_delta"] else ("up" if delta > 0 else "down")
         out.append({
             "id": nid, "label": character.need_label(nid, cfg), "value": round(v),
-            "word": character.need_word(nid, v, cfg), "delta": delta, "low": low,
+            "band": band, "word": band, "meaning": cfg.character["needs"][nid]["meaning"],
+            "delta": delta, "low": low,
             "critical": critical, "trend": trend, "trend_symbol": ARROWS[trend],
             "cls": "critical" if critical else "low" if low else "",
-            "title": f"{v:.0f} / 100, {delta:+.0f} since last tick",
-            "aria": f"{character.need_label(nid, cfg)}: {character.need_word(nid, v, cfg)}, "
-                    f"{v:.0f} out of 100"})
+            "title": cfg.character["needs"][nid]["meaning"],
+            "aria": f"{character.need_label(nid, cfg)}: {band}. "
+                    f"{cfg.character['needs'][nid]['meaning']}"})
     return out
 
 

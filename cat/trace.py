@@ -55,6 +55,7 @@ class Tracer:
         self.effects: list[dict] = []
         self.need_math: list[dict] = []
         self.mood: dict | None = None
+        self.pressing: dict | None = None      # which need expressions the brain prompt used, and why
         self.rolls: list[dict] = []
         self.sleep_steps: list[dict] = []
         self.sleep_log_id: int | None = None
@@ -94,6 +95,9 @@ class Tracer:
 
     def set_need_math(self, rows: list[dict]) -> None:
         self.need_math = rows
+
+    def set_pressing(self, selection: dict) -> None:
+        self.pressing = selection
 
     def set_mood(self, inputs: dict, mood: dict) -> None:
         self.mood = {"inputs": inputs, "mood": mood}
@@ -136,6 +140,8 @@ class Tracer:
                 conn.execute("INSERT INTO tick_traces(tick_id,started_at,finished_at,total_ms,stage_timings,"
                              "status,error) VALUES(?,?,?,?,?,?,?)",
                              (tick_id, self.started_at, _now(), round(total, 1), dumps(stages), status, error))
+            if self.pressing is not None:
+                conn.execute("UPDATE tick_traces SET pressing=? WHERE tick_id=?", (dumps(self.pressing), tick_id))
             for c in self.llm:
                 i = c["info"]
                 conn.execute(

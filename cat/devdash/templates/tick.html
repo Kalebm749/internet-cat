@@ -97,7 +97,22 @@
 
 {% set brain = d.llm | selectattr('kind', 'equalto', 'brain') | list %}
 {% set narrator = d.llm | selectattr('kind', 'equalto', 'narrator') | list %}
-{% if brain %}<section class="card" id="brain"><h2>3 · Brain call</h2>{% for c in brain %}{{ llm_call(c) }}{% endfor %}</section>{% endif %}
+{% if brain %}<section class="card" id="brain"><h2>3 · Brain call</h2>
+  {% if d.pressing %}
+  <h3>What's pulling at it <span class="dim small">(which need expressions went into the prompt, and why; never numbers, never actions)</span></h3>
+  <table class="data" id="pressing">
+    <tr><th>need</th><th>band</th><th>expression</th><th>in the prompt?</th><th>why</th></tr>
+    {% for r in d.pressing.rows %}
+    <tr class="{{ 'sel' if r.selected else '' }}"><td>{{ d.need_labels.get(r.need, r.need) }}</td><td>{{ r.band }}</td>
+      <td>{{ r.expression if r.expression else '–' }}</td><td>{{ pill('selected', 'ok') if r.selected else pill('no') }}</td><td class="dim">{{ r.reason }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="dim small">At most {{ d.pressing.max }} are shown, from the lowest bands, ties by config order.
+    stale_here: <b>{{ 'on' if d.pressing.stale_here else 'off' }}</b> ({{ d.pressing.ticks_in_area }} ticks in this area; on after {{ d.pressing.stale_after_ticks }}).</p>
+  {% set b0 = brain[0] %}
+  {% if b0.user_prompt %}<details class="blk" open><summary>User prompt, selected expressions highlighted</summary><pre>{{ b0.user_prompt|mark(d.pressing_marks) }}</pre></details>{% endif %}
+  {% endif %}
+  {% for c in brain %}{{ llm_call(c) }}{% endfor %}</section>{% endif %}
 {% if narrator %}<section class="card" id="narrator"><h2>4 · Narrator call</h2>{% for c in narrator %}{{ llm_call(c) }}{% endfor %}</section>{% endif %}
 
 <section class="card" id="effects">

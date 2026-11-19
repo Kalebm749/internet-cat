@@ -274,7 +274,12 @@ class Engine:
                 with self.tracer.stage("recall"):
                     recalled = self._recall(fired)
                 with self.tracer.stage("brain"):
-                    b = brain.think(self.backend, cfg, self._brain_context(fired, recalled))
+                    ctx = self._brain_context(fired, recalled)
+                    self.tracer.set_pressing({
+                        **brain.select_needs(cfg, ctx.needs), "stale_here": ctx.stale_here,
+                        "ticks_in_area": self._ticks_in_area(), "stale_after_ticks": s["stale_after_ticks"],
+                        "stale_text": cfg.character.get("stale_here") if ctx.stale_here else None})
+                    b = brain.think(self.backend, cfg, ctx)
                 with self.tracer.stage("narrator"):
                     n = narrator.resolve(self.backend, cfg, b["action"], self._narrator_context())
                 result = (b, n)

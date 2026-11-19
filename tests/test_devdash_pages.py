@@ -88,7 +88,7 @@ def test_critical_time_and_longest_stretch(cfg):
     assert c["sustenance"]["pct"] == pytest.approx(100 * 120 / 300, abs=0.1)                    # 10 ticks x 30 = 300 min
     assert c["wonder"]["minutes"] == 0 and c["joy"]["minutes"] == 0
     assert data.needs_series(cfg, "all")["critical"][0]["need"] == "sustenance"                  # sorted: worst first
-    assert data.needs_series(cfg)["critical_below"] == cfg.settings["web_ui"]["need_critical_below"]
+    assert data.needs_series(cfg)["critical_below"] == cfg.settings["need_bands"]["empty_below"]
 
 
 def test_critical_streaks_are_split_by_recovery(cfg):

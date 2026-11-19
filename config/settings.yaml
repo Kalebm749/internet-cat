@@ -176,8 +176,6 @@ keepsakes_first_page: 6
 
 web_ui:
   poll_seconds: 10
-  need_low_below: 35
-  need_critical_below: 15
   trend_min_delta: 2           # trend arrow only if a need moved more than this since last tick
   chip_min_delta: 5            # diary need chips (up/down) only for moves at least this big
   keepsake_dots: [0.4, 0.7]    # importance below the 1st => 1 dot, below the 2nd => 2, else 3

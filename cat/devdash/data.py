@@ -292,6 +292,10 @@ def tick_detail(cfg: Config, tick_id: int) -> dict | None:
         if tick is None and trace is None:
             return None
         d: dict[str, Any] = {"id": tick_id, "tick": tick, "trace": trace}
+        pr = jload(trace.get("pressing"), None) if trace else None
+        d["pressing"] = pr
+        d["pressing_marks"] = ([r["expression"] for r in pr["rows"] if r["selected"] and r["expression"]]
+                               + ([pr["stale_text"]] if pr.get("stale_text") else [])) if pr else []
         first = clock.parse(db.get_meta(conn, "first_sim_time") or cfg.settings["sim_start"])
         d["prev_id"] = (one(conn, "SELECT MAX(id) m FROM ticks WHERE id<? AND id>0", tick_id) or {}).get("m") if tick_id > 0 else None
         d["next_id"] = (one(conn, "SELECT MIN(id) m FROM ticks WHERE id>?", tick_id) or {}).get("m") if tick_id > 0 else None
@@ -648,7 +652,7 @@ def needs_series(cfg: Config, rng: str = "24h") -> dict:
     """Needs, derived energy, valence and arousal over sim time, plus sleep/doze bands and the needs
     that sat at a critical level the longest."""
     rng = rng if rng in RANGES else "24h"
-    crit = cfg.settings["web_ui"]["need_critical_below"]
+    crit = cfg.settings["need_bands"]["empty_below"]       # the empty band is the critical one
     out: dict[str, Any] = {"range": rng, "x": [], "needs": {}, "energy": [], "valence": [], "arousal": [],
                            "bands": [], "critical": [], "critical_below": crit, "from": None, "to": None, "ticks": 0,
                            "labels": {k: character.need_label(k, cfg) for k in cfg.character["needs"]}}
