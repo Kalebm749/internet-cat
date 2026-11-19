@@ -140,6 +140,11 @@ orange over the rooftops.
 - **What it thinks it is:** the entity's current self-image lines (learned during sleep; see `creature-architecture.md` §7), one per row in italics, oldest first. Hover shows how sure it is and the day it was formed. If there are none, the section says *still figuring that out*. The entity starts with no self-image; a line may also come from an optional `character.yaml` `self_image.seed` hint.
 - **Loves / dislikes:** two short lists, top 5 each by |valence|. Small heart / cross marks drawn as inline SVG (no emoji). Hover shows the reason ("keeps coming back here at dusk").
 
+### 4.7a Projects (right column, above Keepsakes)
+- **What it is working on:** one row per project (active first, then set-aside, then finished; at most 8): the title, a status and **stage in words** ("working on it · well along"), and the running note ("where it got to"). Hover shows why it started it. Never the progress number.
+- **Made so far:** the latest `projects.artifacts_shown` (6) artifacts, newest first, as small cards: title, kind, project and day, then the text. A made piece also adds a tag to its diary entry ("made “Roots”").
+- Empty states: "no projects yet." and "nothing made yet."
+
 ### 4.7 Keepsakes (long-term memories)
 - Small index cards, newest first, 6 shown, then "more keepsakes" to see the rest.
 - Each card: memory text (Lora 15px), date (sim day), importance as 1–3 honey dots.
@@ -177,6 +182,12 @@ Polled every 10s. Everything except old diary pages.
   "presence": {"hue": 120, "saturation": 70, "lightness": 58, "pulse_seconds": 5.2,
                "style": "--pv-h:120;--pv-s:70%;--pv-l:58%;--pv-t:5.2s",
                "aria": "A soft glow for Mochi: ...", "caption": "Mochi, in the bookshop"},
+  "projects": {"rows": [{"id": 1, "title": "drawing the old tree", "why": "it keeps returning to it",
+                         "note": "the trunk is done", "stage": "well along", "status": "active",
+                         "status_label": "working on it"}],
+               "artifacts": [{"id": 3, "kind": "sketch", "title": "Roots", "text": "...", "project": "drawing the old tree",
+                              "day_text": "Day 4"}],
+               "empty": false, "artifacts_empty": false},
   "self_image": {"lines": [{"text": "I seem to tire when I climb.",
                             "title": "formed on day 3, 60% sure"}],
                  "empty": false, "empty_text": "still figuring that out"},

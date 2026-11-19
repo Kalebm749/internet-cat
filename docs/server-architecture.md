@@ -105,6 +105,9 @@ memories(id, kind,                          -- 'short' | 'long'
          text, importance, created_sim_time, last_recalled, embedding BLOB, embed_model)
 preferences(id, subject, valence, reason, updated_at)      -- valence -1..1
 self_image(id, text, confidence, formed_day, updated_at)    -- what it thinks it is; learned in sleep; confidence 0..1
+projects(id, title, activity, why, status, progress, note, formed_day, last_worked, ticks_worked,
+         worked_today, idle_nights, updated_at)  -- status: active | paused | done | dropped; progress 0..100
+artifacts(id, project_id, tick_id, kind, title, text, created_sim_time)
 sleep_log(id, sim_date, summary, tick_id,   -- tick_id: where the sleep began
           tendency_changes JSON, new_memories JSON, new_preferences JSON)
 -- tracing (§17): tick_traces, llm_calls, embed_calls, recall_logs, effect_logs, need_math, mood_math,
@@ -173,7 +176,8 @@ Anything that fails goes into `rejected_changes` with a reason, is logged, and d
 ## 11. Sleep
 
 - The creature falls asleep when exhausted at night, or when the brain sets `wants_sleep` and it is tired enough (or night). Asleep ticks skip the brain and narrator, restore energy, and decay needs slowly. It wakes when energy is restored, in the morning.
-- When sleep begins, the sleep cycle makes four calls (consolidate memories, drift tendencies, learn preferences, propose a self-image line). **Nothing is written unless all succeed**; if the brain is offline it stays pending and retries on every sleeping tick. LLM output becomes numbers in code: importance buckets, tendency proposals scaled and **clamped** to ±`sleep.tendency_max_step`, blended preference valences. Core traits never change.
+- When sleep begins, the sleep cycle makes five calls (consolidate memories, drift tendencies, learn preferences, propose a self-image line, form or tend a project). **Nothing is written unless all succeed**; if the brain is offline it stays pending and retries on every sleeping tick. LLM output becomes numbers in code: importance buckets, tendency proposals scaled and **clamped** to ±`sleep.tendency_max_step`, blended preference valences. Core traits never change.
+- **Projects step:** one call sees the day's log, its likes and its open projects and may start **at most one** project (from an enjoyed activity it keeps returning to) or pause, resume or drop one. Code enforces `projects.max_active`, rejects duplicate or empty titles, and pauses an active project untouched for `projects.pause_after_idle_nights` nights. The outcome is in the `sleep_traces` row with step `projects`. During the day the narrator may report on a project (`project`: id, advance bucket, note, artifact); `cat/projects.py` validates it, sizes a tapering step, stores the note and artifact, notes milestones and completion, and exempts that action from the repetition penalty. The report is traced in `tick_traces.project`.
 - **Self-image step:** one call reads the day's short-term memories and log plus the current self-image lines and proposes **at most one** new line (or none). A line carries text, a confidence (0..1) and the day it was formed. A proposal may name an existing line in `replaces` to revise or contradict it. Proposals below `sleep.self_image_min_confidence`, duplicates and empty text are rejected; over `sleep.max_self_image_lines` the least confident lines are forgotten. Every proposal and its outcome (`added`, `revised`, `rejected`, `dropped_at_cap`, `none`) is written to the `sleep_traces` row with step `self_image`. The brain sees the lines (text only) in its situation prompt; the website shows them in the About panel.
 
 ---

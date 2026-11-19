@@ -194,6 +194,7 @@ another machine without exposing it, tunnel: `ssh -L 8090:127.0.0.1:8090 <laptop
 | **Sleep** | each night: inputs, raw LLM outputs, **proposed vs clamped** tendency changes, new memories, preference changes; tendency history chart |
 | **World** | areas, objects (tags, state, who made them), inventory, and each object's history (created / moved / eaten, by which tick) |
 | **Logs** | tail of `data/logs/*.jsonl` (all services), filter by service, level, tick, text; **live tail**; a tick id links to Tick detail |
+| **Projects** | every project with its progress number, idle nights and stage, and every artifact it has made; the settings behind them. A tick page also explains the narrator's project report |
 | **Config** | `character.yaml`, `world.yaml`, `settings.yaml` as the engine loaded them, a diff against the files on disk, and a *Reload settings* button |
 | **Playground** | replay any stored call, edit the prompt / model / temperature, run it, compare with the original; run the same prompt on 2-3 models side by side |
 

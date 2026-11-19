@@ -70,6 +70,7 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 - The engine is the only writer of game state; `cat/web` is read-only and never calls the LLM.
 - Everything must run and be tested with `MockBackend`; never require Ollama in tests.
 - Tick order: events roll at tick start; the action's duration then advances the clock and decays needs in the apply step (event and dislike drains, then the narrator's gains, which only add).
+- Projects (`cat/projects.py`, tables `projects` and `artifacts`) are formed only by the sleep cycle and advanced only by the narrator's validated `project` report; code owns the numbers (a tapering step, milestones, completion gains), and project work is exempt from the repetition penalty. Nothing in a project picks or ranks actions.
 - Fixed prompt text lives in `config/prompts.yaml`, never in code; entries and their `{placeholders}` are declared in `cat/prompts.py` and validated at startup.
 - Placeholder content in `config/character.yaml` / `world.yaml` — the engine must work with any valid config.
 - Don't run docker, sudo or deploy commands for the user; write the files and document the steps.
