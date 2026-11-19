@@ -65,3 +65,34 @@ def test_events_per_tick_capped(cfg, conn):
     cfg.world["events"] = [{"text": str(i), "chance": 1.0} for i in range(5)]
     cfg.settings["events_max_per_tick"] = 2
     assert len(w.roll_events(random.Random(0), clock.parse(NOW), "kitchen", NOW)) == 2
+
+
+def test_objects_keep_their_config_order_through_the_database(cfg, conn):
+    """The menu is built from this order, so it must not depend on hash randomisation."""
+    from cat import db
+    from cat.world import WorldState
+    w = WorldState.seed(conn, cfg, "2026-11-18T19:40")
+    with db.transaction(conn):
+        w.sync(conn)
+    expect = [o["id"] for o in cfg.world["objects"]]
+    assert [o["id"] for o in WorldState.load(conn, cfg, "clear").objects.values()] == expect
+    assert [r[0] for r in conn.execute("SELECT id FROM objects ORDER BY rowid")] == expect
+
+
+def test_the_menu_is_identical_under_different_hash_seeds(tmp_path):
+    import os
+    import subprocess
+    import sys
+    script = tmp_path / "menu.py"
+    script.write_text(
+        "import sys; sys.path.insert(0, '.')\n"
+        "from cat.config import load_config\nfrom cat import db, moves\nfrom cat.world import WorldState\n"
+        "cfg = load_config(); c = db.connect(':memory:'); db.init_db(c)\n"
+        "w = WorldState.seed(c, cfg, '2026-11-18T19:40')\n"
+        "with db.transaction(c):\n    w.sync(c)\n"
+        "w = WorldState.load(c, cfg, 'clear')\n"
+        "print(','.join(m.key for m in moves.offered(cfg, area_id='living_room', here=w.here('living_room'), "
+        "inventory=[], projects=[], can_sleep=False)))\n")
+    outs = {subprocess.run([sys.executable, str(script)], capture_output=True, text=True, cwd=os.getcwd(),
+                           env={**os.environ, "PYTHONHASHSEED": str(s)}).stdout for s in (1, 2, 3, 4)}
+    assert len(outs) == 1 and "go:kitchen" in outs.pop()
