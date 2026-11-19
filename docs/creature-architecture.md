@@ -22,7 +22,8 @@ Related docs: `server-architecture.md` (how it is built and deployed, including 
 5. **The actor never grades itself.** The creature decides what to do. A separate, personality-free narrator decides what happened and how it affected needs.
 6. **The LLM describes, code calculates.** LLMs return words and coarse buckets. Code turns those into numbers, clamps them and applies them.
 7. **The LLM gets a situation, not instructions.** The brain receives an overview of its world and inner state, not "choose one of these options."
-8. **Personality changes slowly.** Traits drift a little each night and never get rewritten in one go.
+8. **Needs shape the prompt, not the choice.** Need levels become words in the brain's prompt, and only the most pressing ones are shown. Code never picks, suggests or ranks actions by need, and the brain may still do anything. Actions change needs only through the narrator's outcome buckets (which only add); drains come from the world (decay, events, repetition, dislikes). Energy is a separate resource: effort spends it, sleep restores it.
+9. **Personality changes slowly.** Traits drift a little each night and never get rewritten in one go.
 
 ---
 
