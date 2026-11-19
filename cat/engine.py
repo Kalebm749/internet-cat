@@ -617,16 +617,18 @@ class Engine:
                 f"{len(json.loads(row['tendency_changes']))} tendency changes")
 
     def reload_settings(self) -> list[str]:
-        """Re-read the YAML (all three files are validated). Only settings are applied live; a
+        """Re-read the YAML (all four files are validated). Settings and prompts are applied live; a
         change to character.yaml / world.yaml needs a restart. Invalid YAML raises and changes nothing."""
         new = load_config(self.cfg.config_dir, self.cfg.overrides)
         old = dict(self.cfg.settings)
         changed = sorted(k for k in set(old) | set(new.settings) if old.get(k) != new.settings.get(k))
         self.cfg.settings.clear()
         self.cfg.settings.update(new.settings)             # same dict object: every component sees it
+        self.cfg.prompts.clear()
+        self.cfg.prompts.update(new.prompts)               # prompt text is live too
         self.recent_action_vecs = deque(self.recent_action_vecs,
                                         maxlen=self.cfg.settings["repetition_penalty"]["window"])
-        self.dev.publish_config(("settings",))
+        self.dev.publish_config(("settings", "prompts"))
         log.info("settings reloaded; changed: %s", changed, extra={"event": "settings_reloaded",
                                                                    "extra": {"changed": changed}})
         return changed

@@ -1,6 +1,9 @@
 # Config reference
 
-Three files in `config/`. Loaded and validated by `cat/config.py`. The validator collects **every** problem and refuses to start, printing them all (need ids in event effects exist, `tendency_labels` match `tendencies`, `start_area` exists, need flags are known, numeric ranges are valid, `self_image` is text only). Unknown top-level fields in `character.yaml` and `world.yaml` only produce a warning (e.g. a leftover `species`).
+Four files in `config/`: `settings.yaml`, `character.yaml`, `world.yaml` and `prompts.yaml`. Loaded and validated by `cat/config.py`. The validator collects **every** problem and refuses to start, printing them all (need ids in event effects exist, `tendency_labels` match `tendencies`, `start_area` exists, need flags are known, numeric ranges are valid, `self_image` is text only). Unknown top-level fields in `character.yaml` and `world.yaml` only produce a warning (e.g. a leftover `species`).
+
+## prompts.yaml
+Every fixed piece of prompt text the LLMs see: the brain's system prompt and the headings and sentences of its situation prompt, the narrator's system prompt and user message, and the sleep cycle's system prompt and four step prompts. Edit it to change how the entity, narrator and sleeping mind are instructed. Each entry lists in a comment the `{placeholders}` the engine fills in (`cat/prompts.py` `SPEC` is the authoritative list). The validator refuses to start on a missing or empty entry or an unknown placeholder, and warns on unknown top-level keys. A literal brace is written `{{` or `}}`. Text edits are applied live by the dev dashboard's `reload_settings`; no restart needed. Prompts never carry need numbers, and must not tell the brain which action to take.
 
 ## character.yaml
 | Field | Req | Meaning |

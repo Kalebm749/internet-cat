@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,7 @@ class Config:
     settings: dict[str, Any]
     character: dict[str, Any]
     world: dict[str, Any]
+    prompts: dict[str, Any] = field(default_factory=dict)   # config/prompts.yaml: every fixed prompt text
     root: Path = ROOT
     config_dir: Path = CONFIG_DIR           # where the YAML was loaded from (for reload_settings)
     overrides: dict | None = None           # CLI overrides applied on top of settings.yaml
@@ -278,9 +279,14 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
     return errs, warns
 
 
-def validate(settings: dict, character: dict, world: dict) -> list[str]:
+def validate(settings: dict, character: dict, world: dict, prompts: dict | None = None) -> list[str]:
     """Raise one ConfigError listing every problem; return the warnings."""
     errs, warns = check(settings, character, world)
+    if prompts is not None:
+        from cat import prompts as P
+        pe, pw = P.check(prompts)
+        errs += pe
+        warns += pw
     if errs:
         raise ConfigError(f"{len(errs)} config problem{'s' if len(errs) != 1 else ''}:\n  - "
                           + "\n  - ".join(errs))
@@ -302,9 +308,10 @@ def load_config(config_dir: Path | str | None = None, overrides: dict | None = N
         settings.update(overrides)
     character = _load_yaml(d / "character.yaml")
     world = _load_yaml(d / "world.yaml")
-    for w in validate(settings, character, world):
+    prompts = _load_yaml(d / "prompts.yaml")
+    for w in validate(settings, character, world, prompts):
         logging.getLogger("cat.config").warning("%s", w)
     # YAML may parse bucket keys as strings already ("0"); normalise
     settings["gain_values"] = {str(k): v for k, v in settings["gain_values"].items()}
-    return Config(settings, character, world, root=d.resolve().parent, config_dir=d.resolve(),
+    return Config(settings, character, world, prompts, root=d.resolve().parent, config_dir=d.resolve(),
                   overrides=dict(overrides) if overrides else None)
