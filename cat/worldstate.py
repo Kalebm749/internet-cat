@@ -93,6 +93,17 @@ class WorldState:
             self.touched.update(res.changed)
         return res
 
+    def append_raw(self, key: str, item: Any, by: str = "world") -> None:
+        """Append an outside value to a list fact WITHOUT filling placeholders (a visitor's letter may contain
+        braces; it must never be read as a template). max_len still applies."""
+        spec = self.content.facts[key]
+        if spec.type != "list":
+            raise ops.OpError(f"append_raw: fact '{key}' is not a list")
+        self.values[key] = _clamp(spec, self.values[key] + [copy.deepcopy(item)])
+        self.dirty.add(key)
+        if by == "creature":
+            self.touched.add(key)
+
     def regrow(self, since: str, until: str) -> dict[str, float]:
         """Advance every regrowing fact from sim time `since` to `until`. Returns key -> amount added."""
         a, b = clock.parse(since), clock.parse(until)

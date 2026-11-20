@@ -1,6 +1,6 @@
-# Internet Cat: everything on one Ubuntu laptop. See README.md and docs/server-architecture.md.
-#   docker compose up -d --build        start (engine dozes until Ollama and the models are ready)
-#   deploy/pull-models.sh               one-off: pull the models named in config/settings.yaml
+# Internet Cat: everything on one Ubuntu laptop. See README.md and docs/rewrite-contracts.md.
+#   docker compose up -d --build        start (the engine dozes until Ollama and the models are ready)
+#   deploy/pull-models.sh               one-off: pull the models named in config/settings.yaml (nit.models)
 name: internet-cat
 
 # Shared by the services that run our own image.
@@ -18,8 +18,9 @@ x-app: &app
     CAT_STRUCTURED_LOGS: "1"      # JSON logs to stdout and data/logs/<service>.jsonl
     TZ: ${TZ:-UTC}
   volumes:
-    - ./data:/app/data            # database, backups, logs: visible and back-up-able from the host
-    - ./config:/app/config:ro     # edit the YAML without rebuilding; restart the engine to apply
+    - ./data:/app/data            # nit.db, mail.db, backups, logs: visible and back-up-able from the host
+    - ./config:/app/config:ro     # settings and prompts: edit without rebuilding; restart the engine to apply
+    - ./content:/app/content:ro   # the world and the character sheet: edit, then restart the engine
 
 services:
   ollama:
@@ -28,8 +29,8 @@ services:
     # Not published to the network (Ollama has no authentication). The other services reach it as
     # http://ollama:11434. To debug from the host, add:  ports: ["127.0.0.1:11434:11434"]
     environment:
-      OLLAMA_KEEP_ALIVE: "-1"           # keep models loaded: no reload delay each tick
-      OLLAMA_MAX_LOADED_MODELS: "2"     # chat model + embedding model together
+      OLLAMA_KEEP_ALIVE: "-1"           # keep models loaded: no reload delay between decisions
+      OLLAMA_MAX_LOADED_MODELS: "2"     # decision model + embedding model; the sleep model swaps in at night
       OLLAMA_NUM_PARALLEL: "1"          # one request at a time; saves VRAM
       TZ: ${TZ:-UTC}
     volumes:
@@ -50,13 +51,13 @@ services:
 
   engine:
     <<: *app
-    command: ["python", "-m", "cat.main"]
+    command: ["python", "-m", "cat.nit"]
     # Start order only, NOT health-gated: the engine must start even if Ollama is down or has no
     # models yet, and doze until it is ready (the engine's own offline handling).
     depends_on:
       ollama:
         condition: service_started
-    stop_grace_period: 45s              # lets an in-flight tick finish; ticks are atomic anyway
+    stop_grace_period: 45s              # lets an in-flight decision finish; every step is atomic anyway
     healthcheck:
       test: ["CMD", "python", "-m", "cat.healthcheck", "engine"]
       interval: 30s

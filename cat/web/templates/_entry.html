@@ -1,0 +1,9 @@
+{% if e %}<li class="entry {{ e.kind }} {{ e.status or '' }}" data-id="{{ e.id }}" data-time="{{ e.time }}">
+  <time>Day {{ e.day }}, {{ e.clock }}</time>
+  {% if e.kind == "night" %}<p class="night-entry">{{ e.text }}</p>
+  {% elif e.kind == "event" %}<p class="event-entry">{{ e.text }}</p>
+  {% else %}
+    {% if e.thought %}<p class="thought">{{ e.thought }}</p>{% endif %}
+    <p class="what">{{ e.text }}{% if e.answered_letter %} <span class="tag">because of a letter</span>{% endif %}</p>
+  {% endif %}
+</li>{% endif %}

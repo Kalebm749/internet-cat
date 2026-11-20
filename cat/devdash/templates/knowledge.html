@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="card">
+  <h2>What it knows it can do</h2>
+  <table class="data"><tr><th>action</th><th>where</th><th>learned</th><th>how</th><th>confirmed</th><th>in its words</th><th>done</th><th>last</th></tr>
+    {% for k in d.knowledge %}<tr><td>{{ k.name }} <span class="dim mono small">{{ k.action }}</span></td><td>{{ k.place }}</td><td class="nowrap">{{ k.discovered_at }}</td>
+      <td>{{ k.how }}</td><td>{{ 'provisional' if k.provisional else 'yes' }}</td><td>{{ k.own_words or "" }}</td><td>{{ k.times_done }}</td><td class="nowrap">{{ k.last_done_at or "" }}</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

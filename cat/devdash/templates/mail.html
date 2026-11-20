@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="grid2">
+  <div class="card">
+    <h2>The mailbox</h2>
+    {% for l in d.mailbox %}<div class="call"><div class="call-head"><b>{{ l.sender }}</b> <span class="pill">{{ l.status }}</span> <span class="dim">{{ l.id }} · {{ l.received }}{% if l.read_at %} · read {{ l.read_at }}{% endif %}</span></div>
+      <p>{{ l.text }}</p></div>{% else %}<p class="dim">Empty.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h2>The answered pile</h2>
+    {% for l in d.answered %}<div class="call"><div class="call-head"><b>{{ l.sender }}</b> <span class="dim">{{ l.id }} · answered {{ l.answered_at }}</span></div>
+      <p>{{ l.text }}</p><p><b>Nit:</b> {{ l.reply }}</p></div>{% else %}<p class="dim">Nothing answered yet.</p>{% endfor %}
+    <h3>imports</h3>
+    <table class="data">{% for i in d.imports %}<tr><td>letter {{ i.letter_id }}</td><td>{{ i.sim_time }}</td><td class="dim">{{ i.real_time }}</td></tr>{% endfor %}</table>
+  </div>
+</div>
+{% endblock %}

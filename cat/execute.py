@@ -37,7 +37,7 @@ WORLD_TEXT_FIELDS = {
     "arrive": {"location"}, "inspect_found": {"hint", "name"}, "inspect_nothing": set(), "discovered": {"name"},
     "finished": {"name"}, "interrupted": {"name"}, "rejected": {"name", "reason"}, "fall_asleep": set(),
     "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_gone": set(),
-    "capability_failed": set(), "same_thought": set(),
+    "capability_failed": set(), "same_thought": set(), "mail_arrived": set(),
 }
 
 

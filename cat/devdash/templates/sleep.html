@@ -1,42 +1,15 @@
 {% extends "base.html" %}
-{% from "_macros.html" import block, pill, ms %}
-{% block head %}<link rel="stylesheet" href="/static/vendor/uPlot.min.css">{% endblock %}
-{% block content %}
-<section class="card">
-  <h2>Tendency history <span class="dim small">value after each night; each can move at most ±{{ s.max_step }} per night</span></h2>
-  <div class="chart" id="chart-tendencies"></div><p id="tendency-note" class="dim small"></p>
-</section>
-<section class="card">
-  <h2>Nights <span class="dim small">{{ s.total }} sleep cycles · newest first</span></h2>
-  {% for n in s.nights %}
-  <details class="night" {{ 'open' if loop.first }}>
-    <summary><b>Night #{{ n.id }}</b> · {{ n.day_label }}{% if n.tick_id %} · began at <a href="/ticks/{{ n.tick_id }}#sleep">tick #{{ n.tick_id }}</a>{% endif %} · {{ n.new_memories|length }} memories · {{ n.tendency_changes|length }} tendency changes · {{ n.new_preferences|length }} preferences<br><span class="dim">{{ n.summary }}</span></summary>
-    <div class="night-body">
-      {% set c = n.traces.get('consolidate') %}
-      <h3>1 · Consolidate memories</h3>
-      {% if c %}
-        {{ block('n%d-short'|format(n.id), 'Input: short-term memories (%d)'|format((c.input.short_memories|length) if c.input else 0), ((c.input.short_memories|join('\n')) if c.input else none)) }}
-        {{ block('n%d-log'|format(n.id), 'Input: the day\'s log (%d ticks)'|format((c.input.day_log|length) if c.input else 0), ((c.input.day_log|join('\n')) if c.input else none)) }}
-        {{ block('n%d-cout'|format(n.id), 'LLM output', (c.output|pretty) if c.output is not none else none) }}
-      {% else %}<p class="dim">no trace stored for this night</p>{% endif %}
-      <table class="data"><tr><th>new long-term memory</th></tr>{% for m in n.new_memories %}<tr><td>{{ m }}</td></tr>{% else %}<tr><td class="dim">none</td></tr>{% endfor %}</table>
-
-      <h3>2 · Tendencies <span class="dim small">(LLM proposes −1..1, code scales by the max step and clamps to 0..1)</span></h3>
-      <table class="data num"><tr><th>tendency</th><th>LLM proposed</th><th>applied change</th><th>before → after</th><th></th></tr>
-        {% for t in n.tendency_table %}<tr><td>{{ t.id }}</td><td>{{ t.proposed if t.proposed is not none else '–' }}</td><td>{{ '%+.4f'|format(t.applied) }} <span class="dim">(max ±{{ t.max_step }})</span></td><td>{{ t['from'] }} → {{ t.to }}</td><td>{{ pill('clamped','warn') if t.clamped }}</td></tr>
-        {% else %}<tr><td colspan="5" class="dim">no tendency changed</td></tr>{% endfor %}
-      </table>
-
-      <h3>3 · Preferences <span class="dim small">(a new opinion is blended with the old valence, so likes start weak and strengthen)</span></h3>
-      <table class="data num"><tr><th>subject</th><th>previous</th><th>now</th><th>reason</th></tr>
-        {% for p in n.pref_table %}<tr><td>{{ p.subject }}</td><td>{{ p.previous if p.previous is not none else 'new' }}</td><td>{{ p.valence }}</td><td>{{ p.reason }}</td></tr>
-        {% else %}<tr><td colspan="4" class="dim">no preference changed</td></tr>{% endfor %}
-      </table>
-      {% if n.calls %}<p class="small">LLM calls: {% for c in n.calls %}<a href="/llm/{{ c.id }}">{{ c.kind }} #{{ c.id }}</a> ({{ ms(c.total_ms) }}){{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
-    </div>
-  </details>
-  {% else %}<p class="dim">no sleep cycle has run yet: it runs when the creature falls asleep (or via the "Force sleep cycle" button on the Overview).</p>{% endfor %}
-  <p class="pager">{% if s.page > 1 %}<a href="/sleep?page={{ s.page - 1 }}">← newer</a>{% endif %} page {{ s.page }} / {{ s.pages }} {% if s.page < s.pages %}<a href="/sleep?page={{ s.page + 1 }}">older →</a>{% endif %}</p>
-</section>
+{% block main %}
+{% for n in d.nights %}
+<div class="card">
+  <h2>{{ n.started_at }} → {{ n.finished_at }} <span class="pill {{ 'ok' if n.status == 'ok' else 'bad' }}">{{ n.status }}</span>
+    {% if n.repeated %}<span class="pill warn">repeated itself</span>{% endif %}</h2>
+  <p>{{ n.summary }}</p>
+  <table class="data">
+    <tr><th>stage</th><th>status</th><th>seconds</th><th>output / problems</th></tr>
+    {% for k, s in n.stages.items() %}<tr><td>{{ k }}</td><td class="{{ 'bad' if s.status == 'failed' }}">{{ s.status }}</td><td>{{ s.seconds }}</td>
+      <td><pre class="box">{{ (s.output if s.output is defined else s.problems) | pretty }}</pre></td></tr>{% endfor %}
+  </table>
+</div>
+{% else %}<div class="card"><p class="dim">No nights yet.</p></div>{% endfor %}
 {% endblock %}
-{% block scripts %}<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/chartlib.js"></script><script src="/static/sleep.js"></script>{% endblock %}

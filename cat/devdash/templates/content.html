@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="grid2">
+  <div class="card">
+    <h2>content/ <span class="pill {{ 'ok' if d.content == 'ok' else 'bad' }}">{{ d.content }}</span></h2>
+    <ul>{% for p in d.content_problems %}<li class="mono small">{{ p }}</li>{% else %}<li class="dim">Every file and reference checks out.</li>{% endfor %}</ul>
+    <p class="dim small">Edit the YAML, check it here, then restart the engine to apply it.</p>
+  </div>
+  <div class="card">
+    <h2>settings.yaml nit: <span class="pill {{ 'ok' if d.tuning == 'ok' else 'bad' }}">{{ d.tuning }}</span></h2>
+    <ul>{% for p in d.tuning_problems %}<li class="mono small">{{ p }}</li>{% else %}<li class="dim">Valid.</li>{% endfor %}</ul>
+  </div>
+</div>
+{% endblock %}

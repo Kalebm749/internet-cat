@@ -23,10 +23,12 @@ from typing import Any, Callable
 
 import threading
 
-from cat import clock as clock_mod
+from cat import clock as clock_mod, mail as mailmod
 from cat import behaviour, content as contentmod, decision as decisionmod, identity, knowledge, life as lifemod, memories
 from cat import mind as mindmod, sleepcycle, store
 from cat.capabilities import Registry
+from cat.config import Config
+from cat.healthcheck import write_heartbeat
 from cat.decision import Decision
 from cat.execute import Executor, load_texts
 from cat.llm import BackendError, LLMBackend
@@ -81,8 +83,9 @@ class Sleeper:
 
 class Loop:
     def __init__(self, conn: sqlite3.Connection, content: contentmod.Content, tuning: dict, backend: LLMBackend, *,
-                 clock: Callable[[], float] = time.monotonic, seed: Any = None):
-        self.conn, self.t, self.backend, self.clock = conn, tuning, backend, clock
+                 clock: Callable[[], float] = time.monotonic, seed: Any = None, cfg: Config | None = None):
+        self.conn, self.t, self.backend, self.clock, self.cfg = conn, tuning, backend, clock, cfg
+        self.last_mail_check: float | None = None
         self.life = lifemod.open_life(conn, content, tuning)
         self.prompts = decisionmod.load_prompts()
         self.sleep_prompts = sleepcycle.load_prompts()
@@ -152,9 +155,44 @@ class Loop:
 
     # ---------------------------------------------------------------- a step
 
+    def _import_mail(self) -> int:
+        """New visitor letters from mail.db (written by the website) into the mailbox fact. Returns how many."""
+        key = self.life.content.world.get("mailbox")
+        if self.cfg is None or not key:
+            return 0
+        now = self.clock()
+        if self.last_mail_check is not None and now - self.last_mail_check < self.cfg.settings["web"]["mail_poll_seconds"]:
+            return 0
+        self.last_mail_check = now
+        mconn = mailmod.open_for_reading(self.cfg.mail_db_path)
+        if mconn is None:
+            return 0
+        try:
+            last = self.conn.execute("SELECT COALESCE(MAX(letter_id), 0) FROM mail_imports").fetchone()[0]
+            rows = mailmod.new_letters(mconn, last)
+        finally:
+            mconn.close()
+        if not rows:
+            return 0
+        with store.transaction(self.conn):
+            for r in rows:
+                self.life.world.append_raw(key, {"id": mailmod.letter_key(r["id"]), "sender": r["sender"],
+                                                 "text": r["text"], "status": "unread", "received": self.life.sim_time})
+                self.conn.execute("INSERT INTO mail_imports(letter_id, sim_time, real_time) VALUES (?, ?, ?)",
+                                  (r["id"], self.life.sim_time, r["received_at"]))
+            lifemod.save(self.conn, self.life)
+        if key.split(".", 1)[0] == self.life.location and not self.life.asleep:
+            self.exec.perception.append(self.texts["mail_arrived"])
+            self.scheduler.note("mail", f"{len(rows)} new letter(s)")
+        log.info("%d new letter(s) in the mailbox", len(rows))
+        return len(rows)
+
     def step(self) -> StepReport:
+        if self.cfg is not None:
+            write_heartbeat(self.cfg.heartbeat_path)
         self._catch_up()
         self._sleep_cycle()
+        self._import_mail()
         rep = StepReport(self.life.sim_time)
         now = self.clock()
         if self.doze_until is not None:

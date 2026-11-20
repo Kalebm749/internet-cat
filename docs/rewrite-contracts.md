@@ -1,11 +1,12 @@
 # Rewrite: System Contracts
 
-*Status: agreed, ready for step 1. No code yet. This document defines the contracts between the systems of
-the rewrite. Each system is implemented and tested on its own once its contract is agreed.
-Decided: the rewrite replaces `cat/` in place; waking decisions use a small (~4B) model and sleep uses
-the 14B model; Nit is a humanoid creature (§2.1); the sim runs at 24× (one real hour = one sim day, §3.4);
-the first content pack is the fountain and the market stall (§4.1–4.2); visitors can leave mail (§4.8);
-no web search at start; a new life starts (§9); the CLAUDE.md rules in §11 are overturned.*
+*Status: built (steps 1-8). This document defines the contracts between the systems of the engine, and each section
+ends with how it was built. It is the design reference for the code: when they disagree, fix one of them.
+Decided: the rewrite replaced `cat/` in place; waking decisions use a small (~4B) model and sleep uses the 14B
+model; Nit is a humanoid creature (§2.1); the sim runs at 24× (one real hour = one sim day, §3.4); the first
+content pack is the fountain and the market stall (§4.1–4.2); visitors can leave open-ended letters (§4.8); no web
+search at start; a new life started (§9); the old engine's rules in §11 are overturned. The real-model run
+(step 7) is measured with `scripts/measure_nit.py` on the laptop.*
 
 ---
 
@@ -850,6 +851,18 @@ Tables: `meta`, `state` (mood, energy, hunger, location, sim_time), `facts`, `ac
 | 8 | Dashboard + website | Every Mind and decision explainable from the UI |
 
 ---
+
+### 10.1 As built (steps 7-8)
+
+- Step 7: `compose.yaml` runs `python -m cat.nit`; `content/` is mounted read-only; `deploy/pull-models.sh` pulls
+  `nit.models`; the engine writes `data/engine.heartbeat` every step; the life is backed up before any migration;
+  `scripts/measure_nit.py` reports speed, validity, prompt size, list bias, hunger, nights (with each sleep stage's
+  real seconds), behaviour and letters. The long real-model run is done on the laptop.
+- Step 8: `cat/readmodel.py` (every view, read-only), `cat/web` (Now, the diary with the thought behind each action,
+  who Nit is, what it knows, the letter form; refreshes itself), `cat/devdash` (Overview, Decisions with the
+  inspector, Character, Memory, Knowledge, Repetition, World, Sleep, Mail, Content; JSON twins), `cat/mail.py`
+  (mail.db written only by the website; the engine imports letters and records them in `mail_imports`).
+- The first engine (its modules, tests, configs and scripts) was removed; its docs are in `docs/archive/`.
 
 ## 11. Rules in CLAUDE.md this rewrite overturns (accepted)
 

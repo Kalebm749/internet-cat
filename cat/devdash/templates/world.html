@@ -1,36 +1,20 @@
 {% extends "base.html" %}
-{% block content %}
-<section class="grid2">
+{% block main %}
+<div class="grid2">
   <div class="card">
-    <h2>Areas <span class="dim small">weather: {{ w.weather or '–' }}</span></h2>
-    <table class="data"><tr><th>area</th><th>exits</th><th>objects</th></tr>
-      {% for a in w.areas %}<tr class="{{ 'sel' if a.here }}"><td><b>{{ a.name }}</b>{% if a.here %} <span class="pill ok">creature is here</span>{% endif %}<br><span class="dim small">{{ a.description }}</span></td><td>{{ a.exits|join(', ') }}</td><td>{{ a.objects }}</td></tr>{% endfor %}
-    </table>
-    <h3>Inventory (carried)</h3>
-    <table class="data"><tr><th>object</th><th>tags</th><th>state</th></tr>
-      {% for o in w.inventory %}<tr><td><a href="/world?object={{ o.id }}">{{ o.name }}</a> <span class="dim mono">{{ o.id }}</span></td><td>{{ o.tags|join(', ') }}</td><td class="mono">{{ o.state|tojson }}</td></tr>
-      {% else %}<tr><td colspan="3" class="dim">nothing</td></tr>{% endfor %}
+    <h2>Facts</h2>
+    <table class="data"><tr><th>fact</th><th>type</th><th>visible</th><th>touched</th><th>value</th></tr>
+      {% for f in d.facts %}<tr><td class="mono">{{ f.key }}{% if not f.declared %} <span class="pill warn">undeclared</span>{% endif %}</td><td>{{ f.type }}</td>
+        <td>{{ f.visible }}</td><td>{{ 'yes' if f.touched else '' }}</td><td><pre class="box">{{ f.value | pretty }}</pre></td></tr>{% endfor %}
     </table>
   </div>
   <div class="card">
-    <h2>Objects <span class="dim small">{{ w.objects|length }} in the world</span></h2>
-    <table class="data"><tr><th>object</th><th>where</th><th>tags</th><th>state</th><th>made by</th><th>since</th></tr>
-      {% for o in w.objects %}<tr><td><a href="/world?object={{ o.id }}">{{ o.name }}</a> <span class="dim mono">{{ o.id }}</span></td><td>{{ o.area_name }}</td><td>{{ o.tags|join(', ') }}</td><td class="mono">{{ o.state|tojson if o.state else '' }}</td>
-          <td>{{ o.created_by }}</td><td class="dim nowrap">{{ o.created_at[5:16] }}</td></tr>
-      {% else %}<tr><td colspan="6" class="dim">no objects</td></tr>{% endfor %}
-    </table>
+    <h2>Places</h2>
+    <table class="data">{% for l in d.locations %}<tr><td>{{ l.name }} <span class="dim mono small">{{ l.id }}</span></td><td>exits: {{ l.exits | join(", ") }}</td><td class="small">{{ l.actions | join(", ") }}</td></tr>{% endfor %}</table>
+    <h2>Perceived events</h2>
+    <table class="data">{% for e in d.events %}<tr><td class="nowrap">{{ e.sim_time }}</td><td>{{ e.location }}</td><td>{{ e.text }}</td></tr>{% endfor %}</table>
+    <h2>Capability use</h2>
+    <table class="data">{% for u in d.capability_usage %}<tr><td>{{ u.capability }}</td><td>{{ u.day }}</td><td>{{ u.uses }}</td></tr>{% else %}<tr><td class="dim">none yet</td></tr>{% endfor %}</table>
   </div>
-</section>
-<section class="card">
-  <h2>Object history <span class="dim small">{{ w.history_total }} changes{% if object %} for <code>{{ object }}</code> · <a href="/world">show all</a>{% endif %} · from the changes each tick recorded</span></h2>
-  {% if object and w.object_row %}<p>Now: <b>{{ w.object_row.name }}</b> in {{ w.object_row.area_name }}, made by {{ w.object_row.created_by }}, tags {{ w.object_row.tags|join(', ') }}</p>
-  {% elif object %}<p class="dim">That object no longer exists (consumed, or never existed): its history below.</p>{% endif %}
-  <table class="data"><tr><th>tick</th><th>sim time</th><th>object</th><th>what happened</th><th>by</th></tr>
-    {% for h in w.history %}<tr><td><a href="/ticks/{{ h.tick_id }}#effects">#{{ h.tick_id }}</a></td><td class="nowrap dim">{{ h.sim_time[5:16] }}</td>
-        <td>{% if h.object_id %}<a href="/world?object={{ h.object_id }}">{{ h.label }}</a>{% else %}{{ h.label }}{% endif %}</td><td>{{ h.detail }}</td><td>{{ h.source }}</td></tr>
-    {% else %}<tr><td colspan="5" class="dim">no world changes recorded yet</td></tr>{% endfor %}
-  </table>
-  <p class="pager">{% set base = '/world?' ~ ('object=' ~ object ~ '&' if object else '') %}
-    {% if w.page > 1 %}<a href="{{ base }}page={{ w.page - 1 }}">← newer</a>{% endif %} page {{ w.page }} / {{ w.pages }} {% if w.page < w.pages %}<a href="{{ base }}page={{ w.page + 1 }}">older →</a>{% endif %}</p>
-</section>
+</div>
 {% endblock %}

@@ -1,4 +1,4 @@
-# One slim image for the engine, web (and later devdash) services. Pure-Python deps only.
+# One slim image for the engine, web and devdash services. Pure-Python deps only.
 #   docker build --target runtime -t internet-cat:local .    (compose does this for you)
 #   docker build --target test .                             (runs the test suite)
 FROM python:3.12-slim AS base
@@ -43,5 +43,5 @@ CMD ["pytest", "-q"]
 # ---- runtime stage (the default target) ----
 FROM base AS runtime
 USER cat
-# Each compose service overrides the command (engine: python -m cat.main; web: uvicorn ...).
-CMD ["python", "-m", "cat.main"]
+# Each compose service overrides the command (engine: python -m cat.nit; web and devdash: uvicorn ...).
+CMD ["python", "-m", "cat.nit"]

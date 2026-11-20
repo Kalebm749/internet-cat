@@ -1,347 +1,49 @@
-# All tuning numbers live here. See docs/config-reference.md.
+# Engine-wide settings (cat/config.py validates them). The creature's own tuning is the `nit:` block below.
+# World content (places, actions, the character) lives in content/, not here. See docs/rewrite-contracts.md.
 
 # --- LLM host: the `ollama` service in compose.yaml (use http://127.0.0.1:11434 outside Docker) ---
 ollama_host: http://ollama:11434
-brain_model: qwen3:14b
-narrator_model: qwen3:14b
-sleep_model: qwen3:14b
-embed_model: nomic-embed-text
 ollama_think: false            # qwen3: disable thinking so JSON `format` output stays clean
-llm_timeout_seconds: 600   # a 14B model split between GPU and RAM can take minutes
+llm_timeout_seconds: 600       # the 14B sleep model, partly on the CPU, can take minutes
 health_timeout_seconds: 3
-llm_temperature: {brain: 0.9, journal: 0.7, sleep: 0.5, director: 0.8, create: 0.9, sketch: 0.9}
+llm_temperature: {decide: 0.8, sleep: 0.5, capability: 0.8}   # by task (sleep_* tasks use "sleep")
 llm_num_ctx: 4096
-error_backoff_seconds: 30      # extra wait after a tick that raised an unexpected error
-llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
 
-# --- storage ---
-db_path: data/cat.db
-heartbeat_file: data/engine.heartbeat   # written by the engine every loop; read by its healthcheck
-
-# --- tracing & dev tools (phase 2, part B) ---
-trace_enabled: true
-trace_level: full               # full | summary (summary stores no prompt / response / input text)
-trace_retention_days: 14        # llm_calls, embed_calls and recall_logs older than this are pruned during sleep
-trace_recall_candidates: 25     # scored memories kept per recall log (the selected ones are always kept)
+# --- files ---
+heartbeat_file: data/engine.heartbeat   # written by the engine every loop step; read by its healthcheck
 log_dir: data/logs              # structured JSON logs: <service>.jsonl, size-rotated
 log_level: INFO
 log_max_bytes: 5000000
 log_backup_count: 5
-log_tick_events: true           # one INFO line per tick (structured logs only)
-dev_db_path: data/devdash.db        # dev_commands, playground_runs, engine_status: the dashboard's only writable DB
-dev_commands_enabled: true
-dev_poll_seconds: 2             # the engine checks the command queue this often while waiting or paused
-paused_alive_seconds: 30        # while paused the engine refreshes its last-alive time (a pause is not downtime)
+backup_keep: 14                 # deploy/backup.sh and the pre-migration backups keep this many
+
+# --- container healthchecks ---
+healthcheck:
+  engine_max_age_seconds: 120   # the engine is unhealthy if its heartbeat is older than this
+  http_timeout_seconds: 5
+pull_timeout_seconds: 3600      # model download may take a long time
+
+# --- the website (cat/web) ---
+web:
+  port: 8080
+  refresh_seconds: 10           # the page asks for news this often
+  diary_page: 40                # entries per diary page
+  mail_db: data/mail.db         # visitor letters: the ONLY file the website writes
+  mail_max_chars: 500
+  mail_name_max: 40
+  mail_per_ip_per_hour: 3
+  mail_per_hour: 30             # all visitors together
+  mail_poll_seconds: 30         # the engine imports new letters this often (real seconds)
+  mail_blocklist: []            # lowercase words; a letter containing one is refused
+
+# --- the dev dashboard (cat/devdash; 127.0.0.1 only unless DEVDASH_BIND + credentials) ---
 devdash:
   port: 8090
   refresh_seconds: 5
   page_size: 50
-  llm_timeout_seconds: 180
-  web_url: http://web:8080      # for the service-health panel
-  slow_tick_ms: 30000
-  stats_hours: 24
-  max_series_points: 800
-  log_tail_lines: 300
-  embedding_map_max_points: 2000
 
-# --- container healthchecks ---
-healthcheck:
-  engine_max_age_seconds: 600   # engine is unhealthy if its heartbeat is older (or 3x the tick interval)
-  http_timeout_seconds: 5
-health_require_models: true     # brain counts as online only if all configured models are pulled
-pull_timeout_seconds: 3600      # model download may take a long time
-
-# --- pacing ---
-tick_interval_seconds: 90      # real seconds between ticks (0 = as fast as possible)
-sim_start: "2026-11-18T07:00"  # sim clock at the creature's first tick
-sim_minutes_per_tick_default: 20
-sim_minutes_min: 5             # narrator duration is clamped to this range
-sim_minutes_max: 90
-phases:                        # sim hour at which each phase starts
-  dawn: 5
-  day: 8
-  dusk: 18
-  night: 21
-
-# --- downtime: what happens to sim time while the engine/host was off ---
-downtime_policy: pause          # pause: sim time resumes exactly where it stopped, nothing decays
-                                # catch_up: apply decay for the gap, log one "dozed through ..." entry
-max_catch_up_hours: 8           # catch_up only: cap, in SIMULATED hours
-catch_up_min_gap_ticks: 3       # catch_up only: gaps shorter than this many tick intervals are normal restarts
-catch_up_decay_multiplier: 1.0  # catch_up only: need decay during the gap (1.0 = normal speed)
-
-# --- needs, effects ---
-gain_values: {"0": 0, "+": 7, "++": 14, "meal": 28}   # points per bucket; moves.yaml picks the bucket ("meal" is for a proper meal)
-effort_energy_cost: {none: 0, low: 2, medium: 6, high: 12}   # energy points an effort costs per `moves.reference_minutes` of the move (resting is none)
-repetition_penalty:
-  window: 6
-  multiplier: 0.4
-  needs: [wonder, curiosity]   # only these needs' gains shrink when an action repeats
-create_limit_per_tick: 1
-max_changes_per_tick: 6        # extra narrator changes beyond this are rejected
-inventory_max: 3
-name_max_length: 80            # created object names (e.g. "a drawing of ...") / set_state keys
-consume_min_gain: "+"          # eating an edible guarantees at least this bucket on the sustenance need
-sustenance_need: sustenance    # the one need that only rises when an edible object is consumed this tick
-
-# --- moves: what the brain is offered each decision (config/moves.yaml defines the verbs) ---
-moves:
-  max_offered: 30              # the menu is cut to this many: moving, sleeping and project work stay; the rest is a seeded random sample (never by need)
-  reference_minutes: 20        # a move of this length gives its full gains and costs its full effort ...
-  min_scale: 0.25              # ... a shorter one gives and costs proportionally less, down to this fraction
-  max_scale: 2.0               # ... and a longer one more, up to this multiple
-  novelty_hours: 24            # a place not visited for this many sim hours counts as new (go: novelty gains)
-  shuffle: true                # menu order is a seeded shuffle per decision, so list position never steers a pick
-  mark_untried: true           # a move whose verb it has never made shows "(never tried)": a fact of its history
-
-# --- journal: the entity's own entry, written AFTER code has decided what its move did (one call, brain_model) ---
-journal:
-  enabled: true                # false: no entry; the diary shows the reason it gave for the move instead
-  max_length: 400              # characters kept of an entry
-
-# --- activities: a move takes time. It runs without LLM calls until it ends or something interrupts it ---
-activity:
-  enabled: true                # false: one decision per tick, the move's whole length in one tick
-  step_minutes: 20             # sim minutes per tick while a longer move runs (no brain call, no narrator)
-  carry_interval_seconds: 10   # real seconds between those ticks (a decision still waits tick_interval_seconds)
-  interrupt_on_events: true    # any event (hand-written, injected or the director's) ends it
-  interrupt_on_empty_need: true   # a need newly dropping into the empty band ends it
-  interrupt_on_low_need: true  # ... and so does one newly dropping into the low band (needs come before what it was doing)
-  interrupt_while_empty: true  # ... and any need sitting in the empty band ends it at the next step
-
-# --- anxiety: the pressure it is under, 0..100. Low needs and tiredness push it up; being fed and rest ease it ---
-anxiety:
-  enabled: true
-  start: 10
-  band_points: {empty: 20, low: 8}         # the level it heads for: each need in that band adds these points
-  energy_points: {"-25": 15, "0": 5}       # ... and so does tiredness: energy below -25 adds 15, below 0 adds 5
-  rise_per_hour: 14                        # sim points per hour it climbs toward its target ...
-  fall_per_hour: 8                         # ... and eases back when the target is lower (x sleep_fall_multiplier asleep)
-  sleep_fall_multiplier: 2.0
-  mood_weight: 0.25                        # mood points lost per anxiety point (100 anxiety = -25 mood)
-  decay_pressure: 0.25                     # needs already low or empty decay up to this much faster at anxiety 100
-  sleep_restore_penalty: 0.4               # at anxiety 100, sleep restores this much less energy
-  words: {25: "", 50: uneasy, 75: on edge, 101: frantic}   # anxiety -> word (below each key); "" = not mentioned
-  impulse_above: 40                        # above this, each decision may be taken over by an impulse
-  impulse_max_chance: 0.5                  # chance of an impulse at anxiety 100 (rising from 0 at impulse_above)
-  impulses:                                # what an impulse does: it takes over with one of the listed moves
-    restless: {weight: 3, verbs: [go, pace, fidget, search_around, wander_edge, follow_sound]}
-    freeze: {weight: 1, verbs: [wait, breathe, listen, hide_in]}
-
-# --- drawing: real things it makes at a `paper` object over several sittings (cat/drawings.py, moves.yaml
-#     start_drawing / draw_more / finish_drawing / pin_drawing / discard_drawing). Code draws the picture. ---
-drawing:
-  enabled: true
-  subjects_offered: 4          # subjects from its own history offered for a new drawing (a seeded pick)
-  happenings_considered: 30    # the most recent happenings it witnessed that it could draw
-  max_in_progress: 3           # unfinished drawings at once; no new one is offered past this
-  board_capacity: 6            # drawings that fit on a `board`; pinning is not offered when it is full
-  marks_per_sitting: 14        # without its own marks (the sketch call failed): strokes code adds per reference_minutes
-  sketch: true                 # each sitting, one LLM call (brain_model) places its own marks; false = code's marks only
-  marks_max: 20                # most marks one sitting may place (a 60-minute sitting; shorter sittings get fewer)
-  marks_min: 3                 # fewest marks a sitting is allowed
-  history_shown: 4             # its past drawings it is reminded of, so a style can grow from its own history
-  colours:                     # what it can draw with: charcoal is always with the paper; paints only while an
-    charcoal: {black: "#1f1d1b", "dark grey": "#4a4744", grey: "#7c7873", "pale grey": "#aaa59e"}   # object tagged
-    paints: {red: "#b8402e", orange: "#d9822b", yellow: "#e2b93b", green: "#5d8a3a", teal: "#2f8a83",
-             blue: "#3a5f9e", violet: "#6d4b8f", pink: "#d47a92", brown: "#7a5232", white: "#f7f3ea"}   # `paints` is here
-
-# --- the body and the world can hurt: code rules, traced; the outcome text says what happened ---
-exhaustion:                    # energy word "exhausted" (energy_words)
-  blocks_effort: [high, medium]   # moves of this effort are not possible
-  blocks_does: [work_on, draw_new, draw_more]   # nor long work
-  rest_chance: 0.8             # each decision, a rest drive takes it to sleep (towards its nest if it can reach it)
-empty_blocks_does: [work_on, draw_new, draw_more]   # no project or drawing work is started while a need is empty
-mood_menu:                     # emotion changes what is offered (traced): chance a move of that mood is left off
-  low: {playful: 0.5}          # mood word low: half the playful moves are not on offer
-  content: {withdrawn: 0.5}    # mood word content: half the withdrawn moves are not on offer
-harms:
-  stale_after_hours: 10        # food from a source or event older than this has gone stale (moves.yaml hurts if: stale)
-  rain: {per_hour: {peace: 4}, energy_per_hour: 3, text: "The rain is soaking you."}   # awake or asleep, in rain, not sheltered
-  anxious_words: [on edge, frantic]   # hurts if: anxious
-  tired_words: [tired, exhausted]     # hurts if: tired
-
-# --- experiences: what it comes to like and dislike, from what actually happened (not from an LLM's opinion) ---
-experience:
-  anxiety_weight: 0.5          # score = need points beyond decay (gains - drains - hurts) - this x anxiety rise
-  lookback: 12                 # the latest moments per subject that count
-  min_count: 3                 # at least this many before it can become a like or dislike
-  bad_below: -3                # average score below this: a dislike candidate ...
-  good_above: 8                # ... above this: a like candidate
-  valence_scale: 12            # valence = average / this, clamped to -1..1
-  opinion_cap: 0.3             # a like or dislike the sleeping mind names without evidence is at most this strong
-
-# --- drives: innate, and the ONE place code picks a move because of a need. When a need is LOW or EMPTY, its drive
-#     may take the decision before the brain is asked: the move on the menu that feeds it most. Hungry with nothing
-#     to eat here, it forages (towards where it has eaten or seen food; else somewhere it has not been for longest).
-#     Only the most pressing need acts. Traced like an impulse, shown in the diary (prompts.yaml impulse.drive*). ---
-drives:
-  enabled: true
-  needs: [sustenance, joy, wonder, peace, curiosity]   # needs that have a drive (ids from character.yaml)
-  chance: {low: 0.25, empty: 0.6}   # per decision, by the most pressing need's band; okay and full never act
-  forage: true                 # sustenance with nothing to eat here: go looking
-
-# --- need bands: a level becomes a band; the brain sees words, never numbers ---
-need_bands: {empty_below: 15, low_below: 40, okay_below: 75}   # below empty_below => empty; ... ; else full
-max_pressing_needs: 2          # the brain's prompt shows the expressions of at most this many needs
-stale_after_ticks: 3           # ticks in one area before the prompt adds character.yaml stale_here
-
-# --- drains from the world: dislikes. While something it dislikes is present (the area, an object here,
-#     the weather, or its own action), the world drains these needs. The narrator never drains. ---
-dislike_drain:
-  needs: [peace, joy]
-  points_per_hour: 4           # per matching dislike, scaled by how strong the dislike is (|valence|)
-  max_matches: 2               # at most this many dislikes count in one tick (the strongest)
-
-# --- long-term projects (formed in sleep, advanced by the narrator, leave artifacts) ---
-habits:
-  enabled: true
-  window_ticks: 150            # the last N decisions are looked at (carried-on ticks are not decisions)
-  min_count: 4                 # a move must recur at least this often in one part of the day...
-  min_share: 0.4               # ...and make up at least this share of the decisions made in that part
-  max_stored: 6                # habits kept
-  max_shown: 3                 # habit lines in the brain prompt
-  text_max_length: 120
-
-projects:
-  max_active: 1                # projects it can be working on at once
-  work_bucket: "+"             # progress bucket for one "work on" move (a key of progress_values)
-  artifacts_enabled: true      # at each milestone and on finishing, a call in its own voice makes the piece
-  progress_values: {"+": 8, "++": 16}   # progress points per narrator bucket (0..100 per project)
-  taper: 0.5                   # a step is multiplied by 1 - taper*progress/100: slower as it nears the end
-  milestone_every: 25          # crossing each multiple of this is a notable moment (a short-term memory)
-  completion_gains: {joy: 20, wonder: 10}   # need points added by code when a project is finished
-  pause_after_idle_nights: 3   # an active project untouched for this many nights is paused (0 = never)
-  idle_hours_note: 24          # the brain is told it has not touched a project after this many sim hours
-  stages: {25: just begun, 50: underway, 75: well along, 101: nearly done}   # progress -> words (below the key)
-  title_max_length: 80
-  why_max_length: 200
-  note_max_length: 200
-  artifact_max_length: 1200    # characters of a saved piece
-  artifacts_shown: 6           # on the website
-
-# --- energy: a separate resource, -50..50. Effort spends it, sleep restores it ---
-energy_start: 30
-events_max_per_tick: 2         # the director's happening counts toward this
-director:                      # the world proposes occasional small happenings (LLM); code validates them
-  enabled: true                # false: only the hand-written events in world.yaml
-  allow_spawn: false           # it makes happenings only; the world's things are defined in world.yaml
-  every_ticks: 6               # runs after this many action ticks since it last ran ...
-  stale_every_ticks: 2         # ... or after this many when the entity has stayed in one place (stale)
-  text_max_length: 200
-  max_mood: 0.5                # a happening's mood nudge is clamped to -x..x (events say -1..1)
-  max_drain_points: 6          # most points a happening may drain from one need
-  max_drain_needs: 2           # most needs one happening may drain
-  avoid_repeat: 10             # recent happenings shown to it, and rejected if repeated
-  recent_actions_shown: 3      # the entity's latest actions it can see
-max_objects_per_area: 12       # event spawns are skipped when the area is this full
-object_lifetime_hours: {event: 18, director: 30, source: 20}   # sim hours before something the world brought is gone (by who made
-                               # it: event | director | creature; missing or 0 = it stays). Carried things and the
-                               # objects the world started with never expire.
-allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet, paper, board, drawing, paints, rings, nest, water, wishing, cold]
-state_value_max_length: 40
-
-# --- mood: ONE number, a slider from -50 (negative) to 50 (positive) ---
-# Computed from need BANDS (never raw levels): the points below for each need's band, plus the
-# decaying event nudge and the brain's own feeling. Needs not listed here add nothing.
-mood:
-  bands:                       # points added to mood by a need's band (a missing band adds 0)
-    sustenance: {empty: -20, low: -6}                  # sustenance empty lowers mood
-    joy:        {empty: -15, low: -6, okay: 4, full: 15}   # joy and peace raise mood
-    peace:      {empty: -12, low: -5, okay: 3, full: 12}
-  event_points: 20             # mood points per unit of an event's mood nudge (events say -1..1)
-  event_decay: 0.7             # per-tick decay of the event nudge
-  feeling_values: {negative: -10, neutral: 0, positive: 10}   # the brain's own `feeling`, in mood points
-  word_threshold: 12           # mood above this => "content"; below minus this => "low"; otherwise "calm"
-
-# --- words (value is below the key => that word; first match wins) ---
-energy_words: {-25: exhausted, 0: tired, 25: fine, 51: wide awake}   # energy is -50..50
-
-# --- doze / sleep ---
-doze:
-  energy_restore: 2            # energy points restored per dozing tick
-  sim_minutes: 20
-sleep:
-  fall_asleep_energy_below: -25    # at night, energy below this => falls asleep (no brain call)
-  wants_sleep_energy_below: 10     # brain's wants_sleep honoured below this (or at night)
-  wake_energy_at_least: 40         # wakes when energy reaches this ...
-  wake_not_before_hour: 6          # ... and it is past this hour and not night
-  max_hours: 12                    # safety cap on one sleep (sim hours)
-  restore_per_sim_hour: 12         # energy points restored per sim hour asleep
-  nest_restore_multiplier: 1.4     # ... times this when it sleeps where something tagged `nest` is (its own place)
-  decay_multiplier: 0.3            # needs decay this much slower while asleep (a night is 8-12 sim hours)
-  sim_minutes_per_tick: 60
-  tendency_max_step: 0.05          # max drift per tendency per night; LLM gives -1..1, scaled by this
-  tendency_start: 0.3              # a newly noticed tendency starts here (then drifts like the rest)
-  max_tendencies: 8                # learned tendencies kept; no new one is accepted past this
-  max_new_tendencies_per_night: 1  # how many new ones one night may add
-  tendency_forget_below: 0.05      # a tendency that fades below this is forgotten
-  tendency_name_max_length: 40     # characters in a tendency's name
-  max_new_memories: 5
-  importance_values: {low: 0.25, medium: 0.55, high: 0.85}   # LLM says a bucket, code makes the number
-  day_log_max_ticks: 40            # how much of the day's log the consolidation prompt sees
-  preference_blend: 0.5            # weight of tonight's opinion vs the existing valence
-  max_preferences_per_night: 3
-  max_preferences_total: 40
-  preference_min_abs: 0.1          # preferences weaker than this are forgotten
-  max_preference_subject_length: 60
-  max_self_image_lines: 5          # self-image lines kept; over the cap the least confident are forgotten
-  self_image_min_confidence: 0.2   # proposals less confident than this are ignored
-  max_self_image_length: 160       # characters per self-image line
-
-# --- memory ---
-recall: {k: 5, w_recency: 1.0, w_importance: 1.0, w_relevance: 1.5}
-recency_half_life_sim_hours: 48
-short_term_shown: 8
-notable:                       # a tick is notable if any of these hold
-  need_change: 20
-  strong_feelings: [negative, positive]
-  new_object: true
-  rejected_changes: true
-  impulse: true                # an impulse taking a decision over is worth remembering
-  anxiety_rise: true           # so is anxiety climbing into a higher band (anxiety.words) this tick
-  importance_base: 0.3         # short-term memory importance = base + per_trigger * triggers (max 1)
-  importance_per_trigger: 0.2
-long_term_cap: 500
-
-# --- brain prompt ---
-tendency_words: {low_below: 0.35, high_above: 0.65}   # tendency value -> label end
-preferences_shown: 5           # likes and dislikes each
-recent_actions_shown: 5
-
-# --- web ---
-web_port: 8080
-diary_page_size: 20
-keepsakes_first_page: 6
-
-web_ui:
-  poll_seconds: 10
-  trend_min_delta: 2           # trend arrow only if a need moved more than this since last tick
-  chip_min_delta: 5            # diary need chips (up/down) only for moves at least this big
-  keepsake_dots: [0.4, 0.7]    # importance below the 1st => 1 dot, below the 2nd => 2, else 3
-  drawing:                     # how the website draws a drawing (cat/art.py)
-    width: 360
-    height: 270
-    jitter_max: 7              # how far a stroke wanders at anxiety 100 (calm strokes are steady)
-    pinned_shown: 6            # drawings on the board panel
-  preferences_shown: 5         # loves / dislikes each
-  max_page_size: 100
-  keepsakes_all_limit: 200
-  presence:                    # the abstract presence in the portrait frame (no figure, no body)
-    hue_low_valence: 220       # colour follows mood: this hue at -50 (blue) ...
-    hue_high_valence: 40       # ... to this hue at +50 (amber)
-    saturation_awake: 70       # % ; also used while asleep
-    saturation_dozing: 12      # desaturated while dozing (brain offline)
-    lightness_awake: 58        # % ; dims while asleep or dozing
-    lightness_asleep: 28
-    lightness_dozing: 48
-    pulse_seconds_tired: 7.0   # motion follows energy: one breath takes this long at energy -50 ...
-    pulse_seconds_energetic: 1.4   # ... and this long at energy 50
-
-# --- backup (deploy/backup.sh reads these via env, kept here for reference) ---
-backup_keep: 14                # deploy/backup.sh reads this line
-
-# --- the rewrite (docs/rewrite-contracts.md), read by cat/tuning.py; the old engine ignores this block ---
+# --- the creature: every number of the engine loop, body, decisions, sleep, memory and repetition ---
+# (docs/rewrite-contracts.md; validated by cat/tuning.py)
 nit:
   db_path: data/nit.db
   content_dir: content

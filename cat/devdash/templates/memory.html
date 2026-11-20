@@ -1,76 +1,18 @@
 {% extends "base.html" %}
-{% from "_macros.html" import pill, ms %}
-{% block content %}
-<section class="card">
-  <h2>Search memories <span class="dim small">embeds your text with <code>{{ cfg.settings.embed_model }}</code> and scores it exactly as the engine's recall would</span></h2>
-  <form class="filters" method="get" action="/memory">
-    <input type="text" name="q" value="{{ q }}" size="70" placeholder="e.g. sitting under the old oak tree at sunset">
-    <button type="submit">Search</button> {% if q %}<a href="/memory">clear</a>{% endif %}
-  </form>
-  {% if search %}
-    {% if search.error %}<p class="bad">Could not embed the query: {{ search.error }}. Showing recency + importance only (relevance = 0), as the engine does when embedding is down.</p>{% endif %}
-    <p class="dim small">score = {{ search.weights.w_recency }}·recency + {{ search.weights.w_importance }}·importance + {{ search.weights.w_relevance }}·relevance (cosine) · the top {{ search.weights.k }} would go into the brain prompt · "now" = sim time {{ search.now }}{% if search.dims %} · query vector {{ search.dims }} dims{% endif %}</p>
-    <table class="data num">
-      <tr><th>memory</th><th>recency</th><th>importance</th><th>relevance (cosine)</th><th>score</th><th></th></tr>
-      {% for r in search.results[:40] %}
-      <tr class="{{ 'sel' if r.selected }}"><td><a href="#mem-{{ r.memory_id }}">{{ r.text }}</a></td><td>{{ r.recency }} <span class="dim">({{ r.terms.recency }})</span></td><td>{{ r.importance }} <span class="dim">({{ r.terms.importance }})</span></td>
-          <td>{{ r.relevance }} <span class="dim">({{ r.terms.relevance }})</span></td><td><b>{{ r.score }}</b></td><td>{{ '✓ selected' if r.selected else '' }}</td></tr>
-      {% else %}<tr><td colspan="6" class="dim">no long-term memories to search</td></tr>{% endfor %}
-    </table>
-    <p class="dim small">numbers in brackets are each weighted term. Showing the top 40 of {{ search.results|length }}.</p>
-  {% endif %}
-</section>
-
-<section class="card">
-  <h2>Embedding map <span class="dim small">2D projection (PCA) of {{ emap.n }} memory embeddings{% if emap.dims %} · {{ emap.dims }} dims · {{ emap.model }}{% endif %}</span></h2>
-  {% if emap.note %}<p class="dim">{{ emap.note }}</p>{% endif %}
-  {% if emap.n %}
-  <svg class="embmap" viewBox="0 0 1000 560" role="img" aria-label="2D projection of memory embeddings">
-    <rect x="0" y="0" width="1000" height="560" class="mapbg"/>
-    {% for p in emap.points %}
-    <a href="#mem-{{ p.id }}"><circle cx="{{ (p.x * 960 + 20)|round(1) }}" cy="{{ (p.y * 520 + 20)|round(1) }}" r="{{ (4 + 9 * p.importance)|round(1) }}"
-        class="pt pt-{{ p.kind }} {{ 'pt-sel' if p.selected }}" style="opacity: {{ (1 - 0.7 * p.age)|round(2) }}"><title>#{{ p.id }} {{ p.kind }} · importance {{ p.importance }} · day {{ p.day_number }} · recalled {{ p.recalled }}×
-{{ p.text }}</title></circle></a>
-    {% endfor %}
-    {% if emap.query %}<g class="qmark"><path d="M{{ emap.query.x * 960 + 20 }},{{ emap.query.y * 520 + 6 }} l6,14 l15,1 l-12,10 l4,15 l-13,-8 l-13,8 l4,-15 l-12,-10 l15,-1 z"/><title>your search text</title></g>{% endif %}
-  </svg>
-  <p class="legend small"><span><i class="dot pt-long"></i>long-term</span> <span><i class="dot pt-short"></i>short-term</span> <span>size = importance</span> <span>fainter = older</span>{% if emap.query %} <span>★ = your search · ringed = would be selected</span>{% endif %}
-     {% if emap.explained %}<span class="dim">the two axes explain {{ '%.0f'|format((emap.explained[0] + emap.explained[1]) * 100) }}% of the variation</span>{% endif %}</p>
-  {% endif %}
-</section>
-
-<section class="grid2">
+{% block main %}
+<div class="grid2">
   <div class="card">
-    <h2>Recall stats <span class="dim small">{{ t.recall_events }} recall events logged</span></h2>
-    <h3>Most recalled</h3>
-    <table class="data num"><tr><th>memory</th><th>times recalled</th><th>last at tick</th></tr>
-      {% for m in t.most_recalled %}<tr><td><a href="#mem-{{ m.id }}">{{ m.text }}</a></td><td>{{ m.times_recalled }}</td><td>{% if m.last_recall_tick %}<a href="/ticks/{{ m.last_recall_tick }}">#{{ m.last_recall_tick }}</a>{% endif %}</td></tr>
-      {% else %}<tr><td colspan="3" class="dim">nothing has been recalled yet</td></tr>{% endfor %}
-    </table>
-    <h3>Never recalled ({{ t.never_total }})</h3>
-    <table class="data"><tr><th>memory</th><th>importance</th><th>created</th></tr>
-      {% for m in t.never_recalled %}<tr><td><a href="#mem-{{ m.id }}">{{ m.text }}</a></td><td>{{ m.importance }}</td><td class="dim">{{ m.created_label }}</td></tr>
-      {% else %}<tr><td colspan="3" class="dim">every long-term memory has been recalled at least once</td></tr>{% endfor %}
-    </table>
+    <h2>Core memories</h2>
+    <ul>{% for m in d.core %}<li>{{ m.text }} <span class="dim small">({{ m.created_at }}, from {{ m.sources | join(", ") }})</span></li>{% else %}<li class="dim">none yet</li>{% endfor %}</ul>
+    <h2>Today's notable moments</h2>
+    <ul>{% for t in d.notable_today %}<li>{{ t }}</li>{% else %}<li class="dim">none</li>{% endfor %}</ul>
   </div>
   <div class="card">
-    <h2>Short-term memories <span class="dim small">today's notable moments · cleared at sleep</span></h2>
-    <table class="data num"><tr><th>memory</th><th>importance</th><th>created</th><th>tick</th><th>embedded</th></tr>
-      {% for m in t.short %}<tr id="mem-{{ m.id }}"><td>{{ m.text }}</td><td>{{ m.importance }}</td><td class="dim nowrap">{{ m.created_label }}</td><td>{% if m.tick_id %}<a href="/ticks/{{ m.tick_id }}">#{{ m.tick_id }}</a>{% endif %}</td><td>{{ '✓' if m.has_embedding else '✗' }}</td></tr>
-      {% else %}<tr><td colspan="5" class="dim">none right now</td></tr>{% endfor %}
+    <h2>Long-term memories <span class="dim small">(forgotten below retention {{ d.forget_below }})</span></h2>
+    <table class="data num"><tr><th>memory</th><th>importance</th><th>retention</th><th>recalls</th><th>created</th></tr>
+      {% for m in d.long %}<tr><td>{{ m.text }} <span class="dim small">[{{ m.sources | join(", ") }}]</span></td><td>{{ m.importance }}</td>
+        <td class="{{ 'bad' if m.retention < d.forget_below * 2 }}">{{ m.retention }}</td><td>{{ m.recalls }}</td><td class="nowrap">{{ m.created_at }}</td></tr>{% endfor %}
     </table>
   </div>
-</section>
-
-<section class="card">
-  <h2>Long-term memories <span class="dim small">{{ t.long_total }} · created while sleeping</span></h2>
-  <table class="data num">
-    <tr><th>#</th><th>memory</th><th>importance</th><th>created</th><th>last recalled</th><th>times recalled</th><th>written by tick</th><th>embedded</th></tr>
-    {% for m in t.long %}
-    <tr id="mem-{{ m.id }}"><td>{{ m.id }}</td><td>{{ m.text }}</td><td>{{ m.importance }}</td><td class="dim nowrap">{{ m.created_label }}</td>
-        <td class="dim nowrap">{{ m.last_recalled or 'never' }}</td><td>{{ m.times_recalled }}</td><td>{% if m.tick_id %}<a href="/ticks/{{ m.tick_id }}">#{{ m.tick_id }}</a>{% endif %}</td><td>{{ '✓' if m.has_embedding else '✗' }}</td></tr>
-    {% else %}<tr><td colspan="8" class="dim">no long-term memories yet: they are created when the creature sleeps</td></tr>{% endfor %}
-  </table>
-  <p class="pager">{% if t.page > 1 %}<a href="/memory?page={{ t.page - 1 }}{{ '&q=' ~ q if q }}">← newer</a>{% endif %} page {{ t.page }} / {{ t.pages }} {% if t.page < t.pages %}<a href="/memory?page={{ t.page + 1 }}{{ '&q=' ~ q if q }}">older →</a>{% endif %}</p>
-</section>
+</div>
 {% endblock %}

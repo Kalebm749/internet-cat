@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="grid2">
+  <div class="card">
+    <h2>Decision {{ d.id }} · {{ d.kind }} → {{ d.action }}</h2>
+    <table class="kv">
+      <tr><th>sim / real</th><td>{{ d.sim_time }} · {{ d.real_time }} · {{ d.ms }} ms</td></tr>
+      <tr><th>triggers</th><td>{% for t in d.triggers %}{{ t.kind }}{% if t.reason %} ({{ t.reason }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+      <tr><th>inputs</th><td class="mono">{{ d.inputs | tojson }}</td></tr>
+      <tr><th>thought</th><td>{{ d.thought }}</td></tr>
+      <tr><th>reasoning</th><td>{{ d.reasoning }}</td></tr>
+      <tr><th>preserve · letter</th><td>{{ d.preserve }} · {{ d.letter }}</td></tr>
+      <tr><th>fallback · notes</th><td>{{ d.fallback }} · {{ d.notes | join("; ") }}</td></tr>
+      <tr><th>dropped</th><td>{{ d.dropped | join("; ") }}</td></tr>
+    </table>
+    <h3>what came of it</h3>
+    {% for a in d.activities %}<p><b>{{ a.action_id }}</b> <span class="pill">{{ a.status }}</span> {{ a.started_at }} → {{ a.ended_at }}
+      (planned {{ a.planned_minutes }} min, freshness {{ a.freshness }}{% if a.restart_of %}, restart of {{ a.restart_of }}{% endif %})<br>{{ a.text }}</p>
+      <pre class="box">{{ {"changes": a.changes, "repetition": a.repeat_parts} | pretty }}</pre>{% endfor %}
+    <h3>attempts</h3>
+    {% for at in d.attempts %}<div class="call {{ 'call-bad' if at.problems }}"><div class="call-head">attempt {{ loop.index }}
+      {% if at.problems %}<span class="bad">{{ at.problems | join("; ") }}</span>{% else %}<span class="ok">valid</span>{% endif %}</div>
+      <pre class="box">{{ at.raw | pretty }}</pre></div>{% endfor %}
+  </div>
+  <div class="card">
+    <h2>The prompt</h2>
+    {% for m in d.messages %}<h3>{{ m.role }}</h3><pre class="box">{{ m.content }}</pre>{% endfor %}
+    <h2>The Mind</h2>
+    <pre class="box">{{ d.mind | pretty }}</pre>
+  </div>
+</div>
+{% endblock %}

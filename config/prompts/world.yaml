@@ -14,3 +14,4 @@ letter_read: "You read a letter from {sender} (a visitor's words):\n<<<{text}>>>
 letter_gone: "The letter is not there any more."
 capability_failed: "It does not work out."
 same_thought: "You keep coming back to the same thought."
+mail_arrived: "Something new has been put into the mailbox."

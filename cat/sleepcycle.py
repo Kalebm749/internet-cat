@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -135,12 +136,14 @@ def plan(conn: sqlite3.Connection, content: Content, tuning: dict, backend: LLMB
     p = SleepPlan(started_at=now)
 
     def stage(key: str, fn):
+        t0 = time.perf_counter()
         try:
             out = fn()
             p.stages[key] = {"status": "ok" if out is not None else "skipped", "output": out}
         except (BackendError, StageError) as e:
             log.warning("sleep stage %s failed: %s", key, e)
             p.stages[key] = {"status": "failed", "problems": [str(e)]}
+        p.stages[key]["seconds"] = round(time.perf_counter() - t0, 2)          # real time: does a night fit?
 
     cursor = int((conn.execute("SELECT value FROM meta WHERE key = ?", (CURSOR,)).fetchone() or ["0"])[0])
     newest = conn.execute("SELECT COALESCE(MAX(id), 0) FROM experiences").fetchone()[0]

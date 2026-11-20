@@ -10,15 +10,7 @@ from typing import Callable, TextIO
 import httpx
 
 from cat.config import load_config
-from cat.llm import model_present
-
-
-def wanted_models(settings: dict) -> list[str]:
-    seen: list[str] = []
-    for k in ("brain_model", "narrator_model", "sleep_model", "embed_model"):
-        if settings[k] not in seen:
-            seen.append(settings[k])
-    return seen
+from cat.llm import model_present, wanted_models
 
 
 def pull(client: httpx.Client, host: str, model: str, out: TextIO) -> bool:

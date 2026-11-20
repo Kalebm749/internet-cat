@@ -7,8 +7,9 @@ carried forward. Connections and transactions reuse `cat.db.connect` / `cat.db.t
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
-from cat.db import connect, transaction  # noqa: F401  (re-exported for callers)
+from cat.db import backup, connect, transaction  # noqa: F401  (re-exported for callers)
 
 MIGRATIONS: list[list[str]] = [
     [  # 1: meta and world facts
@@ -181,6 +182,9 @@ MIGRATIONS: list[list[str]] = [
         "ALTER TABLE sleep_runs ADD COLUMN summary_embedding BLOB",
         "ALTER TABLE sleep_runs ADD COLUMN repeated INTEGER NOT NULL DEFAULT 0",
     ],
+    [  # 7: visitor letters imported from mail.db (§4.8); mail.db itself is written only by the website
+        "CREATE TABLE mail_imports (letter_id INTEGER PRIMARY KEY, sim_time TEXT NOT NULL, real_time TEXT NOT NULL)",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 
@@ -189,10 +193,32 @@ def schema_version(conn: sqlite3.Connection) -> int:
     return conn.execute("PRAGMA user_version").fetchone()[0]
 
 
-def migrate(conn: sqlite3.Connection) -> list[int]:
-    """Apply every migration the database has not seen yet, each in one transaction. Returns their numbers."""
+def open_readonly(path: Path | str) -> sqlite3.Connection | None:
+    """For the website and the dashboard: the life, read-only, or None while it does not exist yet or the engine
+    has not yet migrated it to this code's schema (readers never migrate)."""
+    if not Path(path).exists():
+        return None
+    try:
+        conn = connect(path, readonly=True)
+        if schema_version(conn) != SCHEMA_VERSION:
+            conn.close()
+            return None
+        return conn
+    except sqlite3.Error:
+        return None
+
+
+def migrate(conn: sqlite3.Connection, keep_backups: int = 14) -> list[int]:
+    """Apply every migration the database has not seen yet, each in one transaction. Returns their numbers.
+    A life that already exists is backed up first (data/backups/nit-<time>-pre-migration.db): an update must
+    never risk it. If the backup fails, nothing is migrated."""
+    current = schema_version(conn)
+    if current < SCHEMA_VERSION and current > 0:
+        path = conn.execute("PRAGMA database_list").fetchone()[2]
+        if path:
+            backup(conn, Path(path).parent / "backups", "pre-migration", keep_backups)
     done = []
-    for n in range(schema_version(conn), SCHEMA_VERSION):
+    for n in range(current, SCHEMA_VERSION):
         with transaction(conn):
             for stmt in MIGRATIONS[n]:
                 conn.execute(stmt)
