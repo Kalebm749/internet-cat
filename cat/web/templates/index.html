@@ -51,7 +51,7 @@
     </section>
 
     <section class="card" id="mood-card">
-      <h2 class="section-title">Mood &amp; energy</h2>
+      <h2 class="section-title">Mood, anxiety &amp; energy</h2>
       <p class="mood-word" data-f="mood.word">{{ s.mood.word }}</p>
       <p class="mood-desc" data-f="mood.description">{{ s.mood.description }}</p>
       <div class="mood-slider" id="mood-slider" role="img" aria-label="{{ s.mood.aria }}" data-f-attr="aria-label:mood.aria">
@@ -59,6 +59,12 @@
         <div class="ms-track"><i class="ms-dot" id="mood-dot" style="left: {{ s.mood.slider_pct }}%"></i></div>
         <span class="ms-end">positive</span>
       </div>
+      {% if s.anxiety.enabled %}<div class="energy anxiety">
+        <span class="n-label">anxiety</span>
+        <span class="n-word" data-f="anxiety.word">{{ s.anxiety.word }}</span>
+        <div class="bar dusk" id="anxiety-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="{{ s.anxiety.value }}" aria-label="{{ s.anxiety.aria }}"><i style="width: {{ s.anxiety.pct }}%"></i></div>
+      </div>{% endif %}
       <div class="energy">
         <span class="n-label">energy</span>
         <span class="n-word" data-f="energy.word">{{ s.energy.word }}</span>

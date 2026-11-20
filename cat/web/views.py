@@ -387,6 +387,15 @@ def biography_view(conn, cfg: Config) -> dict:
     }
 
 
+def anxiety_view(cfg: Config, mood: dict) -> dict:
+    """The third bar: how pressed it feels, 0..100, with a word ("calm" when below the first band)."""
+    on = cfg.settings["anxiety"]["enabled"]
+    lvl = float(mood.get("anxiety", 0.0)) if on else 0.0
+    word = character.anxiety_word(lvl, cfg) or "calm"
+    return {"enabled": on, "value": round(lvl), "pct": round(lvl), "word": word,
+            "aria": f"anxiety: {word}, {lvl:.0f} on a scale from 0 to 100"}
+
+
 def brain_tendency_text(cfg: Config, name: str, value: float) -> str:
     from cat import brain
     return brain.tendency_phrase(cfg, name, value)
@@ -434,6 +443,7 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
                  "aria": f"Mood slider: {mood['word']}, "
                          f"{'positive' if mv > thr else 'negative' if mv < -thr else 'in the middle'}, "
                          f"from negative to positive"},
+        "anxiety": anxiety_view(cfg, mood),
         "energy": {"value": round(energy), "pct": round(energy - character.ENERGY_MIN),
                    "word": character.energy_word(energy, cfg),
                    "aria": f"energy: {character.energy_word(energy, cfg)}, {energy:.0f} on a scale from -50 to 50"},

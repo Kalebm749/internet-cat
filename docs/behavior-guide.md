@@ -241,6 +241,15 @@ If the brain cannot be reached the tick is a **doze**: 20 sim minutes, no LLM ca
 
 ## 6. Mood
 
+### Anxiety (the third gauge, beside mood and energy)
+**Anxiety** (0..100) is how pressed the creature feels. Each tick it climbs toward a target (`anxiety.band_points`: every need in the *low* or *empty* band adds points, and `anxiety.energy_points`: being tired adds more) at `rise_per_hour`, and eases back at `fall_per_hour` when the target is lower (twice as fast asleep). So it builds while needs stay unmet and drains once they are fed. Consequences, all in settings `anxiety.*` and traced on the tick page:
+- **Mood** loses `mood_weight` points per anxiety point.
+- **Needs under pressure:** needs already low or empty decay up to `decay_pressure` (25%) faster at full anxiety; feeding them releases it (so there is no endless spiral).
+- **The prompt** adds "You feel uneasy / on edge / frantic" above the calm band (`anxiety.words`, wording in prompts.yaml).
+- **Sleep** restores up to `sleep_restore_penalty` (40%) less energy at full anxiety.
+- **Impulses:** above `impulse_above` (40) each decision may be taken over, with a chance rising to `impulse_max_chance` (50%) at 100. Seeded code picks an impulse (`anxiety.impulses`: restless or freeze, each with a weight and the verbs it acts through) and one matching move from the *current menu*, never by what would feed a need. The diary then carries a first-person line (`impulse.*` in prompts.yaml) and the dashboard shows what took over. This is the relaxed rule from the cognitive plan.
+The website shows it as a bar between mood and energy. Turn it all off with `anxiety.enabled: false`.
+
 Mood is **one number**, a simple slider from **−50 (negative) to 50 (positive)**. It is never set directly. It is recomputed every tick as the sum of:
 
 - the points `mood.bands` gives each listed need for its *band*,

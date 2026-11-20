@@ -13,7 +13,7 @@ def mood(cfg, needs=None, nudge=0.0, feeling=None, energy=0.0, trace=None, **lev
 
 def test_mood_is_a_single_number_in_range(cfg):
     m = mood(cfg)
-    assert set(m) == {"value", "word", "description", "event_nudge"}
+    assert set(m) == {"value", "word", "description", "event_nudge", "anxiety"}
     assert "valence" not in m and "arousal" not in m
     best = mood(cfg, {k: 100 for k in OKAY}, nudge=5, feeling="positive")
     worst = mood(cfg, {k: 0 for k in OKAY}, nudge=-5, feeling="negative")

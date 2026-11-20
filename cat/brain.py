@@ -166,6 +166,9 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     L.append(R("time", time=clock.time_label(dt), part=clock.part_of_day(dt), weather=ctx.weather))
     L.append(R("place", area=area["name"], description=area["description"]))
     L.append(R("feeling", mood=ctx.mood["description"], energy=character.energy_word(ctx.energy, cfg)))
+    aw = character.anxiety_word(float(ctx.mood.get("anxiety", 0.0)), cfg)
+    if aw:
+        L.append(R("anxiety", word=aw))
 
     L.append("\n" + "\n".join(pulling_section(cfg, ctx.needs, ctx.stale_here)))
 

@@ -79,6 +79,11 @@
 
     // mood pad + energy
     $("#mood-dot").style.left = s.mood.slider_pct + "%";
+    var ab = $("#anxiety-bar");
+    if (ab && s.anxiety) {
+      ab.setAttribute("aria-valuenow", s.anxiety.value); ab.setAttribute("aria-label", s.anxiety.aria);
+      ab.firstElementChild.style.width = s.anxiety.pct + "%";
+    }
     var eb = $("#energy-bar");
     eb.setAttribute("aria-valuenow", s.energy.value); eb.setAttribute("aria-label", s.energy.aria);
     eb.firstElementChild.style.width = s.energy.pct + "%";

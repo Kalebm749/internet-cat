@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Callable
 
 
-from cat import brain, character, clock, db, downtime, effects, logs, narrator, sleep
+from cat import brain, character, clock, db, downtime, effects, impulses, logs, narrator, sleep
 from cat import moves as MV
 from cat import director as DR
 from cat import habits as HB
@@ -332,6 +332,8 @@ class Engine:
 
         # 2+3. brain and narrator (LLM calls, outside any transaction)
         result = None
+        impulse = None
+        anx_prev = character.anxiety_of(st["mood"], cfg)
         recalled: list[dict] = []
         online = self._online()
         if online:
@@ -345,6 +347,10 @@ class Engine:
                         "ticks_in_area": self._ticks_in_area(), "stale_after_ticks": s["stale_after_ticks"],
                         "stale_text": cfg.character.get("stale_here") if ctx.stale_here else None})
                     b = brain.think(self.backend, cfg, ctx)
+                impulse = impulses.take_over(cfg, anx_prev, ctx.menu, f"{now}|{st['area']}")
+                if impulse:                  # anxiety took the decision over: the world still only offers this menu
+                    b = {**b, "move": impulse["move"], "entry": impulse["entry"],
+                         "why": f"an impulse ({impulse['impulse']})"}
                 mv = b["move"]
                 res = self._resolve_move(mv, b["why"], now)
                 with self.tracer.stage("narrator"):
@@ -380,7 +386,7 @@ class Engine:
             exempt = bool(adv and adv.get("ok") and adv["advanced"])
             if exempt:
                 mult = 1.0
-            needs = character.decay(before, minutes, cfg)
+            needs = character.decay(before, minutes, cfg, anxiety=anx_prev)
             drains = character.event_drains(fired)
             needs = character.apply_drains(needs, drains)
             dis, _ = self._dislike_drains(minutes, b["move"].label)
@@ -396,7 +402,7 @@ class Engine:
             self.tracer.set_effects(fx.log)
             self.tracer.set_need_math(character.explain_needs(
                 before, minutes, n["gains"], cfg, needs, consumed=fx.consumed, multiplier=mult, scale=scale,
-                drains=drains, dislike_drains=dis))
+                anxiety=anx_prev, drains=drains, dislike_drains=dis))
             feeling = b["feeling"]
             new_area = fx.area
             row = {"kind": "tick", "entry": b["entry"], "reaction": b["reaction"], "thought": b["thought"],
@@ -413,13 +419,13 @@ class Engine:
         else:
             adv = None
             minutes = s["doze"]["sim_minutes"]
-            needs = character.decay(before, minutes, cfg)
+            needs = character.decay(before, minutes, cfg, anxiety=anx_prev)
             drains = character.event_drains(fired)
             needs = character.apply_drains(needs, drains)
             dis, _ = self._dislike_drains(minutes, None)
             needs = character.apply_drains(needs, dis)
             energy = character.restore_energy(st["energy"], s["doze"]["energy_restore"])
-            self.tracer.set_need_math(character.explain_needs(before, minutes, None, cfg, needs,
+            self.tracer.set_need_math(character.explain_needs(before, minutes, None, cfg, needs, anxiety=anx_prev,
                                                               drains=drains, dislike_drains=dis))
             feeling = None
             new_area = st["area"]
@@ -428,7 +434,11 @@ class Engine:
                    "duration": minutes, "changes": [], "rejected": []}
 
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, nudge, feeling, energy, cfg, trace=mood_inputs)
+        if impulse:
+            mood_inputs["impulse"] = {k: v for k, v in impulse.items() if k != "move"} | {"move": impulse["move"].key}
+        anx = character.anxiety_next(anx_prev, needs, energy, minutes, cfg)
+        mood_inputs["anxiety_before"] = round(anx_prev, 2)
+        mood = character.compute_mood(needs, nudge, feeling, energy, cfg, trace=mood_inputs, anxiety=anx)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes),
                      "needs": needs, "mood": mood, "energy": energy,
@@ -496,15 +506,17 @@ class Engine:
         now = st["sim_time"]
         before = dict(st["needs"])
         minutes = min(s["activity"]["step_minutes"], act["remaining"])
-        needs = character.decay(before, minutes, cfg)
+        anx_prev = character.anxiety_of(st["mood"], cfg)
+        needs = character.decay(before, minutes, cfg, anxiety=anx_prev)
         drains = character.event_drains(fired)
         needs = character.apply_drains(needs, drains)
         dis, _ = self._dislike_drains(minutes, act["label"])
         needs = character.apply_drains(needs, dis)
-        self.tracer.set_need_math(character.explain_needs(before, minutes, None, cfg, needs,
+        self.tracer.set_need_math(character.explain_needs(before, minutes, None, cfg, needs, anxiety=anx_prev,
                                                           drains=drains, dislike_drains=dis))
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, nudge, None, st["energy"], cfg, trace=mood_inputs)
+        anx = character.anxiety_next(anx_prev, needs, st["energy"], minutes, cfg)
+        mood = character.compute_mood(needs, nudge, None, st["energy"], cfg, trace=mood_inputs, anxiety=anx)
         self.tracer.set_mood(mood_inputs, mood)
         remaining = act["remaining"] - minutes
         new_act = None if remaining <= 0 else {**act, "remaining": remaining}
@@ -526,12 +538,14 @@ class Engine:
         online = self._online()
         before = dict(st["needs"])
         minutes = sl["sim_minutes_per_tick"]
-        needs = character.decay(before, minutes * sl["decay_multiplier"], cfg)
+        anx_prev = character.anxiety_of(st["mood"], cfg)
+        needs = character.decay(before, minutes * sl["decay_multiplier"], cfg, anxiety=anx_prev)
         drains = character.event_drains(fired)
         needs = character.apply_drains(needs, drains)
-        energy = character.restore_energy(st["energy"], sl["restore_per_sim_hour"] * minutes / 60)
+        calm = 1.0 - cfg.settings["anxiety"]["sleep_restore_penalty"] * anx_prev / 100 if cfg.settings["anxiety"]["enabled"] else 1.0
+        energy = character.restore_energy(st["energy"], sl["restore_per_sim_hour"] * minutes / 60 * calm)   # an anxious sleep rests less
         self.tracer.set_need_math(character.explain_needs(
-            before, minutes, None, cfg, needs, decay_multiplier=sl["decay_multiplier"], drains=drains))
+            before, minutes, None, cfg, needs, decay_multiplier=sl["decay_multiplier"], anxiety=anx_prev, drains=drains))
         new_time = clock.advance(now, minutes)
         new_dt = clock.parse(new_time)
         wake = False
@@ -543,7 +557,8 @@ class Engine:
                        and not clock.is_night(new_dt, s["phases"]))
             wake = (rested and morning) or slept_h >= sl["max_hours"]
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, nudge, None, energy, cfg, trace=mood_inputs)
+        anx = character.anxiety_next(anx_prev, needs, energy, minutes, cfg, asleep=True)
+        mood = character.compute_mood(needs, nudge, None, energy, cfg, trace=mood_inputs, anxiety=anx)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": new_time, "needs": needs, "mood": mood,
                      "energy": energy, "weather": self.world.weather,
@@ -693,12 +708,14 @@ class Engine:
         else:
             needs = character.decay(before, minutes * s["catch_up_decay_multiplier"], cfg)
             energy = st["energy"]
+        anx_gap = character.anxiety_of(st["mood"], cfg)
         self.tracer.begin()
         self.tracer.set_need_math(character.explain_needs(
             before, minutes, None, cfg, needs,
             decay_multiplier=(s["sleep"]["decay_multiplier"] if st["is_asleep"] else s["catch_up_decay_multiplier"])))
         mood_inputs: dict = {}
-        mood = character.compute_mood(needs, 0.0, None, energy, cfg, trace=mood_inputs)
+        anx = character.anxiety_next(anx_gap, needs, energy, minutes, cfg, asleep=bool(st["is_asleep"]))
+        mood = character.compute_mood(needs, 0.0, None, energy, cfg, trace=mood_inputs, anxiety=anx)
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs, "mood": mood,
                      "energy": energy, "activity": None}

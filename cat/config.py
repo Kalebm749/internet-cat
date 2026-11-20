@@ -68,7 +68,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "dislike_drain", "projects", "habits", "director", "moves", "activity", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "projects", "habits", "anxiety", "director", "moves", "activity", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -365,6 +365,27 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                 errs.append("settings.yaml director.stale_every_ticks: must not exceed every_ticks")
         elif "director" in st:
             errs.append("settings.yaml director: must be a mapping")
+        an = st.get("anxiety")
+        if isinstance(an, dict):
+            if not isinstance(an.get("enabled"), bool):
+                errs.append("settings.yaml anxiety.enabled: must be true or false")
+            for k in ("start", "rise_per_hour", "fall_per_hour", "sleep_fall_multiplier", "mood_weight",
+                      "decay_pressure", "sleep_restore_penalty", "impulse_above", "impulse_max_chance"):
+                if not _num(an.get(k)) or an[k] < 0:
+                    errs.append(f"settings.yaml anxiety.{k}: must be a number >= 0")
+            if _num(an.get("impulse_max_chance")) and an["impulse_max_chance"] > 1:
+                errs.append("settings.yaml anxiety.impulse_max_chance: must be 0..1")
+            if _num(an.get("impulse_above")) and an["impulse_above"] >= 100:
+                errs.append("settings.yaml anxiety.impulse_above: must be below 100")
+            for k in ("band_points", "energy_points", "words", "impulses"):
+                if not isinstance(an.get(k), dict):
+                    errs.append(f"settings.yaml anxiety.{k}: must be a mapping")
+            for name, spec in (an.get("impulses") or {}).items() if isinstance(an.get("impulses"), dict) else []:
+                if not (isinstance(spec, dict) and _num(spec.get("weight")) and spec["weight"] > 0
+                        and isinstance(spec.get("verbs"), list) and spec["verbs"]):
+                    errs.append(f"settings.yaml anxiety.impulses.{name}: needs a weight > 0 and a list of verbs")
+        elif "anxiety" in st:
+            errs.append("settings.yaml anxiety: must be a mapping")
         hb = st.get("habits")
         if isinstance(hb, dict):
             for k in ("window_ticks", "min_count", "max_stored", "max_shown", "text_max_length"):

@@ -21,9 +21,59 @@ def initial_needs(cfg: Config) -> dict[str, float]:
     return {k: float(n["start"]) for k, n in cfg.character["needs"].items()}
 
 
-def decay(needs: dict[str, float], sim_minutes: float, cfg: Config) -> dict[str, float]:
+def decay_factor(value: float, cfg: Config, anxiety: float = 0.0) -> float:
+    """Anxiety presses on needs that are already low or empty: they decay a little faster (capped by
+    `anxiety.decay_pressure`), until something feeds them."""
+    a = cfg.settings["anxiety"]
+    if not a["enabled"] or anxiety <= 0 or need_band(float(value), cfg) not in ("empty", "low"):
+        return 1.0
+    return 1.0 + a["decay_pressure"] * min(100.0, anxiety) / 100.0
+
+
+def decay(needs: dict[str, float], sim_minutes: float, cfg: Config, anxiety: float = 0.0) -> dict[str, float]:
     hours = sim_minutes / 60
-    return {k: clamp(v - cfg.character["needs"][k]["decay_per_hour"] * hours) for k, v in needs.items()}
+    return {k: clamp(v - cfg.character["needs"][k]["decay_per_hour"] * hours * decay_factor(v, cfg, anxiety))
+            for k, v in needs.items()}
+
+
+# ---------- anxiety: the pressure a creature is under (0..100) ----------
+def anxiety_of(mood: dict | None, cfg: Config) -> float:
+    """The saved anxiety (it lives in the mood record); the configured start for an older save."""
+    a = cfg.settings["anxiety"]
+    return float((mood or {}).get("anxiety", a["start"])) if a["enabled"] else 0.0
+
+
+def anxiety_target(needs: dict[str, float], energy: float, cfg: Config) -> float:
+    """What anxiety is heading toward: each need in a low band adds its points, and tiredness adds some.
+    Plain arithmetic on bands and energy; nothing here picks or ranks a move."""
+    a = cfg.settings["anxiety"]
+    total = sum(float(a["band_points"].get(need_band(float(v), cfg), 0)) for v in needs.values())
+    for bound, pts in sorted((float(k), float(v)) for k, v in a["energy_points"].items()):
+        if energy < bound:
+            total += pts
+            break
+    return max(0.0, min(100.0, total))
+
+
+def anxiety_next(prev: float, needs: dict[str, float], energy: float, minutes: float, cfg: Config,
+                 asleep: bool = False) -> float:
+    """Anxiety climbs toward its target at `rise_per_hour` and eases back at `fall_per_hour`
+    (faster asleep), so it builds while needs stay unmet and drains once they are fed."""
+    a = cfg.settings["anxiety"]
+    if not a["enabled"]:
+        return 0.0
+    tgt = anxiety_target(needs, energy, cfg)
+    h = minutes / 60
+    if tgt > prev:
+        out = min(tgt, prev + a["rise_per_hour"] * h)
+    else:
+        out = max(tgt, prev - a["fall_per_hour"] * (a["sleep_fall_multiplier"] if asleep else 1.0) * h)
+    return round(max(0.0, min(100.0, out)), 2)
+
+
+def anxiety_word(level: float, cfg: Config) -> str:
+    """"" while calm; else the word for the band it is in (settings anxiety.words, below each key)."""
+    return _word_from(cfg.settings["anxiety"]["words"], level) if cfg.settings["anxiety"]["enabled"] else ""
 
 
 def event_drains(fired: list[dict]) -> dict[str, float]:
@@ -147,7 +197,7 @@ def apply_gains(needs: dict[str, float], gains: dict[str, str], cfg: Config,
 
 def explain_needs(before: dict[str, float], minutes: float, gains: dict[str, str] | None,
                   cfg: Config, after: dict[str, float], consumed: bool = False,
-                  multiplier: float = 1.0, decay_multiplier: float = 1.0, scale: float = 1.0,
+                  multiplier: float = 1.0, decay_multiplier: float = 1.0, scale: float = 1.0, anxiety: float = 0.0,
                   drains: dict[str, float] | None = None,
                   dislike_drains: dict[str, float] | None = None) -> list[dict]:
     """Per-need breakdown of one tick's arithmetic, one row per need, for the dev dashboard. It only
@@ -160,7 +210,7 @@ def explain_needs(before: dict[str, float], minutes: float, gains: dict[str, str
     rows = []
     for nid, spec in cfg.character["needs"].items():
         b = float(before[nid])
-        decay = spec["decay_per_hour"] * minutes / 60 * decay_multiplier
+        decay = spec["decay_per_hour"] * minutes / 60 * decay_multiplier * decay_factor(b, cfg, anxiety)
         bucket = gains.get(nid)
         bucket = str(bucket) if bucket is not None else None
         raw, mult, shown = 0.0, 1.0, bucket
@@ -198,7 +248,7 @@ def clamp_mood(v: float) -> float:
 
 
 def compute_mood(needs: dict[str, float], event_nudge: float, feeling: str | None, energy: float,
-                 cfg: Config, trace: dict | None = None) -> dict[str, Any]:
+                 cfg: Config, trace: dict | None = None, anxiety: float = 0.0) -> dict[str, Any]:
     """Mood is ONE number, a slider from -50 (negative) to 50 (positive). It is the sum of the
     points settings mood.bands gives each listed need for its BAND, the decaying event nudge, and
     the brain's own `feeling`. Raw levels never enter. `energy` is only used for the description."""
@@ -207,7 +257,8 @@ def compute_mood(needs: dict[str, float], event_nudge: float, feeling: str | Non
     terms = {nid: float(table.get(bands.get(nid), 0)) for nid, table in m["bands"].items() if nid in bands}
     event_pts = m["event_points"] * event_nudge
     feel = m["feeling_values"].get(feeling or "neutral", 0.0)
-    raw = sum(terms.values()) + event_pts + feel
+    anx_pts = -cfg.settings["anxiety"]["mood_weight"] * anxiety if cfg.settings["anxiety"]["enabled"] else 0.0
+    raw = sum(terms.values()) + event_pts + feel + anx_pts
     value = clamp_mood(raw)
 
     if trace is not None:   # dev dashboard: every input and intermediate value
@@ -216,6 +267,7 @@ def compute_mood(needs: dict[str, float], event_nudge: float, feeling: str | Non
             "terms": {k: round(v, 3) for k, v in terms.items()},
             "event_nudge": round(event_nudge, 4), "event_points": round(event_pts, 3),
             "feeling": feeling or "neutral", "feeling_points": feel,
+            "anxiety": round(anxiety, 2), "anxiety_points": round(anx_pts, 3),
             "unclamped": round(raw, 3), "thresholds": {"word_threshold": m["word_threshold"]}})
     if value > m["word_threshold"]:
         word = "content"
@@ -231,8 +283,9 @@ def compute_mood(needs: dict[str, float], event_nudge: float, feeling: str | Non
     else:
         desc = f"{word} and {energy_word(energy, cfg)}"
     return {"value": round(value, 1), "word": word, "description": desc,
-            "event_nudge": round(event_nudge, 3)}
+            "event_nudge": round(event_nudge, 3), "anxiety": round(anxiety, 2)}
 
 
 def initial_mood(needs: dict[str, float], cfg: Config) -> dict[str, Any]:
-    return compute_mood(needs, 0.0, None, float(cfg.settings["energy_start"]), cfg)
+    return compute_mood(needs, 0.0, None, float(cfg.settings["energy_start"]), cfg,
+                        anxiety=float(cfg.settings["anxiety"]["start"]) if cfg.settings["anxiety"]["enabled"] else 0.0)
