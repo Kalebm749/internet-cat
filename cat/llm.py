@@ -54,7 +54,7 @@ class LLMBackend(ABC):
 
     @abstractmethod
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
-        """Return a dict matching `schema`. `task` is one of brain|narrator|consolidate|
+        """Return a dict matching `schema`. `task` is one of brain|journal|consolidate|
         tendencies|preferences|self_image|projects. Raises BackendError on failure."""
 
     @abstractmethod
@@ -297,12 +297,11 @@ class MockBackend(LLMBackend):
             pick = (sleepy[0] if sleepy and (tired or not others) and r.random() < 0.6 else
                     r.choice(others or [i for i, _ in ids])) if ids else "m1"
             return {"reaction": "hm, ok.", "thought": "what next?", "move": pick,
-                    "why": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"]),
-                    "entry": "I am doing this because I feel idle."}
-        if task == "narrator":
+                    "why": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"])}
+        if task == "journal":
             text = messages[-1]["content"] if messages else ""
-            m = re.search(r"What happened \(decided by the world\): (.+)", text)
-            return {"outcome": m.group(1).strip() if m else "Nothing much happens."}
+            m = re.search(r"^You chose to (.+)\.$", text, re.M)
+            return {"entry": f"I chose to {m.group(1)}." if m else "Not much happened."}
         if task == "consolidate":
             first = re.search(r"^- (.+)$", messages[-1]["content"] if messages else "", re.M)
             text = first.group(1)[:120] if first else "A quiet day at home."

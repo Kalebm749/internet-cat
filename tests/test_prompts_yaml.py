@@ -5,7 +5,7 @@ import shutil
 import pytest
 import yaml
 
-from cat import brain, narrator, sleep
+from cat import brain, journal, sleep
 from cat import prompts as P
 from cat.config import CONFIG_DIR, ConfigError, load_config
 from cat.engine import Engine
@@ -40,8 +40,8 @@ def test_missing_entry_refused(tmp_path):
 
 
 def test_empty_entry_refused(tmp_path):
-    assert "'narrator.user': must be non-empty text" in _problems(
-        tmp_path, lambda d: d["narrator"].update(user="   "))
+    assert "'journal.closing': must be non-empty text" in _problems(
+        tmp_path, lambda d: d["journal"].update(closing="   "))
 
 
 def test_unknown_placeholder_refused_and_names_the_allowed_ones(tmp_path):
@@ -56,11 +56,11 @@ def test_bad_braces_refused(tmp_path):
 def test_every_problem_reported_at_once(tmp_path):
     def bad(d):
         d["brain"]["system"].pop("intro")
-        d["narrator"].update(user="")
+        d["journal"].update(closing="")
         d["sleep"].update(system="{who}")
     msg = _problems(tmp_path, bad)
     assert msg.startswith("4 config problems") or msg.startswith("3 config problems") or "config problems" in msg
-    assert "brain.system.intro" in msg and "narrator.user" in msg and "{who}" in msg
+    assert "brain.system.intro" in msg and "journal.closing" in msg and "{who}" in msg
 
 
 def test_unknown_top_level_field_is_a_warning(tmp_path, caplog):
@@ -82,18 +82,23 @@ def test_editing_the_yaml_changes_the_prompts(tmp_path):
     def edit(d):
         d["brain"]["system"]["intro"] = "Hello {name}, this is custom."
         d["brain"]["situation"]["closing"] = "Go on."
-        d["narrator"]["user"] = "{context}\n--\nDid: {action} -> {result}"
+        d["journal"]["did"] = "Did: {action}!"
         d["sleep"]["jobs"]["consolidate"] = "Custom job."
         d["sleep"]["consolidate"] = "Memories: {shorts} | {log} | {name} | {n}"
     cfg = load_config(_edit(tmp_path, edit))
     assert brain.system_prompt(cfg).startswith(f"Hello {cfg.character['name']}, this is custom.")
-    assert narrator.build_messages(cfg, "eat", "CTX", "RES")[1]["content"] == "CTX\n--\nDid: eat -> RES"
+    needs = {k: 60.0 for k in cfg.character["needs"]}
+    user = journal.user_prompt(cfg, sim_time="2026-11-18T19:40", area_id=cfg.character["start_area"], weather="clear",
+                               action="eat", why="", impulse=False, result="RES", events=[], before=needs,
+                               after=needs, mood={"word": "calm"}, energy=0.0, self_image=[], tendencies={},
+                               preferences=[], projects=[], memories=[])
+    assert "Did: eat!" in user
     msgs = sleep.consolidate_messages(cfg, ["a"], ["b"])
     assert "Custom job." in msgs[0]["content"] and msgs[1]["content"].startswith("Memories: - a | - b |")
 
 
-def test_literal_braces_survive_in_the_narrator_prompt(cfg):
-    assert '{"outcome":' in narrator.system_prompt(cfg)
+def test_literal_braces_survive_in_the_journal_prompt(cfg):
+    assert '{"entry":' in journal.system_prompt(cfg)
 
 
 def test_the_situation_prompt_text_is_editable(tmp_path, conn):

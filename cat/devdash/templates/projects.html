@@ -2,7 +2,7 @@
 {% from "_macros.html" import block, pill %}
 {% block content %}
 <section class="card">
-  <h2>Projects <span class="dim small">formed in sleep, advanced by the narrator's reports; at most {{ p.settings.max_active }} active</span></h2>
+  <h2>Projects <span class="dim small">formed in sleep, advanced by choosing their work-on move; at most {{ p.settings.max_active }} active</span></h2>
   <table class="data num">
     <tr><th>id</th><th>title</th><th>status</th><th>stage</th><th>progress</th><th>ticks worked</th><th>idle nights</th><th>artifacts</th><th>last worked</th><th>why</th><th>where it got to</th></tr>
     {% for x in p.projects %}
@@ -11,7 +11,7 @@
         <td>{{ x.last_worked or '–' }}</td><td>{{ x.why }}</td><td>{{ x.note }}</td></tr>
     {% else %}<tr><td colspan="11" class="dim">no projects yet: the sleeping mind forms one when it sees an enjoyed activity repeated</td></tr>{% endfor %}
   </table>
-  <p class="dim small">A step is the narrator's bucket ({{ p.settings.progress_values|tojson }} points) × (1 − {{ p.settings.taper }} × progress/100), so it slows near the end.
+  <p class="dim small">A step is the work bucket ({{ p.settings.progress_values|tojson }} points) × (1 − {{ p.settings.taper }} × progress/100), so it slows near the end.
     Milestone every {{ p.settings.milestone_every }}; finishing pays {{ p.settings.completion_gains|tojson }}. A project untouched for {{ p.settings.pause_after_idle_nights }} nights is paused.
     Project work is exempt from the repetition penalty.</p>
 </section>

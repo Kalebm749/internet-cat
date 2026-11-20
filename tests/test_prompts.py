@@ -1,6 +1,6 @@
 import re
 
-from cat import brain, narrator
+from cat import brain, journal
 from cat.world import WorldState
 
 
@@ -69,30 +69,32 @@ def test_the_brain_menu_is_in_the_prompt_in_order(cfg, conn):
 
 
 def test_the_brain_output_schema_is_move_and_why():
-    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling", "entry"}
-    assert set(brain.BRAIN_SCHEMA["required"]) == {"reaction", "thought", "move", "why", "feeling", "entry"}
+    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling"}
+    assert set(brain.BRAIN_SCHEMA["required"]) == {"reaction", "thought", "move", "why", "feeling"}
 
 
-def test_narrator_is_prose_only(cfg, conn):
-    sysmsg = narrator.system_prompt(cfg)
-    assert "you do not decide anything and you cannot change anything" in sysmsg
-    assert "gains" not in sysmsg and "consume" not in sysmsg and "changes" not in sysmsg
-    w = WorldState.seed(conn, cfg, "2026-11-18T19:40")
-    d = narrator.describe_world(cfg, "2026-11-18T19:40", "kitchen", "rain", w.here("kitchen"), [])
-    assert "- a bowl of fish" in d and "edible" not in d and "Place: the kitchen" in d
-    msgs = narrator.build_messages(cfg, "eat a bowl of fish", d, "You ate a bowl of fish.")
-    assert "The entity chose: eat a bowl of fish" in msgs[1]["content"]
-    assert "What happened (decided by the world): You ate a bowl of fish." in msgs[1]["content"]
+def test_the_journal_decides_nothing_and_is_given_facts(cfg):
+    sysmsg = journal.system_prompt(cfg)
+    assert cfg.character["name"] in sysmsg and "Reply with JSON only" in sysmsg
+    assert "gains" not in sysmsg and "consume" not in sysmsg and "move:" not in sysmsg
+    needs = {k: 60.0 for k in cfg.character["needs"]}
+    user = journal.user_prompt(cfg, sim_time="2026-11-18T19:40", area_id="kitchen", weather="rain",
+                               action="eat a bowl of fish", why="hungry", impulse=False,
+                               result="You ate a bowl of fish.", events=[], before=needs, after=needs,
+                               mood={"word": "calm", "anxiety": 0.0}, energy=10.0, self_image=[], tendencies={},
+                               preferences=[], projects=[], memories=[])
+    assert "You chose to eat a bowl of fish." in user and "You ate a bowl of fish." in user
+    assert "edible" not in user                     # engine tags never reach it
 
 
-def test_narrator_schema_and_parse_are_just_an_outcome(cfg):
+def test_journal_schema_and_parse_are_just_an_entry(cfg):
     import pytest
     from cat.llm import BackendError
-    assert narrator.schema(cfg)["required"] == ["outcome"]
-    assert narrator.parse({"outcome": "  A  quiet  moment. ", "gains": {"joy": "++"}, "changes": [{"op": "take"}]}, cfg) == \
-        {"outcome": "A quiet moment."}
+    assert journal.SCHEMA["required"] == ["entry"]
+    assert journal.parse(cfg, {"entry": "  A  quiet  moment. ", "gains": {"joy": "++"}}) == "A quiet moment."
+    assert len(journal.parse(cfg, {"entry": "x" * 5000})) == cfg.settings["journal"]["max_length"]
     with pytest.raises(BackendError):
-        narrator.parse({"outcome": "  "}, cfg)
+        journal.parse(cfg, {"entry": "  "})
 
 
 def test_system_prompt_says_it_does_not_know_what_it_is(cfg):

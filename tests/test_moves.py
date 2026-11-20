@@ -197,8 +197,10 @@ def test_moves_settings_are_validated(tmp_path):
     from tests.test_config import _problems
     assert "moves.max_offered: must be an integer >= 1" in _problems(
         tmp_path, "settings.yaml", lambda s: s["moves"].update(max_offered=0))
-    assert "moves.narrate: must be true or false" in _problems(
-        tmp_path / "b", "settings.yaml", lambda s: s["moves"].update(narrate="yes"))
+    assert "reveals must be true or false" in _problems(
+        tmp_path / "b", "moves.yaml", lambda s: s["verbs"]["examine"].update(reveals="yes"))
+    assert "only an object verb can reveal" in _problems(
+        tmp_path / "c", "moves.yaml", lambda s: s["verbs"]["wait"].update(reveals=True))
 
 
 def test_unknown_top_level_moves_field_is_a_warning(tmp_path, caplog):
@@ -231,3 +233,22 @@ def test_the_cut_is_deterministic_and_varies_with_the_seed_not_with_needs():
     for i in range(30):
         seen |= {m.key for m in M.offered(cfg, seed=f"s{i}", **kw)}
     assert len(seen) > len(one)             # over time, more of the verbs get their turn
+
+
+def test_looking_closely_reports_what_is_true_of_the_thing_and_nothing_invented(cfg):
+    import random as _r
+    cfg.world["tag_facts"] = {"soft": "is soft", "movable": "can be moved"}
+    cfg.moves["verbs"]["examine"]["reveals"] = True
+    mv = M.Move("m1", "examine:yarn", "examine", "yarn", "a ball of yarn", "look closely at a ball of yarn")
+    res = M.resolve(cfg, mv, target_tags=["soft", "movable", "toy"], rng=_r.Random(1))
+    assert res["template"].endswith("It is soft and can be moved.")      # only tags with a fact line are said
+    bare = M.resolve(cfg, mv, target_tags=[], rng=_r.Random(1))
+    assert bare["template"].endswith("Nothing more about it stands out.")
+    cfg.moves["verbs"]["examine"]["reveals"] = False
+    assert "It is soft" not in M.resolve(cfg, mv, target_tags=["soft"], rng=_r.Random(1))["template"]
+
+
+def test_tag_facts_are_validated(tmp_path):
+    from tests.test_config import _problems
+    msg = _problems(tmp_path, "world.yaml", lambda w: w.update(tag_facts={"sparkly": "sparkles", "soft": "  "}))
+    assert "tag_facts: 'sparkly' is not in settings allowed_tags" in msg and "tag_facts.soft: must be non-empty text" in msg

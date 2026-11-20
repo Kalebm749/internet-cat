@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import httpx
 import pytest
 
-from cat import brain, character, db, logs, narrator, trace
+from cat import brain, character, db, logs, trace
 from cat.engine import Engine
 from cat.llm import BackendError, MockBackend, OllamaBackend, call_json, hash_embed
 from tests.helpers import pick
@@ -28,16 +28,16 @@ def rows(e, sql, *a):
 
 def scripted(b, label="go to the kitchen", feeling="positive"):
     """Handlers that also capture exactly what the engine sent."""
-    seen = {"brain": [], "narrator": []}
+    seen = {"brain": [], "journal": []}
 
     def br(m, s):
         seen["brain"].append((m, s))
         return pick(m, label, feeling=feeling)
 
-    def na(m, s):
-        seen["narrator"].append((m, s))
-        return {"outcome": "It rains softly."}
-    b.handlers["brain"], b.handlers["narrator"] = br, na
+    def jo(m, s):
+        seen["journal"].append((m, s))
+        return {"entry": "I went."}
+    b.handlers["brain"], b.handlers["journal"] = br, jo
     return seen
 
 
@@ -54,18 +54,18 @@ def test_mock_tick_writes_complete_trace(cfg):
     tt = rows(e, "SELECT * FROM tick_traces WHERE tick_id=?", tid)[0]
     assert tt["status"] == "ok" and tt["total_ms"] > 0 and tt["finished_at"] >= tt["started_at"]
     stages = json.loads(tt["stage_timings"])
-    assert {"world", "recall", "brain", "narrator", "apply", "record"} <= set(stages)
+    assert {"world", "recall", "brain", "journal", "apply", "record"} <= set(stages)
     assert all(v >= 0 for v in stages.values()) and tt["total_ms"] >= max(stages.values())
 
     llm = rows(e, "SELECT * FROM llm_calls WHERE tick_id=? ORDER BY id", tid)
-    assert [c["kind"] for c in llm] == ["brain", "narrator"]
-    for c, key in zip(llm, ("brain", "narrator")):
+    assert [c["kind"] for c in llm] == ["brain", "journal"]
+    for c, key in zip(llm, ("brain", "journal")):
         msgs, schema = seen[key][0]                            # exactly what was sent, not a reconstruction
         assert c["system_prompt"] == msgs[0]["content"] and c["user_prompt"] == msgs[1]["content"]
         assert json.loads(c["schema"]) == schema
         assert json.loads(c["parsed"]) == json.loads(c["raw_response"])
         assert c["valid_json"] == 1 and c["attempt"] == 1 and c["error"] is None
-        assert c["model"] == cfg.settings[f"{key}_model"] and c["total_ms"] is not None
+        assert c["model"] == cfg.settings["brain_model"] and c["total_ms"] is not None   # the journal is its own voice
         assert c["prompt_tokens"] > 0 and c["completion_tokens"] > 0
     assert "You remember: the rain on the window was lovely" in llm[0]["user_prompt"]
 
@@ -362,7 +362,7 @@ def test_ollama_invalid_json_keeps_the_raw_text(cfg):
     calls = []
     b.recorder = lambda *a: calls.append(a)
     with pytest.raises(BackendError):
-        call_json(b, "narrator", "m", [], {}, lambda r: r, retries=0)
+        call_json(b, "journal", "m", [], {}, lambda r: r, retries=0)
     info = calls[0][3]
     assert info["raw_response"] == "not json {" and info["valid_json"] == 0 and "invalid JSON" in calls[0][5]
 

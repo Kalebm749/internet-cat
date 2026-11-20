@@ -176,8 +176,8 @@ def test_engine_structured_logs_show_up_with_their_tick_ids(cfg, root_logger):
     logs.setup_logging("engine", cfg, stream=io.StringIO())
     e, b = make_engine(cfg)
     def down(m, s):
-        raise BackendError("narrator is down")                                          # a WARNING per tick
-    b.handlers["narrator"] = down
+        raise BackendError("the journal is down")                                          # a WARNING per tick
+    b.handlers["journal"] = down
     e.run(ticks=15, interval=0)
     c = client(cfg)
     ticks = [x for x in data.read_logs(cfg, q="\"event\": \"tick\"", limit=100)["lines"] if x["event"] == "tick"]
@@ -187,8 +187,8 @@ def test_engine_structured_logs_show_up_with_their_tick_ids(cfg, root_logger):
     html = c.get("/logs?tick_id=5").text
     assert 'href="/ticks/5"' in html and c.get("/ticks/5").status_code == 200
     warn = data.read_logs(cfg, level="warning")["lines"]
-    assert len(warn) >= 15 and all(x["level"] in ("WARNING", "ERROR") for x in warn)    # the failed narration
-    narr = {x["tick_id"] for x in warn if "narration unavailable" in x["message"]}
+    assert len(warn) >= 15 and all(x["level"] in ("WARNING", "ERROR") for x in warn)    # the failed journal entries
+    narr = {x["tick_id"] for x in warn if "journal entry unavailable" in x["message"]}
     assert len(narr) >= 10 and narr <= set(range(1, 16))   # each tagged with ITS tick
 
 

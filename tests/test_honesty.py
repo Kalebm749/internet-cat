@@ -1,5 +1,5 @@
-"""What the creature perceives and remembers is what happened, not what was narrated; and an impulse is a real
-fast path. (The baseline fixes from docs/analysis-2026-11.md, roadmap items 1.1 and 1.4b.)"""
+"""What the creature perceives and remembers is what happened, not what any LLM wrote about it; and an impulse is a
+real fast path. (docs/analysis-2026-11.md, roadmap items 1.1 and 1.4b.)"""
 import random
 
 from cat import character as ch
@@ -7,27 +7,28 @@ from cat.engine import Engine
 from cat.llm import MockBackend
 from tests.helpers import pick
 
-INVENTED = "A silver key you have never seen glints in the corner."
+INVENTED = "A silver key I had never seen glinted in the corner."
 
 
 def engine(cfg, seed=1):
     b = MockBackend(seed=seed)
     b.need_ids = list(cfg.character["needs"])
     b.tendency_names = list(cfg.character["tendencies"])
-    b.handlers["narrator"] = lambda m, s: {"outcome": INVENTED}           # the narrator makes something up
+    b.handlers["journal"] = lambda m, s: {"entry": INVENTED}             # its journal makes something up
     return Engine(cfg, b, rng=random.Random(seed)), b
 
 
-def test_the_brain_is_told_what_happened_not_the_narrators_prose(cfg):
+def test_the_diary_world_line_is_codes_account_and_the_brain_is_told_only_that(cfg):
     e, b = engine(cfg)
     prompts = []
     b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), pick(m))[1]
     e.tick()
     e.tick()
-    row = e.conn.execute("SELECT outcome, result FROM ticks WHERE kind='tick' ORDER BY id").fetchone()
-    assert row["outcome"] == INVENTED                       # the diary still shows the prose
-    assert row["result"] and row["result"] in prompts[1]    # the brain sees code's plain account ...
-    assert "silver key" not in prompts[1]                   # ... and never the invented detail
+    row = e.conn.execute("SELECT outcome, result, entry FROM ticks WHERE kind='tick' ORDER BY id").fetchone()
+    assert row["outcome"] == row["result"]                  # no prose layer: what the diary says happened is code's
+    assert row["entry"] == INVENTED                         # the entry is its own words, shown as such
+    assert row["result"] in prompts[1]                      # the brain is told what happened ...
+    assert "silver key" not in prompts[1].split("## Memories")[0]   # ... never what its journal claimed
 
 
 def test_after_a_restart_the_brain_still_gets_the_plain_account(cfg):
@@ -38,13 +39,13 @@ def test_after_a_restart_the_brain_still_gets_the_plain_account(cfg):
     assert e2.last_outcome and "silver key" not in e2.last_outcome
 
 
-def test_short_term_memories_never_carry_narrator_prose(cfg):
+def test_memories_mark_its_own_words_as_its_words(cfg):
     e, b = engine(cfg)
-    b.handlers["brain"] = lambda m, s: pick(m, feeling="positive", entry="I sat.")   # a strong feeling: notable
-    for _ in range(3):
-        e.tick()
-    texts = [r["text"] for r in e.conn.execute("SELECT text FROM memories")]
-    assert texts and not any("silver key" in t for t in texts)
+    b.handlers["brain"] = lambda m, s: pick(m, feeling="positive")      # a strong feeling: notable
+    e.tick()
+    text = e.conn.execute("SELECT text FROM memories").fetchone()["text"]
+    result = e.conn.execute("SELECT result FROM ticks").fetchone()["result"]
+    assert result in text and f'You wrote: "{INVENTED}"' in text      # what happened, then what it wrote
 
 
 def _impulsive(cfg):
@@ -73,7 +74,7 @@ def test_an_impulse_is_remembered_and_marked_in_the_day_log(cfg):
     mem = e.conn.execute("SELECT text FROM memories WHERE kind='short'").fetchone()
     assert mem is not None                                   # acting on an impulse is a notable moment
     lines, _ = sleep.day_log(e.conn, cfg)
-    assert "on an impulse" in lines[-1] and "silver key" not in lines[-1]
+    assert "on an impulse" in lines[-1] and "silver key" not in lines[-1]   # the day log never carries its words
 
 
 def test_anxiety_climbing_a_band_is_noticed(cfg):

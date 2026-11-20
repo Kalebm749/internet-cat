@@ -140,7 +140,7 @@ def stats(conn: sqlite3.Connection | None, cfg: Config, hours: float | None = No
     out: dict[str, Any] = {"hours": hours, "ticks": 0, "doze": 0, "errors": 0, "invalid_json_rate": None,
                            "llm_attempts": 0, "rejected_rate": None, "effects": 0,
                            "brain": {"n": 0, "mean_ms": None, "p95_ms": None},
-                           "narrator": {"n": 0, "mean_ms": None, "p95_ms": None},
+                           "journal": {"n": 0, "mean_ms": None, "p95_ms": None},
                            "tokens_per_tick": None, "decisions": 0, "carried": 0, "carried_share": None,
                            "avg_tokens_per_call": None, "per_day": []}
     if conn is None:
@@ -154,7 +154,7 @@ def stats(conn: sqlite3.Connection | None, cfg: Config, hours: float | None = No
     out["llm_attempts"] = len(llm)
     if llm:
         out["invalid_json_rate"] = sum(1 for c in llm if not c["valid_json"]) / len(llm)
-    for kind in ("brain", "narrator"):
+    for kind in ("brain", "journal"):
         ms = [c["total_ms"] for c in llm if c["kind"] == kind and c["total_ms"] is not None]
         out[kind] = {"n": len(ms), "mean_ms": r1(mean(ms)), "p95_ms": r1(percentile(ms, 95))}
     toks = sum((c["prompt_tokens"] or 0) + (c["completion_tokens"] or 0) for c in llm)
@@ -284,7 +284,7 @@ def ticks_list(cfg: Config, f: dict, page: int = 1, limit: int | None = None) ->
 
 
 # ---------- Tick detail ----------
-STAGE_ORDER = ["world", "director", "recall", "brain", "narrator", "create", "apply", "record", "sleep"]
+STAGE_ORDER = ["world", "director", "recall", "brain", "create", "apply", "journal", "record", "sleep"]
 
 
 def _llm_view(c: dict) -> dict:

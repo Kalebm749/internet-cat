@@ -289,8 +289,8 @@ def test_no_js_paging_links(cfg, seeded):
 def test_output_is_escaped(cfg):
     e, b = make_engine(cfg)
     evil = "<script>alert(1)</script><b>x</b>"
-    b.handlers["brain"] = lambda m, s: pick(m)
-    b.handlers["narrator"] = lambda m, s: {"outcome": evil, "gains": {}, "effort": "low", "duration": 10, "changes": []}
+    b.handlers["brain"] = lambda m, s: pick(m, why=evil)
+    b.handlers["journal"] = lambda m, s: {"entry": evil}
     e.tick()
     html = client(cfg).get("/").text
     assert "<script>alert(1)" not in html and "&lt;script&gt;alert(1)" in html

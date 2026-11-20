@@ -162,7 +162,8 @@ def engine(cfg, seed=1):
 def test_notable_tick_creates_short_memory_shown_in_next_prompt(cfg):
     e, b = engine(cfg)
     prompts = []
-    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), pick(m, "look out and watch the world for a while", feeling="positive", reaction="wow"))[1]
+    b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), pick(m, "look out and watch the world for a while", feeling="positive", reaction="hm"))[1]
+    b.handlers["journal"] = lambda m, s: {"entry": "wow"}          # its own words, written after the move
     e.tick()
     shorts = e.memory.all_short()
     assert len(shorts) == 1 and "look out and watch the world for a while" in shorts[0]["text"] and 'You wrote: "wow"' in shorts[0]["text"]

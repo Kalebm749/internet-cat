@@ -67,7 +67,7 @@
 <section class="card" id="world">
   <h2>1 · World tick</h2>
   {% if d.clock %}
-  <p>Clock <b>{{ d.clock.label }}</b> <span class="dim">(+{{ d.clock.minutes }} sim minutes, from the narrator's duration, clamped)</span> · in <b>{{ d.clock.area }}</b></p>
+  <p>Clock <b>{{ d.clock.label }}</b> <span class="dim">(+{{ d.clock.minutes }} sim minutes, from the move's duration)</span> · in <b>{{ d.clock.area }}</b></p>
   {% endif %}
   {% if d.need_math %}<p class="dim">Decay applied (per need, in the need math below): {% for n in d.need_math %}{{ d.need_labels.get(n.need, n.need) }} −{{ n.decay }}{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
   <h3>Event rolls</h3>
@@ -96,7 +96,7 @@
 {% endif %}
 
 {% set brain = d.llm | selectattr('kind', 'equalto', 'brain') | list %}
-{% set narrator = d.llm | selectattr('kind', 'equalto', 'narrator') | list %}
+{% set journalcalls = d.llm | selectattr('kind', 'equalto', 'journal') | list %}
 {% if brain %}<section class="card" id="brain"><h2>3 · Brain call</h2>
   {% if d.pressing %}
   <h3>What's pulling at it <span class="dim small">(which need expressions went into the prompt, and why; never numbers, never actions)</span></h3>
@@ -113,15 +113,15 @@
   {% if b0.user_prompt %}<details class="blk" open><summary>User prompt, selected expressions highlighted</summary><pre>{{ b0.user_prompt|mark(d.pressing_marks) }}</pre></details>{% endif %}
   {% endif %}
   {% for c in brain %}{{ llm_call(c) }}{% endfor %}</section>{% endif %}
-{% if narrator %}<section class="card" id="narrator"><h2>4 · Narrator call</h2>{% for c in narrator %}{{ llm_call(c) }}{% endfor %}</section>{% endif %}
+{% if journalcalls %}<section class="card" id="journal"><h2>4 · Journal call <span class="dim small">(its own entry, written after code decided what happened)</span></h2>{% for c in journalcalls %}{{ llm_call(c) }}{% endfor %}</section>{% endif %}
 
 <section class="card" id="effects">
-  <h2>5 · Effects <span class="dim small">(every change the narrator proposed, checked against the real world)</span></h2>
+  <h2>5 · Effects <span class="dim small">(every change the move made, checked against the real world)</span></h2>
   <table class="data">
     <tr><th></th><th>op</th><th>arguments</th><th>reason</th></tr>
     {% for e in d.effects %}
     <tr><td>{{ '✓' if e.accepted else '✗' }}</td><td><b>{{ e.op }}</b></td><td class="mono">{{ e.args|tojson }}</td><td class="{{ '' if e.accepted else 'bad' }}">{{ e.reason or 'accepted' }}</td></tr>
-    {% else %}<tr><td colspan="4" class="dim">the narrator proposed no changes</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="4" class="dim">the move made no changes</td></tr>{% endfor %}
   </table>
 </section>
 
@@ -135,7 +135,7 @@
         <td>{% if d.public %}{% for p in d.public.needs if p.id == n.need %}{{ p.value }} ({{ p.word }}){% endfor %}{% endif %}</td></tr>
     {% else %}<tr><td colspan="11" class="dim">no need math stored</td></tr>{% endfor %}
   </table>
-  <p class="dim small">after = before − decay − event drain − dislike drain + raw gain × repetition + clamp. Only the world drains (decay, events); the narrator only adds. Gains come from the narrator's buckets ({{ cfg.settings.gain_values|tojson }}); repetition &lt; 1 means the action was too similar to a recent one.</p>
+  <p class="dim small">after = before − decay − event drain − dislike drain + raw gain × repetition + clamp. Only the world drains (decay, events, dislikes); the move only adds. Gains come from the move's buckets in moves.yaml ({{ cfg.settings.gain_values|tojson }}); repetition &lt; 1 means the action was too similar to a recent one.</p>
   {% if d.energy is not none %}
   <p id="energy"><b>Energy</b> (a separate resource, −50..50: effort spends it, sleep restores it) = <b>{{ d.energy }}</b>{% if d.energy_effort %}; this action's effort was <i>{{ d.energy_effort }}</i> ({{ d.energy_spent }} points spent){% endif %}</p>
   {% endif %}
@@ -160,13 +160,13 @@
 {% if d.project %}
 {% set j = d.project %}
 <section class="card" id="project">
-  <h2>Project work <span class="dim small">(the narrator's report, and what code did with it)</span></h2>
+  <h2>Project work <span class="dim small">(the work-on move, and what code did with it)</span></h2>
   {% if not j.ok %}
   <p class="bad">Rejected: {{ j.reason }}. Nothing changed.</p>
   {% else %}
   <table class="data num">
     <tr><th>project</th><td>#{{ j.id }} {{ j.title }}</td></tr>
-    <tr><th>narrator's advance</th><td>{{ j.bucket }} → {{ j.gained }} points (bucket × (1 − taper × progress/100))</td></tr>
+    <tr><th>advance</th><td>{{ j.bucket }} → {{ j.gained }} points (bucket × (1 − taper × progress/100))</td></tr>
     <tr><th>progress</th><td>{{ j.progress_before }} → <b>{{ j.progress_after }}</b>{% if j.milestones %} · milestone {{ j.milestones|join(', ') }}{% endif %}{% if j.completed %} · <b>completed</b>{% endif %}</td></tr>
     <tr><th>repetition penalty</th><td>{{ pill('exempt', 'ok') if j.repetition_exempt else 'applies (this report moved nothing)' }}</td></tr>
     <tr><th>note kept</th><td>{{ j.note or '–' }}</td></tr>
@@ -207,7 +207,7 @@
   </table>
 </section>
 
-{% set sleepcalls = d.llm | rejectattr('kind', 'in', ['brain', 'narrator']) | list %}
+{% set sleepcalls = d.llm | rejectattr('kind', 'in', ['brain', 'journal']) | list %}
 {% if sleepcalls or d.sleep_logs %}
 <section class="card" id="sleep">
   <h2>9 · Sleep cycle</h2>

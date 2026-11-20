@@ -126,9 +126,8 @@ Each **tick entry**:
 ```
 7:20 pm · the park                                       ⟵ small, ink-soft
 climbs the old oak to watch the sunset                   ⟵ action, Lora italic
-She scrambles up, slipping once, and the sky turns      ⟵ outcome (narrator), Lora
-orange over the rooftops.
-  "worth the slip. the sky looked like a sardine."     ⟵ reaction, Caveat, --ink
+You climbed the old oak.                                 ⟵ outcome (code's plain account), Lora
+  "Up high. The light went orange while I waited."     ⟵ its journal entry, written after, Caveat, --ink
   joy ▲  peace ▼                                         ⟵ need changes, small chips
 ```
 - **World events** that happened that tick show as a margin note above the entry: small italic, a leaf/dot marker, e.g. *It starts to drizzle.*

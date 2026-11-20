@@ -45,7 +45,7 @@ def test_a_long_move_is_one_decision_then_carry_on_ticks_with_no_llm_calls(cfg):
         e.tick()
     assert kinds(e) == ["tick", "carry", "carry", "tick"]
     assert brain_calls(b) == 2 and len(seen) == 2                          # decisions only
-    assert sum(1 for t, _ in b.calls if t == "narrator") == 2
+    assert sum(1 for t, _ in b.calls if t == "journal") == 2               # one entry per decision, none while carrying on
     assert [r[0] for r in e.conn.execute("SELECT duration FROM ticks ORDER BY id")] == [20, 20, 20, 20]
     first = e.conn.execute("SELECT * FROM ticks WHERE id=1").fetchone()
     assert first["activity_minutes"] == 60 and first["move_key"] == "rest_on:sofa" and first["action"] == REST
@@ -283,6 +283,7 @@ def test_an_older_database_without_the_column_still_loads(cfg):
 # ---------- reasons and telemetry ----------
 def test_the_diary_shows_why_and_how_long_it_was_carried_on(cfg):
     from cat.web.app import create_app
+    cfg.settings["journal"]["enabled"] = False          # without an entry the diary shows the reason it gave
     e, b, _ = make(cfg)
     for _ in range(3):
         e.tick()

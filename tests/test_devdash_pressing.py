@@ -24,7 +24,7 @@ def make(cfg):
     b.need_ids = list(cfg.character["needs"])
     b.tendency_names = list(cfg.character["tendencies"])
     b.handlers["brain"] = lambda m, s: pick(m)
-    b.handlers["narrator"] = lambda m, s: {"outcome": "ok", "gains": {}, "effort": "low", "duration": 10,
+    b.handlers["journal"] = lambda m, s: {"entry": "ok", "gains": {}, "effort": "low", "duration": 10,
                                            "changes": []}
     return Engine(cfg, b, rng=random.Random(4)), b
 

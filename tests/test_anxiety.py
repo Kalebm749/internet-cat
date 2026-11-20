@@ -100,10 +100,11 @@ def test_an_impulse_takes_over_the_decision_and_is_traced(cfg):
     cfg.settings["anxiety"].update(impulse_above=0, impulse_max_chance=1.0, start=100)
     cfg.settings["anxiety"]["impulses"] = {"freeze": {"weight": 1, "verbs": ["wait"]}}
     cfg.settings["activity"]["enabled"] = False
+    cfg.settings["journal"]["enabled"] = False          # so the diary carries the impulse's own fixed line
     b = MockBackend(seed=1)
     b.need_ids = list(cfg.character["needs"])
     b.tendency_names = list(cfg.character["tendencies"])
-    b.handlers["brain"] = lambda m, s: pick(m, "look out and watch the world for a while", why="curious", entry="I looked out.")
+    b.handlers["brain"] = lambda m, s: pick(m, "look out and watch the world for a while", why="curious")
     e = Engine(cfg, b, rng=random.Random(1))
     e.tick()
     row = e.conn.execute("SELECT action, intent, entry FROM ticks WHERE kind='tick'").fetchone()

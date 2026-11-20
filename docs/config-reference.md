@@ -3,7 +3,7 @@
 Four files in `config/`: `settings.yaml`, `character.yaml`, `world.yaml` and `prompts.yaml`. Loaded and validated by `cat/config.py`. The validator collects **every** problem and refuses to start, printing them all (need ids in event effects exist, `tendency_labels` match `tendencies`, `start_area` exists, need flags are known, numeric ranges are valid, `self_image` is text only). Unknown top-level fields in `character.yaml` and `world.yaml` only produce a warning (e.g. a leftover `species`).
 
 ## prompts.yaml
-Every fixed piece of prompt text the LLMs see: the brain's system prompt and the headings and sentences of its situation prompt, the narrator's system prompt and user message, and the sleep cycle's system prompt and four step prompts. Edit it to change how the entity, narrator and sleeping mind are instructed. Each entry lists in a comment the `{placeholders}` the engine fills in (`cat/prompts.py` `SPEC` is the authoritative list). The validator refuses to start on a missing or empty entry or an unknown placeholder, and warns on unknown top-level keys. A literal brace is written `{{` or `}}`. Text edits are applied live by the dev dashboard's `reload_settings`; no restart needed. Prompts never carry need numbers, and must not tell the brain which action to take.
+Every fixed piece of prompt text the LLMs see: the brain's system prompt and the headings and sentences of its situation prompt, the journal's system prompt and the lines of its user message, and the sleep cycle's system prompt and four step prompts. Edit it to change how the entity, its journal and the sleeping mind are instructed. Each entry lists in a comment the `{placeholders}` the engine fills in (`cat/prompts.py` `SPEC` is the authoritative list). The validator refuses to start on a missing or empty entry or an unknown placeholder, and warns on unknown top-level keys. A literal brace is written `{{` or `}}`. Text edits are applied live by the dev dashboard's `reload_settings`; no restart needed. Prompts never carry need numbers, and must not tell the brain which action to take.
 
 ## character.yaml
 | Field | Req | Meaning |
@@ -25,7 +25,7 @@ Every fixed piece of prompt text the LLMs see: the brain's system prompt and the
 |---|---|
 | `start` ✔ | Initial value 0..100. |
 | `decay_per_hour` ✔ | Points lost per sim hour. |
-| `meaning` ✔ | One sentence saying what the need is. Shown to the narrator, and on hover in the website's Needs panel. |
+| `meaning` ✔ | One sentence saying what the need is. Shown on hover in the website's Needs panel. |
 | `expressions` ✔ | `{full, okay, low, empty}`: text for each band. `empty`, `low` and `full` are required and non-empty; `okay` may be null. The brain sees the expressions of the most pressing needs (in words, never numbers). |
 
 There are no behaviour flags. The sustenance need (`settings.yaml` `sustenance_need`) only rises when an edible object is consumed. `energy` is not a valid need id: energy is a separate resource (see below).
@@ -47,7 +47,9 @@ Every tuning number. Groups:
 - **World director**: `director.enabled`, `every_ticks`, `stale_every_ticks` (≤ every_ticks), `text_max_length`, `max_mood` (0..1), `max_drain_points`, `max_drain_needs`, `avoid_repeat`, `recent_actions_shown`; and `llm_temperature.director`. Its wording is the `director` section of `prompts.yaml`.
 - **Effects**: `gain_values`, `effort_energy_cost` (energy points an action's effort spends), `repetition_penalty` (`window` decisions, `multiplier` and `needs`: the needs whose gains shrink when the same move is repeated in the same place; no similarity test), `create_limit_per_tick`, `allowed_tags`, `state_value_max_length`, `consume_min_gain`, `sustenance_need`.
 - **Needs and prompts**: `need_bands` (`empty_below`, `low_below`, `okay_below`, ascending), `max_pressing_needs` (how many need expressions the brain's prompt shows, default 2), `stale_after_ticks` (ticks in one area before `stale_here` is added; 0 turns it off, default 3), `dislike_drain` (`needs`, `points_per_hour`, `max_matches`: needs the world drains while something disliked is present).
-- **Moves** (`config/moves.yaml`, loaded and validated with the other files): `verbs` with `label`, `target` (`none|area|object|project`), `reach`, `any_tags`, `effort`, `minutes: [min, max]`, `effects` and `by_tag` (need → bucket), `novelty`, `does` (`none|move_self|take|drop|consume|work_on|sleep`), `only_when` (`always|can_sleep`) and `outcome`; only `consume` verbs may feed sustenance. Settings: `moves.max_offered`, `moves.novelty_hours`, `moves.narrate`.
+- **Moves** (`config/moves.yaml`, loaded and validated with the other files): `verbs` with `label`, `target` (`none|area|object|project`), `reach`, `any_tags`, `effort`, `minutes: [min, max]`, `effects` and `by_tag` (need → bucket), `novelty`, `does` (`none|move_self|take|drop|consume|work_on|sleep`), `only_when` (`always|can_sleep`), `outcome` (the plain words the diary, the brain and memory use for what happened) and `reveals` (object verbs only: the outcome also says what is true of the target, from world.yaml `tag_facts`); only `consume` verbs may feed sustenance. Settings: `moves.max_offered`, `moves.novelty_hours`.
+- **Journal**: `journal.enabled` (false: no entry, the diary shows the reason it gave), `journal.max_length` (characters kept). The entry is written after code decides what happened, with `brain_model` and `llm_temperature.journal`; its text is under `journal` in prompts.yaml.
+- **world.yaml `tag_facts`**: `{tag: text}`, what is true of a thing with that tag, as the end of a sentence starting "It …" (e.g. `soft: is soft`). Tags must be in `allowed_tags`.
 - **Activities**: `activity.enabled`, `step_minutes` (sim minutes per carry tick), `carry_interval_seconds`, `interrupt_on_events`, `interrupt_on_empty_need`.
 - **Anxiety**: `anxiety.enabled`, `start`, `band_points`, `energy_points` (energy below key adds value), `rise_per_hour`, `fall_per_hour`, `sleep_fall_multiplier`, `mood_weight`, `decay_pressure`, `sleep_restore_penalty`, `words` (anxiety below key -> word), `impulse_above`, `impulse_max_chance` (0..1), `impulses` (`{name: {weight, verbs}}`; their wording is `impulse.<name>` in prompts.yaml, `impulse.default` otherwise).
 - **Habits**: `habits.enabled`, `window_ticks`, `min_count`, `min_share` (0..1), `max_stored`, `max_shown`, `text_max_length`. Wording in `prompts.yaml`: `habits.fallback`, `sleep.jobs.habits`, `sleep.habits`, `brain.situation.habits`.
@@ -65,7 +67,7 @@ Every tuning number. Groups:
 - `CAT_CONFIG_DIR` (env) selects the config directory (set to `/app/config` in the containers); relative paths such as `data/cat.db` resolve against its parent.
 
 ## Effects: how world changes are validated (`cat/effects.py`)
-The changes a chosen move makes (code, not the narrator) are checked **in order** against the real world; invalid ones are dropped, stored in `ticks.rejected_changes` with a reason, and logged.
+The changes a chosen move makes (code, never an LLM) are checked **in order** against the real world; invalid ones are dropped, stored in `ticks.rejected_changes` with a reason, and logged.
 - Objects are referenced by `object_id`; a unique exact name is accepted as a fallback.
 - `create`: tags not in `allowed_tags` are stripped (recorded as `dropped_tags`); at most `create_limit_per_tick` per tick; area must be the current one.
 - Caps: `max_changes_per_tick`, `inventory_max`, `max_objects_per_area`, `name_max_length`, `state_value_max_length`.
@@ -81,14 +83,14 @@ The changes a chosen move makes (code, not the narrator) are checked **in order*
 
 ## Sleep (`cat/sleep.py`, settings `sleep.*`)
 - **Falls asleep** when it is night and energy < `fall_asleep_energy_below` (no brain call), or the brain's `wants_sleep` is true and energy < `wants_sleep_energy_below` (or it is night).
-- **Asleep ticks** (`ticks.kind = 'asleep'`) skip the brain/narrator, restore **energy** by `restore_per_sim_hour`, and decay needs at `decay_multiplier` speed. It **wakes** when energy reaches `wake_energy_at_least`, it is past `wake_not_before_hour` and not night, or after `max_hours`.
+- **Asleep ticks** (`ticks.kind = 'asleep'`) skip the brain and journal, restore **energy** by `restore_per_sim_hour`, and decay needs at `decay_multiplier` speed. It **wakes** when energy reaches `wake_energy_at_least`, it is past `wake_not_before_hour` and not night, or after `max_hours`.
 - **The cycle** runs when sleep begins and makes 5 LLM calls (consolidate, tendencies, preferences, self-image, projects). Nothing is written unless all succeed; if the brain is offline it stays pending (`meta.sleep_pending`) and retries on every sleeping tick. Short-term memories are kept until then.
 - LLM output is turned into numbers by code: memory importance is `low|medium|high` -> `importance_values`; tendency proposals are -1..1, scaled by `tendency_max_step` and clamped to 0..1 (core traits are never touched); preference valences are blended with the existing value (`preference_blend`), so new likes start weak and strengthen by repetition. Weak ones (< `preference_min_abs`) are forgotten and the total is capped.
 - Self-image: after preferences, one call may propose a single line `{text, confidence 0..1, replaces?}`. `max_self_image_lines` caps the lines kept (least confident forgotten first), `self_image_min_confidence` rejects weak proposals, `max_self_image_length` truncates text. Lines are stored like preferences (table `self_image`) and logged with their outcome in the sleep trace.
 - `sleep_log.sim_date` is the date the sleep began.
 
 ## Brain offline (`cat/engine.py`)
-- Each tick starts with `GET /api/tags` (`health_timeout_seconds`), cached for that tick. If it fails, or the brain/narrator call still fails after `llm_retries` retries, the tick is a **doze**: events, clock and decay still run, `doze.energy_restore` is added to energy, the tick is stored with `kind='doze'`, `outcome='dozing'`, and `state.brain_online=0`. No LLM calls are made.
+- Each tick starts with `GET /api/tags` (`health_timeout_seconds`), cached for that tick. If it fails, or the brain call still fails after `llm_retries` retries, the tick is a **doze**: events, clock and decay still run, `doze.energy_restore` is added to energy, the tick is stored with `kind='doze'`, `outcome='dozing'`, and `state.brain_online=0`. No LLM calls are made.
 - When the brain returns, the first prompt says the creature just came round from a doze (and omits the stale "last outcome").
 - A creature that is exhausted at night still falls asleep while the brain is offline; the sleep cycle waits (see Sleep).
 - If a tick raises an unexpected error, the state is reloaded from the DB and the loop waits at least `error_backoff_seconds` before the next one.
@@ -108,7 +110,7 @@ What happens to the creature while the engine (or the whole host) was off:
 
 ## Tracing and structured logs (`cat/trace.py`, `cat/logs.py`)
 Every tick is fully traceable. The engine records, in `cat.db`:
-- `tick_traces` (status ok/doze/error, total and per-stage ms: world, recall, brain, narrator, apply, record, sleep; a tick that raised before being recorded is stored under a **negative** `tick_id`),
+- `tick_traces` (status ok/doze/error, total and per-stage ms: world, director, recall, brain, create, apply, journal, record, sleep; a tick that raised before being recorded is stored under a **negative** `tick_id`),
 - `llm_calls` (one row per *attempt*: the exact system prompt, user prompt, JSON schema and raw response text that were sent/received, parsed JSON, valid-JSON flag, tokens and Ollama's own load/prompt/eval/total durations),
 - `embed_calls` (purpose `memory_write` | `recall_query` | `repetition_check`), `recall_logs` (every scored memory with recency / importance / relevance / score and whether it was selected),
 - `effect_logs` (every proposed change, accepted or rejected, with the reason), `need_math` (per need: before, decay, bucket, raw gain, repetition multiplier, effort cost, clamp adjustment, after; `after = before - decay + gain_raw*repetition_mult - effort_cost + clamp_adjust`), `mood_math` (every mood input and term), `event_rolls` (chance vs roll, or why an event was filtered), `sleep_traces` (inputs, raw LLM output, proposed vs clamped changes).

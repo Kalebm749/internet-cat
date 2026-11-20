@@ -20,7 +20,7 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 - `analysis-2026-11.md` — independent review of vision vs. implementation: gaps, risks, refined vision, phased roadmap, success experiments
 
 Decided (revised): **closed moves**. The brain picks from a menu built by code (`config/moves.yaml`, `cat/moves.py`);
-code resolves the effects; the narrator only writes prose. The menu is never ranked or marked by need
+code resolves the effects and words what happened; the journal (`cat/journal.py`) writes the entity's own entry afterwards, from facts only. The menu is never ranked or marked by need
 (server-architecture §9 documents this; the earlier "open actions" design is gone).
 A move longer than `activity.step_minutes` runs as one activity with hidden carry ticks (no LLM calls);
 any event or a newly empty need interrupts it. Habits (`cat/habits.py`) are found by code, worded in sleep,
@@ -75,8 +75,8 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 ## Conventions
 - Python 3.11+ (image: 3.12-slim); keep dependencies light and pure-Python.
 - All tuning numbers live in `config/settings.yaml`, never hard-coded.
-- Only `cat/effects.py` changes the world (on behalf of the chosen move); rejected changes are logged. The narrator proposes nothing.
-- The narrator's prose is for the diary only: the brain's "what just happened", short-term memories and the sleep day log use code's plain account (`ticks.result`), never `ticks.outcome`.
+- Only `cat/effects.py` changes the world (on behalf of the chosen move); rejected changes are logged. No LLM proposes changes.
+- What happened is code's plain account (`ticks.result` = `ticks.outcome`): the diary's world line, the brain's "what just happened" and the sleep day log all use it. The journal entry is the entity's own words, written after the fact from facts only, and is marked "You wrote" in memory; it never becomes perception or the day log. There is no narrator.
 - Each tick's apply+record step is one DB transaction (`db.transaction`); LLM calls happen outside it.
 - The engine is the only writer of game state; `cat/web` is read-only and never calls the LLM.
 - Everything must run and be tested with `MockBackend`; never require Ollama in tests.
