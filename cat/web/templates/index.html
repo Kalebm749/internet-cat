@@ -19,6 +19,7 @@
     <p class="where">Nit has not woken yet.</p>
     {% endif %}
   </div>
+  <nav class="tabs"><a href="/" class="on">Now &amp; diary</a> <a href="/places">Places &amp; wishes</a></nav>
   {% if now and now.engine_alive == false %}<p class="banner">Nit's world is paused right now.</p>{% endif %}
 </header>
 
@@ -31,6 +32,11 @@
           {% if now.asleep %}Asleep.{% elif now.doing %}{{ now.doing.name | capitalize }}.{% else %}Between things.{% endif %}
         </p>
         {% if now.thought and not now.asleep %}<blockquote class="thought" id="thought">{{ now.thought.text }}</blockquote>{% endif %}
+        <div class="meters" id="meters">
+          <label>Mood <meter id="m-mood" min="-1" max="1" low="-0.2" high="0.3" optimum="1" value="{{ now.body.mood }}"></meter></label>
+          <label>Energy <meter id="m-energy" min="0" max="1" low="0.3" high="0.6" optimum="1" value="{{ now.body.energy }}"></meter></label>
+          <label>Hunger <meter id="m-hunger" min="0" max="1" low="0.4" high="0.65" optimum="0" value="{{ now.body.hunger }}"></meter></label>
+        </div>
         <ul class="body" id="body">
           {% for w in now.body.words %}<li>{{ w }}</li>{% endfor %}
           {% if now.body.derived_words %}<li>{{ now.body.derived_words }}</li>{% endif %}

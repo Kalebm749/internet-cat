@@ -17,6 +17,7 @@ events:
 
 actions:
   - id: sit_and_reflect
+    diary: "{name} is sitting and reflecting at {location.name}"
     name: sit and reflect
     description: "Sit on the rim of the basin and let your thoughts settle."
     family: rest
@@ -30,27 +31,35 @@ actions:
       reflection: true
 
   - id: make_wish
+    diary: "{name} is making a wish at {location.name}: {inputs.kind} {inputs.what}"
     name: make a wish
-    description: "Say a wish to the moving water."
+    description: "Wish at the moving water for a place you do not have, or something you cannot yet do."
     family: wish
     discovery: hidden
     inspect_hint: "Coins glint in the basin, as if people have wished here before."
     requires:
       - {energy_gte: 0.1}
+      - {done_fewer_than: {action: make_wish, times: 2, real_hours: 24}}   # at most 2 wishes a real day
     inputs:
-      wish: {type: text, max_chars: 200, prompt: "What do you wish for?"}
+      kind: {type: choice, options: ["I want a place where I can", "I wish I could"]}
+      what: {type: text, max_chars: 80,
+             prompt: "something to do, e.g. 'climb up high and look around'; not the weather, luck or other people"}
     duration: {minutes: [2, 5]}
     effort: low
     on_finish:
       world:
-        - {op: append, fact: fountain.wishes, value: {text: "{inputs.wish}", made: "{now}", status: open}}
+        - {op: append, fact: fountain.wishes,
+           value: {text: "{inputs.kind} {inputs.what}", made: "{now}", status: open}}
       creature: {mood: 0.08}
       discover: [assess_wishes]
-      remember: {importance: 0.6, text: "I wished at the fountain: {inputs.wish}"}
+      remember: {importance: 0.6, text: "I wished at the fountain: {inputs.kind} {inputs.what}."}
 
+  # Wishes are granted only by the world's author: build what was wished for, then add the wish to
+  # content/world.yaml `granted_wishes`. Nothing here grants them.
   - id: assess_wishes
+    diary: "{name} is looking over its wishes"
     name: look over your wishes
-    description: "Think back over what you have wished for here."
+    description: "Think back over what you have wished for here, and which have come true."
     family: wish
     discovery: hidden
     requires:
@@ -58,13 +67,5 @@ actions:
     duration: {minutes: [5, 15]}
     effort: none
     revisit_key: [fountain.wishes]
-    outcomes:
-      - when: {random_lt: 0.15}
-        world:
-          - {op: update_where, fact: fountain.wishes, match: {status: open}, set: {status: answered},
-             pick: random_one}
-        creature: {mood: 0.2}
-        text: "One wish feels lighter, as if something has answered it."
-        remember: {importance: 0.8}
-      - text: "The wishes are still there, waiting."
-        creature: {mood: 0.02}
+    on_finish:
+      creature: {mood: 0.02}

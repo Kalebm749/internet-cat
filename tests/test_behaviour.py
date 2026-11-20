@@ -23,6 +23,7 @@ class Rig:
         self.life.bodystate.mood = 0.0
         self.ex = Executor(self.conn, self.life, self.t, load_texts(), Registry(self.life.content),
                            Scheduler(self.t["decisions"]), random.Random(0))
+        self.life.content.actions["make_wish"].requires = [{"energy_gte": 0.1}]   # repetition, not the daily limit
         with store.transaction(self.conn):
             for a in ("make_wish", "assess_wishes"):
                 knowledge.learn(self.conn, a, "fountain", "inspect", self.life.sim_time)
@@ -67,7 +68,7 @@ def test_continuing_is_not_restarting(rig):
 def test_the_same_thing_again_and_again_feels_flatter(rig):
     gains, fresh = [], []
     for _ in range(4):
-        rig.do("make_wish", {"wish": "to remember"})
+        rig.do("make_wish", {"kind": "I wish I could", "what": "to remember"})
         fresh.append(rig.last("freshness"))
         rig.finish()
         gains.append(rig.mood_gain())
@@ -78,12 +79,12 @@ def test_the_same_thing_again_and_again_feels_flatter(rig):
 
 
 def test_a_different_target_is_fresher_than_the_same_one(rig):
-    rig.do("make_wish", {"wish": "to remember"})
+    rig.do("make_wish", {"kind": "I wish I could", "what": "to remember"})
     rig.finish()
     same = behaviour.freshness(rig.conn, rig.life.content, rig.t, rig.life.content.actions["make_wish"],
-                               {"wish": "  To   Remember "}, rig.life.sim_time, rig.life.world.values)
+                               {"kind": "I wish I could", "what": "  To   Remember "}, rig.life.sim_time, rig.life.world.values)
     other = behaviour.freshness(rig.conn, rig.life.content, rig.t, rig.life.content.actions["make_wish"],
-                                {"wish": "to fly"}, rig.life.sim_time, rig.life.world.values)
+                                {"kind": "I wish I could", "what": "to fly"}, rig.life.sim_time, rig.life.world.values)
     assert same.value < other.value < 1.0
 
 
@@ -95,7 +96,7 @@ def test_a_meaningful_return_is_fresh(rig):
     stale = rig.last("freshness")
     assert stale < 1.0
     rig.finish()
-    rig.do("make_wish", {"wish": "a new one"})
+    rig.do("make_wish", {"kind": "I wish I could", "what": "a new one"})
     rig.finish()
     rig.do("assess_wishes")                                  # a new wish to look at: fresh again
     parts = json.loads(rig.last("repeat_parts"))
@@ -127,11 +128,12 @@ def test_stale_options_get_a_note_but_stay(tmp_path):
     fc = FakeClock()
     lp = Loop(store.connect(tmp_path / "nit.db"), content.load(), t, MockBackend(), clock=fc, seed=1)
     lp.life.content.events.clear()
+    lp.life.content.actions["make_wish"].requires = [{"energy_gte": 0.1}]
     with store.transaction(lp.conn):
         knowledge.learn(lp.conn, "make_wish", "fountain", "inspect", lp.life.sim_time)
     for _ in range(3):
         with store.transaction(lp.conn):
-            lp.exec.start(Decision(kind="full", action="make_wish", inputs={"wish": "x"}), None)
+            lp.exec.start(Decision(kind="full", action="make_wish", inputs={"kind": "I wish I could", "what": "x"}), None)
             lp.exec.advance(10)
     m = mind.build(lp.life, t, known=knowledge.known_ids(lp.conn), notes=lp._notes())
     assert m.option("make_wish").notes == ["you have done this a lot lately"]
@@ -141,7 +143,7 @@ def test_stale_options_get_a_note_but_stay(tmp_path):
 
 def test_a_stale_routine_makes_it_restless(rig):
     for _ in range(5):
-        rig.do("make_wish", {"wish": "to remember"})
+        rig.do("make_wish", {"kind": "I wish I could", "what": "to remember"})
         rig.finish()
     rep = behaviour.repetition_score(rig.conn, rig.t["repetition"]["recent"])
     rig.life.bodystate.mood, rig.life.bodystate.energy = 0.0, 0.8

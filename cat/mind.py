@@ -87,17 +87,21 @@ def resolve_choices(options: Any, life: Life) -> list[dict]:
 
 # ---------------------------------------------------------------- options
 
-def ctx_for(life: Life, known: set[str], last_done: dict[str, float], rng: random.Random) -> conditions.Ctx:
-    return conditions.Ctx(creature=life.bodystate.as_dict(), facts=life.world.values,
+def ctx_for(life: Life, known: set[str], last_done: dict[str, float], rng: random.Random,
+            count_done: Callable[[str, float], int] | None = None, time_scale: float = 24.0) -> conditions.Ctx:
+    return conditions.Ctx(creature=life.bodystate.as_dict(), facts=life.world.values, count_done=count_done,
+                          time_scale=time_scale,
                           hour=clock.hour_float(clock.parse(life.sim_time)), known=known,
                           last_done=last_done, rng=rng)
 
 
 def available(life: Life, known: set[str], last_done: dict[str, float], rng: random.Random,
-              capability_ok: Callable[[str], bool] | None = None) -> list[tuple[ActionSpec, dict[str, dict]]]:
+              capability_ok: Callable[[str], bool] | None = None,
+              count_done: Callable[[str, float], int] | None = None,
+              time_scale: float = 24.0) -> list[tuple[ActionSpec, dict[str, dict]]]:
     """Actions the creature could take right now, with their resolved inputs, in content order."""
     c: Content = life.content
-    ctx = ctx_for(life, known, last_done, rng)
+    ctx = ctx_for(life, known, last_done, rng, count_done, time_scale)
     prohibited = set(c.character.get("core", {}).get("prohibited_actions") or [])
     out = []
     for a in c.actions_at(life.location):
@@ -124,9 +128,10 @@ def available(life: Life, known: set[str], last_done: dict[str, float], rng: ran
 
 def build_options(life: Life, known: set[str], last_done: dict[str, float], rng: random.Random,
                   notes: Callable[[ActionSpec], list[str]] | None = None,
-                  capability_ok: Callable[[str], bool] | None = None) -> list[Option]:
+                  capability_ok: Callable[[str], bool] | None = None,
+                  count_done: Callable[[str, float], int] | None = None, time_scale: float = 24.0) -> list[Option]:
     opts = [Option(a.id, a.name, a.description, inputs, list(notes(a)) if notes else [])
-            for a, inputs in available(life, known, last_done, rng, capability_ok)]
+            for a, inputs in available(life, known, last_done, rng, capability_ok, count_done, time_scale)]
     rng.shuffle(opts)
     return opts
 
@@ -201,7 +206,8 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
           perception: list[str] | None = None, activity: dict | None = None, recent: list[dict] | None = None,
           memories: list[str] | None = None, repetition: float = 0.0, seed: Any = 0,
           notes: Callable[[ActionSpec], list[str]] | None = None,
-          capability_ok: Callable[[str], bool] | None = None, core_memories: list[str] | None = None) -> Mind:
+          capability_ok: Callable[[str], bool] | None = None, core_memories: list[str] | None = None,
+          count_done: Callable[[str, float], int] | None = None) -> Mind:
     rng = random.Random(f"{seed}|{life.sim_time}")
     now = clock.parse(life.sim_time)
     loc = life.content.locations[life.location]
@@ -219,5 +225,6 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
         memories=list(memories or []),
         letters=letters_on_mind(life, tuning),
         identity=identity_block(life, core_memories),
-        options=build_options(life, known, last_done or {}, rng, notes, capability_ok),
+        options=build_options(life, known, last_done or {}, rng, notes, capability_ok, count_done,
+                              float(tuning.get("time_scale", 24))),
     )

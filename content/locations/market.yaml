@@ -21,6 +21,7 @@ events:
 
 actions:
   - id: eat_offering
+    diary: "{name} is eating an offering at {location.name}"
     name: eat an offering
     description: "Take one of the small offerings left on the counter, and eat it."
     family: eat
@@ -39,6 +40,7 @@ actions:
         text: "You eat it."
 
   - id: read_messages
+    diary: "{name} is reading a letter"
     name: read messages
     description: "Open the mailbox on the stall post and read a message."
     family: mail
@@ -58,6 +60,7 @@ actions:
       remember: {importance: 0.7, text: "I read a message from {capability.sender}: {capability.summary}"}
 
   - id: reply_message
+    diary: "{name} is writing a reply"
     name: write a reply
     description: "Write a reply to a message you have read."
     family: mail

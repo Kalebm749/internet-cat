@@ -40,7 +40,12 @@
     }
     const p = document.createElement("p");
     p.className = e.kind === "night" ? "night-entry" : e.kind === "event" ? "event-entry" : "what";
-    p.textContent = e.text;
+    if (e.kind === "activity" && e.line) {
+      const b = document.createElement("b"); b.textContent = e.line + ". "; p.appendChild(b);
+      const s = document.createElement("span"); s.className = "hint"; s.textContent = e.text; p.appendChild(s);
+    } else {
+      p.textContent = e.text;
+    }
     li.appendChild(p);
     return li;
   }
@@ -58,6 +63,9 @@
              n.asleep ? "Asleep." : n.doing ? n.doing.name.charAt(0).toUpperCase() + n.doing.name.slice(1) + "." : "Between things.");
         const th = document.getElementById("thought");
         if (th) text(th, n.asleep || !n.thought ? "" : n.thought.text);
+        for (const v of ["mood", "energy", "hunger"]) {
+          const m = document.getElementById(`m-${v}`); if (m) m.value = n.body[v];
+        }
         const ul = document.getElementById("body");
         if (ul) {
           ul.replaceChildren(...[...n.body.words, n.body.derived_words].filter(Boolean).map(w => {

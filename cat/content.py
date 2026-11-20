@@ -37,11 +37,11 @@ FACT_KEYS = {"type", "default", "visible", "min", "max", "max_len", "choices", "
 EVENT_KEYS = {"id", "text", "sense", "chance_per_hour", "salience", "hours", "weather_in", "world"}
 ACTION_KEYS = {"id", "name", "description", "family", "discovery", "inspect_hint", "requires", "inputs",
                "duration", "continuous", "per_minute", "on_finish", "outcomes", "on_interrupt", "capability",
-               "revisit_key", "effort", "builtin"}
+               "revisit_key", "effort", "builtin", "diary"}
 EFFECT_KEYS = {"world", "creature", "discover", "remember", "reflection"}
 OUTCOME_KEYS = EFFECT_KEYS | {"when", "text"}
 WORLD_KEYS = {"name", "sim_start", "senses", "facts", "events", "effort", "body_words", "derived_conditions",
-              "mailbox"}
+              "mailbox", "wishes", "granted_wishes"}
 CHARACTER_KEYS = {"name", "pronoun", "core", "traits", "tendencies", "background", "likes", "dislikes",
                   "innate_knowledge", "start_location"}
 CORE_KEYS = {"nature", "senses", "abilities", "boundaries", "prohibited_actions"}
@@ -140,6 +140,7 @@ class ActionSpec:
     revisit_key: list = field(default_factory=list)
     effort: Any = None
     builtin: str | None = None
+    diary: str | None = None      # the website's third-person line, e.g. "{name} is walking to {inputs.to}"
     source: str = ""
 
 
@@ -348,7 +349,7 @@ def _parse_action(owner: str | None, d: Any, path: Path, probs: _Problems, line:
                    per_minute=d.get("per_minute") or {}, on_finish=d.get("on_finish"),
                    outcomes=d.get("outcomes"), on_interrupt=d.get("on_interrupt"),
                    capability=d.get("capability"), revisit_key=d.get("revisit_key") or [],
-                   effort=d.get("effort"), builtin=builtin, source=f"{path.name}:{line}")
+                   effort=d.get("effort"), builtin=builtin, diary=d.get("diary"), source=f"{path.name}:{line}")
     if a.per_minute and not a.continuous:
         probs.add(path, line_of(d, "per_minute"), f"{what}: per_minute needs continuous: true")
     if a.on_finish is not None and a.outcomes is not None:
@@ -514,9 +515,27 @@ def load(content_dir: Path | str = CONTENT_DIR) -> Content:
 
     # ---- second pass: references
     _check_character(content, chpath, probs)
-    mb = world.get("mailbox")
-    if mb is not None and (not isinstance(mb, str) or facts.get(mb) is None or facts[mb].type != "list"):
-        probs.add(wpath, line_of(world, "mailbox"), f"world: mailbox must name a list fact, got {mb!r}")
+    for key in ("mailbox", "wishes"):
+        mb = world.get(key)
+        if mb is not None and (not isinstance(mb, str) or facts.get(mb) is None or facts[mb].type != "list"):
+            probs.add(wpath, line_of(world, key), f"world: {key} must name a list fact, got {mb!r}")
+    gw = world.get("granted_wishes")
+    if gw is not None:
+        if "wishes" not in world:
+            probs.add(wpath, line_of(world, "granted_wishes"), "world: granted_wishes needs `wishes` (the wishes fact)")
+        if not isinstance(gw, list):
+            probs.add(wpath, line_of(world, "granted_wishes"), "world: granted_wishes must be a list")
+        else:
+            seen = set()
+            for g in gw:
+                ok = isinstance(g, dict) and set(g) <= {"wish", "note"} and isinstance(g.get("wish"), (str, int)) \
+                    and not isinstance(g.get("wish"), bool) and isinstance(g.get("note", ""), str)
+                if not ok:
+                    probs.add(wpath, line_of(g), 'granted_wishes: each is {wish: "<id>", note: "what you built"}')
+                elif str(g["wish"]) in seen:
+                    probs.add(wpath, line_of(g), f"granted_wishes: wish {g['wish']} is granted twice")
+                else:
+                    seen.add(str(g["wish"]))
     for lid, loc in locations.items():
         path, line = where[f"location:{lid}"]
         for x in loc.exits:
@@ -674,6 +693,14 @@ def _check_action(c: Content, a: ActionSpec, path: Path, line: int, probs: _Prob
                 p = tmpl(ph)
                 if p:
                     probs.add(path, line_of(a.inputs, name), f"{w} input '{name}': {p}")
+    if a.diary is not None:
+        if not isinstance(a.diary, str):
+            probs.add(path, line, f"{w}: diary must be text")
+        else:
+            for ph in templating.placeholders(a.diary):
+                p = None if ph == "name" else tmpl(ph)
+                if p:
+                    probs.add(path, line, f"{w} diary: {p}")
     if a.capability is not None and a.capability not in c.capabilities:
         probs.add(path, line, f"{w}: unknown capability '{a.capability}' (declare it in capabilities.yaml)")
     for k in a.revisit_key:

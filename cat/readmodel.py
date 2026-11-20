@@ -81,15 +81,38 @@ def now(conn: sqlite3.Connection, content: Content, tuning: dict, heartbeat_age:
 
 # ---------------------------------------------------------------- the diary
 
+def diary_line(content: Content, name: str, action_id: str, location: str, inputs: dict, status: str) -> str:
+    """The website's third-person line for an activity: the action's `diary` text, e.g. "Nit is walking to the
+    market stall". Inputs naming a place read as its name. Falls back to "<name> is: <action name>"."""
+    from cat import templating
+    a = content.actions.get(action_id)
+    shown = {k: _place(content, v) if isinstance(v, str) and v in content.locations else v for k, v in inputs.items()}
+    text = None
+    if a is not None and a.diary:
+        try:
+            text = templating.render(a.diary.replace("{name}", name), {"inputs": shown, "location": {
+                "id": location, "name": _place(content, location)}, "now": "", "exits": []})
+        except templating.TemplateError:
+            text = None
+    text = text or f"{name} is: {_name(content, action_id)}"
+    if status == "rejected":
+        return f"{text} (but could not)"
+    if status == "interrupted":
+        return f"{text} (stopped early)"
+    return text
+
+
 def diary(conn: sqlite3.Connection, content: Content, before: str | None = None, after: str | None = None,
           limit: int = 40) -> tuple[list[dict], str | None]:
     """Newest first: finished activities (with the thought that chose them), perceived events and nights.
     `before`/`after` are sim times. Returns (entries, next `before` for the following page or None)."""
     lo, hi = after or "", before or "9999"
+    sheet = _j((conn.execute("SELECT sheet FROM character_versions ORDER BY version DESC LIMIT 1").fetchone() or [None])[0], {})
+    name = sheet.get("name") or "Nit"
     rows: list[dict] = []
     for r in conn.execute(
-            "SELECT a.id, a.started_at, a.ended_at, a.action_id, a.location, a.status, a.text, d.thought, d.letter, "
-            "d.real_time "
+            "SELECT a.id, a.started_at, a.ended_at, a.action_id, a.location, a.status, a.text, a.inputs, d.thought, "
+            "d.letter, d.real_time "
             "FROM activities a LEFT JOIN decisions d ON d.id = a.decision_id "
             "WHERE a.ended_at IS NOT NULL AND a.ended_at > ? AND a.ended_at < ? ORDER BY a.ended_at DESC, a.id DESC "
             "LIMIT ?", (lo, hi, limit + 1)):
@@ -99,7 +122,9 @@ def diary(conn: sqlite3.Connection, content: Content, before: str | None = None,
                      "start_clock": r["started_at"][-5:], "end_clock": r["ended_at"][-5:], "minutes": minutes,
                      "decided_real": (r["real_time"] or "")[11:19] or None,
                      "action": r["action_id"], "name": _name(content, r["action_id"]),
-                     "place": _place(content, r["location"]), "text": r["text"], "thought": r["thought"] or None,
+                     "place": _place(content, r["location"]), "text": r["text"],
+                     "line": diary_line(content, name, r["action_id"], r["location"], _j(r["inputs"], {}), r["status"]),
+                     "thought": r["thought"] or None,
                      "answered_letter": bool(r["letter"])})
     for r in conn.execute("SELECT id, sim_time, text, location FROM experiences WHERE kind = 'event' AND sim_time > ? "
                           "AND sim_time < ? ORDER BY sim_time DESC, id DESC LIMIT ?", (lo, hi, limit + 1)):
@@ -131,6 +156,41 @@ def identity(conn: sqlite3.Connection) -> dict:
             "core_memories": memories.core_texts(conn),
             "likes": [p.words or p.subject_id for p in memories.preferences(conn).values() if p.strength >= 0.15],
             "dislikes": [p.words or p.subject_id for p in memories.preferences(conn).values() if p.strength <= -0.15]}
+
+
+def places(conn: sqlite3.Connection, content: Content) -> list[dict]:
+    """Every place: what is there, what can be seen, what Nit has found it can do there (undiscovered ones counted)."""
+    known = {r[0] for r in conn.execute("SELECT action_id FROM knowledge")}
+    facts = {r["key"]: _j(r["value"]) for r in conn.execute("SELECT key, value FROM facts")}
+    out = []
+    for loc in content.locations.values():
+        seen = []
+        for key in loc.facts:
+            spec = content.facts[key]
+            if spec.visible == "none" or key == content.world.get("wishes"):
+                continue
+            v = facts.get(key, spec.default)
+            seen.append(f"{key.split('.', 1)[1].replace('_', ' ')}: {len(v) if isinstance(v, list) else v}")
+        acts = [content.actions[a] for a in loc.actions]
+        out.append({"id": loc.id, "name": loc.name, "description": loc.description.strip(),
+                    "exits": [_place(content, x) for x in loc.exits], "sheltered": loc.sheltered, "visible": seen,
+                    "known": [a.name for a in acts if a.id in known],
+                    "undiscovered": sum(1 for a in acts if a.id not in known)})
+    return out
+
+
+def wishes(conn: sqlite3.Connection, content: Content) -> list[dict]:
+    key = content.world.get("wishes")
+    if not key:
+        return []
+    r = conn.execute("SELECT value FROM facts WHERE key = ?", (key,)).fetchone()
+    out = []
+    for w in reversed(_j(r[0], []) if r else []):
+        if isinstance(w, dict):
+            out.append({"id": str(w.get("id")), "text": w.get("text", ""), "status": w.get("status", "open"),
+                        "made": w.get("made"), "day": day_number(conn, w["made"]) if w.get("made") else None,
+                        "granted_at": w.get("granted_at"), "note": w.get("note")})
+    return out
 
 
 def knowledge(conn: sqlite3.Connection, content: Content) -> list[dict]:

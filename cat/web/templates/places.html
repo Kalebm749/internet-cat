@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Places · {{ now.name if now else "Nit" }}</title>
+  <link rel="stylesheet" href="/static/css/site.css"><link rel="icon" href="/static/img/nit/nit.svg">
+</head>
+<body class="{{ 'night' if now and now.part_of_day == 'night' else '' }}">
+<header class="top">
+  <img class="portrait" src="/static/img/nit/nit.svg" alt="">
+  <div><h1>{{ now.name if now else "Nit" }}</h1>
+    {% if now %}<p class="where">Now at {{ now.place }}.</p>{% endif %}</div>
+  <nav class="tabs"><a href="/">Now &amp; diary</a> <a href="/places" class="on">Places &amp; wishes</a></nav>
+</header>
+<main class="layout">
+  <section class="col" style="grid-column: span 2">
+    {% for p in places %}
+    <article class="card" id="{{ p.id }}">
+      <h2>{{ p.name }}{% if now and now.location == p.id %} <span class="pill2">Nit is here</span>{% endif %}</h2>
+      <p>{{ p.description }}</p>
+      {% if p.visible %}<p class="hint">{{ p.visible | join(" · ") }}</p>{% endif %}
+      <p class="hint">Leads to: {{ p.exits | join(", ") }}{% if p.sheltered %} · sheltered from the rain{% endif %}</p>
+      <h3>What Nit has found it can do here</h3>
+      <ul>{% for a in p.known %}<li>{{ a | capitalize }}</li>{% else %}<li class="hint">Nothing yet.</li>{% endfor %}</ul>
+      {% if p.undiscovered %}<p class="hint">{{ p.undiscovered }} more thing{{ "s" if p.undiscovered > 1 }} to find here.</p>{% endif %}
+    </article>
+    {% else %}<article class="card"><p>Nothing to see yet.</p></article>{% endfor %}
+  </section>
+  <section class="col">
+    <article class="card" id="wishes">
+      <h2>Wishes</h2>
+      <p class="hint">Nit wishes at the fountain for a place it does not have or something it cannot yet do. A wish
+        comes true only when the world's author builds it.</p>
+      <ol class="diary">
+        {% for w in wishes %}<li class="entry wish {{ w.status }}">
+          <p class="when">#{{ w.id }} · Day {{ w.day }}, {{ (w.made or "")[-5:] }} · <span class="pill2">{{ "came true" if w.status == "granted" else "waiting" }}</span></p>
+          <p class="thought">{{ w.text }}</p>
+          {% if w.status == "granted" and w.note %}<p class="what">{{ w.note }}</p>{% endif %}
+        </li>{% else %}<li class="hint">No wishes yet.</li>{% endfor %}
+      </ol>
+    </article>
+  </section>
+</main>
+</body>
+</html>

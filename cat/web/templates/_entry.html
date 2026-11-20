@@ -9,6 +9,6 @@
   {% elif e.kind == "event" %}<p class="event-entry">{{ e.text }}</p>
   {% else %}
     {% if e.thought %}<p class="thought">{{ e.thought }}</p>{% endif %}
-    <p class="what">{{ e.text }}{% if e.answered_letter %} <span class="tag">because of a letter</span>{% endif %}</p>
+    <p class="what"><b>{{ e.line }}.</b> <span class="hint">{{ e.text }}</span>{% if e.answered_letter %} <span class="tag">because of a letter</span>{% endif %}</p>
   {% endif %}
 </li>{% endif %}

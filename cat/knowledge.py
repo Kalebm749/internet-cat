@@ -68,6 +68,14 @@ def known_ids(conn: sqlite3.Connection) -> set[str]:
     return {r[0] for r in conn.execute("SELECT action_id FROM knowledge")}
 
 
+def count_done(conn: sqlite3.Connection, action_id: str, now: str, minutes: float) -> int:
+    """How many times it started this action (not counting rejected attempts) in the last `minutes` sim minutes."""
+    from datetime import timedelta
+    since = clock.fmt(clock.parse(now) - timedelta(minutes=minutes))
+    return conn.execute("SELECT COUNT(*) FROM activities WHERE action_id = ? AND status != 'rejected' AND started_at > ?",
+                        (action_id, since)).fetchone()[0]
+
+
 def minutes_since_done(conn: sqlite3.Connection, now: str) -> dict[str, float]:
     """action id -> sim minutes since it was last done (only actions done at least once)."""
     t = clock.parse(now)

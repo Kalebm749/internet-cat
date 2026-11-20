@@ -98,6 +98,27 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         finally:
             conn.close()
 
+    @app.get("/places", response_class=HTMLResponse)
+    def places_page(request: Request):
+        conn = open_db()
+        try:
+            data = {"places": readmodel.places(conn, content), "wishes": readmodel.wishes(conn, content),
+                    "now": readmodel.now(conn, content, t, None)} if conn else {"places": [], "wishes": [], "now": None}
+        finally:
+            if conn:
+                conn.close()
+        return templates.TemplateResponse(request, "places.html", data)
+
+    @app.get("/api/places")
+    def api_places():
+        conn = open_db()
+        if conn is None:
+            return {"places": [], "wishes": []}
+        try:
+            return {"places": readmodel.places(conn, content), "wishes": readmodel.wishes(conn, content)}
+        finally:
+            conn.close()
+
     @app.post("/letters")
     def send_letter(request: Request, text: str = Form(""), sender: str = Form(""), website: str = Form("")):
         if website:                                    # the honeypot: people never fill it in

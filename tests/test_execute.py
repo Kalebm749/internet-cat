@@ -72,35 +72,50 @@ def test_inspect_reveals_a_hidden_action(rig):
 def test_make_wish_changes_world_body_and_knowledge(rig):
     rig.learn("make_wish")
     mood = rig.life.bodystate.mood
-    rig.do("make_wish", {"wish": "to know where I came from"}, thought="The water listens.")
+    rig.do("make_wish", {"kind": "I wish I could", "what": "to know where I came from"}, thought="The water listens.")
     rig.wait(10)
-    assert rig.life.world.get("fountain.wishes")[0]["text"] == "to know where I came from"
+    assert rig.life.world.get("fountain.wishes")[0]["text"] == "I wish I could to know where I came from"
     assert "fountain.wishes" in rig.life.world.touched
     assert rig.life.bodystate.mood > mood
     assert "assess_wishes" in knowledge.known_ids(rig.conn)
     exp = rig.rows("SELECT kind, text, thought, remember, importance FROM experiences WHERE kind = 'activity'")[0]
-    assert tuple(exp) == ("activity", "I wished at the fountain: to know where I came from", "The water listens.", 1, 0.6)
+    assert tuple(exp) == ("activity", "I wished at the fountain: I wish I could to know where I came from.", "The water listens.", 1, 0.6)
     assert knowledge.all_known(rig.conn)["make_wish"].times_done == 1
 
 
-def test_outcomes_follow_their_conditions(tmp_path):
-    answered = 0
-    for seed in range(40):
-        r = Rig(tmp_path / str(seed), seed)
-        r.life.content.events.clear()
-        r.learn("assess_wishes")
-        r.life.world.values["fountain.wishes"] = [{"id": "1", "text": "x", "status": "open"}]
-        r.do("assess_wishes")
-        r.wait(20)
-        answered += r.life.world.get("fountain.wishes")[0]["status"] == "answered"
-    assert 1 <= answered <= 15                     # random_lt 0.15
+def test_outcomes_follow_their_conditions(rig):
+    rig.do("move", {"to": "market"})
+    rig.wait(10)
+    gains = []
+    for hunger in (0.7, 0.1):
+        rig.life.world.values["market.offerings"] = 2
+        rig.life.bodystate.hunger = hunger
+        rig.do("eat_offering")
+        rig.wait(15)
+        gains.append(rig.rows("SELECT text FROM activities ORDER BY id DESC LIMIT 1")[0][0])
+    assert gains == ["You eat it slowly. When you are this hungry it tastes wonderful.", "You eat it."]
+
+
+def test_wishes_are_limited_and_never_granted_by_the_world(rig):
+    rig.learn("make_wish", "assess_wishes")
+    for i in range(2):
+        assert rig.do("make_wish", {"kind": "I want a place where I can", "what": f"climb high {i}"})["status"] == "started"
+        rig.wait(10)
+    assert rig.life.world.get("fountain.wishes")[0]["text"] == "I want a place where I can climb high 0"
+    assert rig.do("make_wish", {"kind": "I wish I could", "what": "fly"})["status"] == "rejected"   # 2 a real day
+    for _ in range(5):
+        rig.do("assess_wishes")
+        rig.wait(20)
+    assert {w["status"] for w in rig.life.world.get("fountain.wishes")} == {"open"}
+    rig.life.sim_time = "2026-11-22T08:00"                     # 25 sim hours later: still within the real day
+    assert rig.do("make_wish", {"kind": "I wish I could", "what": "fly"})["status"] == "rejected"
 
 
 def test_rejected_decisions_change_nothing_in_the_world(rig):
     rig.learn("make_wish")
     rig.life.bodystate.energy = 0.05               # make_wish needs energy >= 0.1
     before = json.dumps(rig.life.world.values, sort_keys=True)
-    res = rig.do("make_wish", {"wish": "x"})
+    res = rig.do("make_wish", {"kind": "I wish I could", "what": "x"})
     assert res["status"] == "rejected" and "the moment has passed" in res["text"]
     assert json.dumps(rig.life.world.values, sort_keys=True) == before
     assert rig.ex.running is None and rig.rows("SELECT status FROM activities")[0][0] == "rejected"

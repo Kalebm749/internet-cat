@@ -45,7 +45,7 @@ def test_spec_examples_are_in_the_pack():
     """The examples written in the spec (§4.1, §4.2, §4.8) exist with their contract."""
     c = content.load()
     wish = c.actions["make_wish"]
-    assert wish.discovery == "hidden" and wish.inspect_hint and wish.inputs["wish"]["max_chars"] == 200
+    assert wish.discovery == "hidden" and wish.inspect_hint and wish.inputs["what"]["max_chars"] == 80
     assert c.actions["assess_wishes"].revisit_key == ["fountain.wishes"]
     assert c.actions["sit_and_reflect"].continuous
     assert c.facts["market.offerings"].regrow == {"amount": 1, "at_hours": [6, 12, 18]}
@@ -112,11 +112,11 @@ def test_all_problems_are_reported_at_once_with_file_and_line(pack):
     ("locations/market.yaml", "{op: add, fact: market.offerings, value: -1}", "{op: append, fact: market.offerings, value: 1}",
      "op: append, fact: market.offerings", "is a int, needs list"),
     # placeholders
-    ("locations/fountain.yaml", 'text: "{inputs.wish}"', 'text: "{inputs.desire}"',
-     "inputs.desire", "declares no input 'desire'"),
+    ("locations/fountain.yaml", 'text: "{inputs.kind} {inputs.what}", made', 'text: "{inputs.desire}", made',
+     "- {op: append, fact: fountain.wishes", "declares no input 'desire'"),
     ("locations/market.yaml", 'text: "I wrote a reply to a message: {inputs.reply}"',
      'text: "I replied to {capability.sender}"', "I replied to", "uses no capability"),
-    ("locations/fountain.yaml", 'made: "{now}"', 'made: "{later}"', "later", "unknown placeholder {later}"),
+    ("locations/fountain.yaml", 'made: "{now}"', 'made: "{later}"', "- {op: append, fact: fountain.wishes", "unknown placeholder {later}"),
     # actions
     ("locations/fountain.yaml", "    discovery: hidden\n    inspect_hint:", "    discovery: secret\n    inspect_hint:",
      "discovery: secret", "discovery must be one of"),
@@ -158,9 +158,9 @@ def test_hidden_action_that_can_never_be_found(pack):
 
 
 def test_last_outcome_must_be_the_fallback(pack):
-    pack.replace("locations/fountain.yaml", '      - text: "The wishes are still there, waiting."',
-                 '      - when: {random_lt: 0.5}\n        text: "The wishes are still there, waiting."')
-    assert has(problems(pack), "locations/fountain.yaml:", "the last outcome must have no 'when'")
+    pack.replace("locations/market.yaml", '      - world: [{op: add, fact: market.offerings, value: -1}]\n        creature: {hunger: -0.45, energy: 0.05, mood: 0.02}',
+                 '      - when: {random_lt: 0.5}\n        world: [{op: add, fact: market.offerings, value: -1}]\n        creature: {hunger: -0.45, energy: 0.05, mood: 0.02}')
+    assert has(problems(pack), "locations/market.yaml:", "the last outcome must have no 'when'")
 
 
 def test_duplicate_keys_and_bad_yaml(pack):

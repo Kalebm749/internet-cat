@@ -104,6 +104,19 @@ class WorldState:
         if by == "creature":
             self.touched.add(key)
 
+    def update_item_raw(self, key: str, item_id: str, fields: dict, by: str = "world") -> bool:
+        """Set fields on the list item with this id WITHOUT filling placeholders (the item may hold the creature's
+        or a visitor's words). Returns False when there is no such item."""
+        items = self.values[key]
+        for i, it in enumerate(items):
+            if isinstance(it, dict) and str(it.get("id")) == str(item_id):
+                items[i] = {**it, **copy.deepcopy(fields)}
+                self.dirty.add(key)
+                if by == "creature":
+                    self.touched.add(key)
+                return True
+        return False
+
     def regrow(self, since: str, until: str) -> dict[str, float]:
         """Advance every regrowing fact from sim time `since` to `until`. Returns key -> amount added."""
         a, b = clock.parse(since), clock.parse(until)

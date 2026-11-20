@@ -39,8 +39,8 @@ def test_add_clamps_to_min_and_max(c):
 
 def test_append_renders_templates_and_gives_ids(c):
     op = {"op": "append", "fact": "fountain.wishes",
-          "value": {"text": "{inputs.wish}", "made": "{now}", "status": "open"}}
-    r = run(c, [op, op], vars={"now": "2026-11-21T08:00", "inputs": {"wish": "to know"}})
+          "value": {"text": "{inputs.what}", "made": "{now}", "status": "open"}}
+    r = run(c, [op, op], vars={"now": "2026-11-21T08:00", "inputs": {"what": "to know"}})
     assert r.facts["fountain.wishes"] == [
         {"id": "1", "text": "to know", "made": "2026-11-21T08:00", "status": "open"},
         {"id": "2", "text": "to know", "made": "2026-11-21T08:00", "status": "open"}]
@@ -110,7 +110,7 @@ def test_a_failing_op_changes_nothing(c):
 
 def test_missing_template_value_fails_cleanly(c):
     with pytest.raises(OpError, match="inputs"):
-        run(c, [{"op": "append", "fact": "fountain.wishes", "value": {"text": "{inputs.wish}"}}])
+        run(c, [{"op": "append", "fact": "fountain.wishes", "value": {"text": "{inputs.what}"}}])
 
 
 def test_random_op_sequences_respect_bounds(c):

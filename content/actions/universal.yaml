@@ -2,6 +2,7 @@
 # (`builtin`); their names, words, durations and requirements are content.
 - id: move
   builtin: move
+  diary: "{name} is walking to {inputs.to}"
   name: go somewhere else
   description: "Walk to a neighbouring place."
   family: move
@@ -13,6 +14,7 @@
 
 - id: inspect
   builtin: inspect
+  diary: "{name} is looking around {location.name} carefully"
   name: look around carefully
   description: "Look carefully around here for something you have not noticed."
   family: inspect
@@ -22,6 +24,7 @@
 
 - id: sleep
   builtin: sleep
+  diary: "{name} is sleeping at {location.name}"
   name: go to sleep
   description: "Lie down and sleep."
   family: sleep

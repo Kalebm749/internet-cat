@@ -31,6 +31,8 @@ class Ctx:
     known: set[str] = field(default_factory=set)        # action ids the creature knows
     last_done: Mapping[str, float] = field(default_factory=dict)   # action id -> sim minutes since it was last done
     rng: random.Random = field(default_factory=lambda: random.Random(0))
+    count_done: Callable[[str, float], int] | None = None  # (action id, sim minutes back) -> times started, not rejected
+    time_scale: float = 24.0                             # sim minutes per real minute (for real_hours windows)
 
 
 def _num(x: Any) -> bool:
@@ -131,6 +133,29 @@ def _v_not_since(arg, ref, where):
     return _v_action(arg[0], ref, where)
 
 
+def _v_done_fewer(arg, ref, where):
+    if not isinstance(arg, Mapping) or "action" not in arg or "times" not in arg:
+        return "needs {action, times, hours | real_hours}"
+    extra = set(arg) - {"action", "times", "hours", "real_hours"}
+    if extra:
+        return f"unknown field(s) {sorted(extra)}"
+    if ("hours" in arg) == ("real_hours" in arg):
+        return "give exactly one of hours (sim) or real_hours"
+    window = arg.get("hours", arg.get("real_hours"))
+    if not _num(window) or window <= 0:
+        return "the window must be a number of hours > 0"
+    if not isinstance(arg["times"], int) or isinstance(arg["times"], bool) or arg["times"] < 1:
+        return "times must be a whole number >= 1"
+    return _v_action(arg["action"], ref, where)
+
+
+def _done_fewer(arg, ctx: Ctx) -> bool:
+    if ctx.count_done is None:
+        return True
+    minutes = arg["hours"] * 60 if "hours" in arg else arg["real_hours"] * 60 * ctx.time_scale
+    return ctx.count_done(arg["action"], minutes) < arg["times"]
+
+
 def _v_random(arg, ref, where):
     if where != "outcome":
         return "random_lt is only allowed in an outcome's `when`"
@@ -184,6 +209,7 @@ REGISTRY: dict[str, tuple[Callable[[Any, Ref, str], str | None], Evaluator]] = {
     "knows": (_v_action, lambda a, c: a in c.known),
     "done_before": (_v_action, lambda a, c: a in c.last_done),
     "not_done_since_minutes": (_v_not_since, _not_since),
+    "done_fewer_than": (_v_done_fewer, _done_fewer),
     "random_lt": (_v_random, lambda a, c: c.rng.random() < a),
     "any_of": (_v_list, lambda a, c: any(evaluate(x, c) for x in a)),
     "all_of": (_v_list, lambda a, c: all(evaluate(x, c) for x in a)),

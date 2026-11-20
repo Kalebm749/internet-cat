@@ -38,6 +38,7 @@ WORLD_TEXT_FIELDS = {
     "finished": {"name"}, "interrupted": {"name"}, "rejected": {"name", "reason"}, "fall_asleep": set(),
     "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_gone": set(),
     "capability_failed": set(), "same_thought": set(), "mail_arrived": set(),
+    "wish_granted": {"wish", "note"},
 }
 
 
@@ -126,7 +127,11 @@ class Executor:
         return conditions.Ctx(creature=self.life.bodystate.as_dict(), facts=self.life.world.values,
                               hour=clock.hour_float(clock.parse(self.life.sim_time)),
                               known=knowledge.known_ids(self.conn),
-                              last_done=knowledge.minutes_since_done(self.conn, self.life.sim_time), rng=self.rng)
+                              last_done=knowledge.minutes_since_done(self.conn, self.life.sim_time), rng=self.rng,
+                              count_done=self.count_done, time_scale=float(self.t["time_scale"]))
+
+    def count_done(self, action_id: str, minutes: float) -> int:
+        return knowledge.count_done(self.conn, action_id, self.life.sim_time, minutes)
 
     def _vars(self, a: ActionSpec | None, inputs: dict, cap: dict | None) -> dict:
         loc = self.c.locations[self.life.location]

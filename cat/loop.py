@@ -25,7 +25,7 @@ import threading
 
 from cat import clock as clock_mod, mail as mailmod
 from cat import behaviour, content as contentmod, decision as decisionmod, identity, knowledge, life as lifemod, memories
-from cat import mind as mindmod, sleepcycle, store
+from cat import mind as mindmod, sleepcycle, store, wishes
 from cat.capabilities import Registry
 from cat.config import Config
 from cat.healthcheck import write_heartbeat
@@ -95,6 +95,10 @@ class Loop:
         self.scheduler = Scheduler(tuning["decisions"])
         self.rng = random.Random(seed if seed is not None else time.time_ns())
         self.exec = self._executor()
+        with store.transaction(conn):                        # wishes the author granted since the last start
+            told = wishes.grant(conn, self.life, self.texts)
+            lifemod.save(conn, self.life)
+        self.exec.perception += told
         self.last_real = clock()
         self.carry = 0.0                       # sim minutes not yet passed (the clock has minute resolution)
         self.doze_until: float | None = None
@@ -214,7 +218,8 @@ class Loop:
                              memories=list(dict.fromkeys([r["text"] for r in recalled] + notable)),
                              repetition=behaviour.repetition_score(self.conn, self.t["repetition"]["recent"]),
                              seed=f"{self.seed}|{now}", capability_ok=self.exec.capability_ok,
-                             notes=self._notes(), core_memories=memories.core_texts(self.conn))
+                             notes=self._notes(), core_memories=memories.core_texts(self.conn),
+                             count_done=self.exec.count_done)
         self.exec.perception = []
         self.scheduler.started(due, now, self.life.sim_time)
         t0 = self.clock()

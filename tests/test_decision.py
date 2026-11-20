@@ -32,7 +32,7 @@ def m(tmp_path, t):
 
 def answer(**kw):
     base = {"thought": "The coins look old.", "reasoning": "I want to ask the water something.",
-            "action": "make_wish", "inputs": {"wish": "to remember where I came from"}, "preserve": False,
+            "action": "make_wish", "inputs": {"kind": "I wish I could", "what": "to remember where I came from"}, "preserve": False,
             "letter": None}
     base.update(kw)
     return base
@@ -40,12 +40,12 @@ def answer(**kw):
 
 def test_valid_answer(m, t):
     d = validate(answer(letter="7", preserve=True), m, "full", t)
-    assert (d.action, d.inputs, d.letter, d.preserve) == ("make_wish", {"wish": "to remember where I came from"}, "7", True)
+    assert (d.action, d.inputs, d.letter, d.preserve) == ("make_wish", {"kind": "I wish I could", "what": "to remember where I came from"}, "7", True)
 
 
 @pytest.mark.parametrize("raw, problem", [
     (answer(action="fly"), '"action" must be one of'),
-    (answer(inputs={}), 'make_wish needs the input "wish"'),
+    (answer(inputs={}), 'make_wish needs the input "what"'),
     (answer(thought=""), '"thought" must be some words'),
     (answer(action="move", inputs={"to": "moon"}), 'input "to" of move must be one of market'),
     (answer(action="continue"), '"action" must be one of'),          # nothing is running
@@ -57,12 +57,12 @@ def test_invalid_answers(m, t, raw, problem):
 
 
 def test_lenient_fixes_are_noted(m, t):
-    d = validate(answer(inputs={"wish": "word " * 100}, letter="99", action="move") | {"inputs": {"to": "the market stall"}},
+    d = validate(answer(inputs={"kind": "I wish I could", "what": "word " * 100}, letter="99", action="move") | {"inputs": {"to": "the market stall"}},
                  m, "full", t)
     assert d.inputs == {"to": "market"}                               # a label maps to its value
     assert d.letter is None and any("not on its mind" in n for n in d.notes)
-    d = validate(answer(inputs={"wish": "word " * 100}), m, "full", t)
-    assert len(d.inputs["wish"]) <= 200 and "input wish shortened" in d.notes
+    d = validate(answer(inputs={"kind": "I wish I could", "what": "word " * 100}), m, "full", t)
+    assert len(d.inputs["what"]) <= 80 and "input what shortened" in d.notes
 
 
 def test_check_in_allows_only_continue_or_stop(m, t):
@@ -78,7 +78,7 @@ def test_schema_lists_options_and_thinks_first(m, t):
     s = decision.schema(m, "full", t)
     assert list(s["properties"])[:3] == ["thought", "reasoning", "action"]
     assert sorted(s["properties"]["action"]["enum"]) == sorted(o.id for o in m.options)
-    assert s["properties"]["inputs"]["properties"]["wish"] == {"type": "string", "maxLength": 200}
+    assert s["properties"]["inputs"]["properties"]["what"] == {"type": "string", "maxLength": 80}
     assert s["properties"]["inputs"]["properties"]["to"]["enum"] == ["market"]
 
 
