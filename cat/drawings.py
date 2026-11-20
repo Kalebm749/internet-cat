@@ -211,7 +211,10 @@ def describe(d: dict[str, Any]) -> str:
 
 
 # ---------- the drawing tool: it places its own marks, code checks every one ----------
-SHAPES = ("line", "curve", "circle", "scribble", "spiral", "wave", "dots", "blot", "wash", "rect")
+SHAPES = ("line", "curve", "outline", "circle", "scribble", "spiral", "wave", "rect", "hatch", "crosshatch",
+          "stipple", "dots", "blot", "wash")
+LAYERS = ("back", "middle", "front")
+MAX_POINTS = 10
 WEIGHTS = ("light", "medium", "heavy")
 SKETCH_SCHEMA = {
     "type": "object",
@@ -220,6 +223,8 @@ SKETCH_SCHEMA = {
             "shape": {"type": "string", "enum": list(SHAPES)}, "x": {"type": "number"}, "y": {"type": "number"},
             "size": {"type": "number"}, "angle": {"type": "number"},
             "weight": {"type": "string", "enum": list(WEIGHTS)}, "colour": {"type": "string"},
+            "layer": {"type": "string", "enum": list(LAYERS)},
+            "points": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
             "about": {"type": "string"}}, "required": ["shape", "x", "y", "size", "colour"]}},
         "going_for": {"type": "string"}},
     "required": ["marks"],
@@ -320,7 +325,11 @@ def parse_marks(cfg: Config, raw: dict, n: int, colours: dict[str, str]) -> dict
                     "y": round(_num(m.get("y"), 0, 100, 50), 1), "size": round(_num(m.get("size"), 1, 100, 20), 1),
                     "angle": round(_num(m.get("angle"), 0, 360, 0), 1),
                     "weight": m.get("weight") if m.get("weight") in WEIGHTS else "medium", "colour": colour,
+                    "layer": m.get("layer") if m.get("layer") in LAYERS else "middle",
                     "about": " ".join(str(m.get("about") or "").split())[:40]})
+        pts = [p for p in (m.get("points") or []) if isinstance(p, (list, tuple)) and len(p) == 2][:MAX_POINTS]
+        if len(pts) >= 2 and m["shape"] in ("line", "curve", "outline"):     # a freehand contour
+            out[-1]["points"] = [[round(_num(px, 0, 100, 50), 1), round(_num(py, 0, 100, 50), 1)] for px, py in pts]
         if len(out) >= n:
             break
     if not out:

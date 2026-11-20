@@ -136,7 +136,7 @@ drawing:
   board_capacity: 6            # drawings that fit on a `board`; pinning is not offered when it is full
   marks_per_sitting: 14        # without its own marks (the sketch call failed): strokes code adds per reference_minutes
   sketch: true                 # each sitting, one LLM call (brain_model) places its own marks; false = code's marks only
-  marks_max: 12                # most marks one sitting may place (a 60-minute sitting; shorter sittings get fewer)
+  marks_max: 20                # most marks one sitting may place (a 60-minute sitting; shorter sittings get fewer)
   marks_min: 3                 # fewest marks a sitting is allowed
   history_shown: 4             # its past drawings it is reminded of, so a style can grow from its own history
   colours:                     # what it can draw with: charcoal is always with the paper; paints only while an
@@ -290,8 +290,8 @@ web_ui:
   chip_min_delta: 5            # diary need chips (up/down) only for moves at least this big
   keepsake_dots: [0.4, 0.7]    # importance below the 1st => 1 dot, below the 2nd => 2, else 3
   drawing:                     # how the website draws a drawing (cat/art.py)
-    width: 240
-    height: 180
+    width: 360
+    height: 270
     jitter_max: 7              # how far a stroke wanders at anxiety 100 (calm strokes are steady)
     pinned_shown: 6            # drawings on the board panel
   preferences_shown: 5         # loves / dislikes each

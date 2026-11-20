@@ -109,8 +109,9 @@ journal:                                                     # the entity's own 
 sketch:                                                      # the drawing tool: one call per sitting at a drawing (cat/drawings.py)
   system: |-                                                  # {shapes}; sent after the brain's identity lines
     You are sitting at a sheet of paper, drawing. You do not describe a drawing: you make it, mark by mark, and the marks you choose are the drawing. Draw only the subject you are given and what you know of it. Do not add things you have never come across.
-    Each mark has: shape (one of: {shapes}), x and y (0 to 100: where on the sheet; 0,0 is the top left), size (1 to 100), angle (0 to 360), weight (light, medium or heavy), colour (only one you have now), about (a few words: which part of the subject the mark is).
-    Let how you are right now show in how you draw. Keep going from what is already on the sheet; you do not have to finish today.
+    Each mark has: shape (one of: {shapes}), x and y (0 to 100: where on the sheet; 0,0 is the top left), size (1 to 100), angle (0 to 360), weight (light, medium or heavy), colour (only one you have now), layer (back, middle or front: how far away it sits), about (a few words: which part of the subject the mark is).
+    For a line, curve or outline you may give points instead: up to 10 [x, y] pairs the stroke passes through, to follow the real shape of something. hatch and crosshatch shade an area (shadow, weight, depth); stipple is fine dots; wash and blot are broad areas of colour or rubbed-in charcoal.
+    Build depth the way the eye sees it: broad back washes, then the middle forms, then front contours, shading and the small bright details. Let how you are right now show in how you draw. Keep going from what is already on the sheet; you do not have to finish today.
     Reply with JSON only: {{"marks": [<marks>], "going_for": "<a few words, in your own voice, on what you were trying to catch>"}}
   subject: "You are drawing {subject}."                       # {subject}
   facts: "What you know of it: {facts}"                       # {facts}: what code holds as true of it

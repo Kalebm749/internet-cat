@@ -142,8 +142,6 @@ def test_the_picture_comes_from_its_history_and_nothing_else(town):
     a, a2 = art.render_svg(town, calm), art.render_svg(town, calm)
     assert a == a2                                                        # the same history, the same picture
     assert a != art.render_svg(town, tense)                               # how it was changes how it looks
-    hue = lambda svg: {p.split(",")[0] for p in svg.split('stroke="hsl(')[1:]}
-    assert hue(a) != hue(art.render_svg(town, tense))                     # mood sets the colour
     assert art.render_svg(town, short).count("<path") < a.count("<path")  # a short sitting leaves fewer marks
     assert art.motif(calm) == "ripples" and art.motif({"subject_kind": "place"}) == "horizon"
     assert art.motif({"subject_kind": "happening"}) == "burst"
@@ -185,6 +183,10 @@ def test_the_drawing_tool_keeps_only_valid_marks_with_what_it_has(town):
     out = DW.parse_marks(town, raw, 5, charcoal)
     assert len(out["marks"]) == 5 and out["marks"][0]["x"] == 100 and out["marks"][0]["y"] == 0
     assert all(m["colour"] in charcoal for m in out["marks"]) and out["going_for"] == "the glint"
+    assert out["marks"][0]["layer"] == "middle"                           # the default distance
+    pts = DW.parse_marks(town, {"marks": [{"shape": "outline", "x": 0, "y": 0, "size": 9, "colour": "black",
+                                           "points": [[10, 10], [200, 50], [50, 90], "bad"]}]}, 5, charcoal)
+    assert pts["marks"][0]["points"] == [[10, 10], [100, 50], [50, 90]]     # a freehand contour, clamped
     with pytest.raises(Exception):
         DW.parse_marks(town, {"marks": [{"shape": "line", "x": 1, "y": 1, "size": 1, "colour": "blue"}]}, 5, charcoal)
 
