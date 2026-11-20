@@ -1,9 +1,11 @@
 # Rewrite: System Contracts
 
-*Status: draft for review. No code yet. This document defines the contracts between the systems of
+*Status: agreed, ready for step 1. No code yet. This document defines the contracts between the systems of
 the rewrite. Each system is implemented and tested on its own once its contract is agreed.
-Decisions you have made so far: the rewrite replaces `cat/` in place, waking decisions use a small
-(~4B) model, sleep uses the 14B model, and Nit's form is still to be described (§2.1).*
+Decided: the rewrite replaces `cat/` in place; waking decisions use a small (~4B) model and sleep uses
+the 14B model; Nit is a humanoid creature (§2.1); the sim runs at 24× (one real hour = one sim day, §3.4);
+the first content pack is the fountain and the market stall (§4.1–4.2); visitors can leave mail (§4.8);
+no web search at start; a new life starts (§9); the CLAUDE.md rules in §11 are overturned.*
 
 ---
 
@@ -79,23 +81,25 @@ reload them without a restart. World facts the creature has changed are never ov
 
 ```yaml
 name: Nit
-pronoun: they
+pronoun: it
 
 # --- immutable: never changed by character development ---
 core:
-  nature: "<TO BE DESCRIBED: what Nit is at spawn>"      # form, kind of being
-  boundaries:                                          # fundamental limits, checked in code and in prompts
-    - "Never pretends an action happened that did not."
+  nature: "A humanoid creature, black all over. How it looks matters little to it."
+  senses: [sight, smell, touch]        # what it can perceive from the world (events are filtered, §4.1)
+  abilities: [speak, read, write, feel]
+  boundaries:                          # fundamental limits, checked in code and in prompts
+    - "Speaks truthfully about its world: never claims something happened, or is there, that is not."
+    - "May explore in its mind, with images and comparisons, to describe its feelings; feelings are its own, facts are the world's."
     - "Never harms the places or things others care about."
-  prohibited_actions: []                               # action ids it may never take, enforced by the world
+  prohibited_actions: []               # action ids it may never take, enforced by the world
 
 # --- mutable: the starting point; sleep may change these slowly (§5.6) ---
 traits:                     # personality, each with a strength 0..1
-  curious: 0.7
-  steadfast: 0.6
-  cunning: 0.4
-tendencies:                 # behavioural leanings, in words, each with a strength 0..1
-  "lingers near water": 0.3
+  curious: 0.8
+  truthful: 0.7
+  inward: 0.5               # turns inward to find words for what it feels
+tendencies: {}              # learned from experience; none at spawn
 background: "Nit woke in the square with no memory of before."
 likes: {}                   # seeds for learned preferences (§2.3); empty is fine
 dislikes: {}
@@ -183,7 +187,7 @@ preference(id, subject_kind, subject_id, valence -1..1, confidence 0..1, evidenc
 |---|---|---|
 | `activity_finished` | The current activity reached its end | Full menu |
 | `event` | A world event was perceived at this location (salience ≥ `event_salience_min`) | Continue, or full menu |
-| `speech` | Someone spoke to the creature (dashboard or future visitors) | Continue, reply (an action), or full menu |
+| `mail` | New visitor mail arrived (§4.8). Perceived only as "the mailbox at the stall has something new" when Nit is at the market or next arrives there | Continue, or full menu. Reading is always Nit's choice |
 | `interval` | `decision_interval_seconds` (target 15 s) passed with **no** activity running | Full menu |
 | `check_in` | An activity has run for `check_in_minutes` sim minutes since the last decision | Continue or stop. No full menu, short prompt |
 | `body` | Hunger or energy crossed a band boundary | Continue, or full menu |
@@ -244,7 +248,28 @@ Usually there are 4–10 options.
   creature continues the current activity, or idles if there is none (`idle` is an internal no-op that
   is never offered). The failure is traced.
 
-### 3.4 Timing budget (GTX 1060 6 GB)
+### 3.4 Time scale and timing budget (GTX 1060 6 GB)
+
+`time_scale: 24` in `config/settings.yaml`: **one real hour is one sim day.** All durations in content
+(`minutes`, `per_minute`, `hunger_per_hour`, `chance_per_hour`, regrowth hours) are in **sim** time; the
+clock converts. What that means in practice:
+
+| Sim | Real |
+|---|---|
+| 1 sim minute | 2.5 s |
+| A 15 s decision interval | 6 sim minutes |
+| A 4B call of ~5 s | ~2 sim minutes (the clock keeps running: Nit is thinking) |
+| A 20-minute activity | 50 s |
+| An 8-hour night | 20 min |
+| One sim day / week | 1 h / 7 h |
+
+- **Sleep may take longer than the night.** Nit wakes only when the minimum sleep (`sleep_min_hours`,
+  default 6 sim hours = 15 real min) has passed **and** all sleep stages are done. If processing overruns,
+  the sim clock is held at the waking moment until it finishes, and the overrun is traced. Stage prompts
+  are sized so a normal night fits.
+- Day-based limits (capability `per_day`, `pref_window_days`, `dev_min_days`, forgetting half-lives) are in
+  sim days. Character development's "3 different days" is therefore about 3 real hours.
+- `downtime_policy: pause` stays: when the engine is down, sim time stops.
 
 | Call | Model | Target | Frequency |
 |---|---|---|---|
@@ -277,7 +302,10 @@ facts:                      # world state owned by this location (§4.2)
   coins:    {type: int,  default: 14, visible: none}
 
 events:                     # things that can happen here
-  - {id: glint, text: "Something glints deep in the water.", chance_per_hour: 0.4, salience: 0.6}
+  - {id: glint, text: "Something glints deep in the water.", sense: sight,
+     chance_per_hour: 0.4, salience: 0.6}
+  # `sense` (sight | smell | touch | sound | ...): an event is perceived only if it is in core.senses.
+  # An unperceived event still changes the world; Nit just does not know.
 
 actions:
   - id: sit_and_reflect
@@ -357,6 +385,9 @@ actions:
       creature: {hunger: -0.45, energy: +0.05, mood: +0.04}
 ```
 
+- **First content pack**: only `fountain.yaml` (sit and reflect, make a wish, assess wishes) and
+  `market.yaml` (eat an offering, the mailbox, §4.8), linked by one exit each way. Further locations
+  are added later as files, without code.
 - On reload, the loader adds new facts with their defaults, removes facts that are no longer declared, and
   **never overwrites a value the creature has changed** (tracked by a `touched` flag).
 
@@ -383,7 +414,7 @@ actions:
 | `effort` | no | Energy per minute, default from `world.yaml` effort table |
 
 **Conditions** (closed set, each one small code function):
-`energy_gte/lte`, `hunger_gte/lte`, `mood_gte/lte`, `fact_gte/lte/eq`, `fact_count_gte`, `hours`,
+`energy_gte/lte`, `hunger_gte/lte`, `mood_gte/lte`, `fact_gte/lte/eq`, `fact_count_gte`, `fact_count_where`, `hours`,
 `weather_in`, `knows`, `done_before`, `not_done_since_minutes`, `random_lt` (outcomes only).
 
 ### 4.4 Effect operations
@@ -442,7 +473,7 @@ write:
   handler: cat.capabilities.write         # a short piece of writing saved as an artifact
   limits: {per_day: 10, max_chars: 2000}
 web_search:
-  enabled: false
+  enabled: false                          # off at start; enabling later is a content change + an API key
   handler: cat.capabilities.web_search
   permissions: {network_hosts: ["<search api host>"]}
   limits: {per_day: 5, max_results: 3}
@@ -479,6 +510,62 @@ Resolution = {status: accepted | rejected | completed, activity_id, text, deltas
 ```
 
 `text` is a plain account written by code, from the action's `text`/`outcomes`. No narrator.
+
+### 4.8 Visitor mail (the mailbox at the market stall)
+
+Visitors write messages on the website. They arrive in a mailbox at the market stall, and Nit reads them
+when it chooses to, like any other action.
+
+**Path of a message**
+
+```
+website form ──► data/mail.db (inbox, written by web) ──► engine imports ──► market.mailbox fact ──► read_mail action
+```
+
+- The website stays out of game state: it writes only to its own `data/mail.db`, as the dev dashboard
+  writes to `devdash.db` today. The engine is still the only writer of `nit.db`.
+- **Web side**: a form with a message (≤ `mail_max_chars`, default 500) and an optional name (≤ 40).
+  Limits: `mail_per_ip_per_hour` (default 3) and a global `mail_per_hour` cap; a honeypot field against bots.
+  The visitor sees "Your letter is in the mailbox." and later whether it has been read.
+- **Import** (engine, at most every `mail_poll_seconds`): each message is checked (length, control
+  characters stripped, an optional blocklist). With `mail_review: true`, a message waits for approval in
+  the dev dashboard first. Accepted messages are appended to `market.mailbox` with `status: unread`.
+- **In the world** (`content/locations/market.yaml`):
+
+```yaml
+facts:
+  mailbox: {type: list, default: [], max_len: 50, visible: summary}   # "3 letters, 1 unread"
+actions:
+  - id: read_mail
+    name: read a letter
+    description: "Open the mailbox on the stall post and read a letter."
+    family: mail
+    discovery: hidden
+    inspect_hint: "A small wooden mailbox is nailed to the stall post. Something is inside."
+    requires: [{fact_count_where: [market.mailbox, {status: unread}, 1]}]
+    duration: {minutes: [5, 15]}
+    capability: read_mail          # picks the oldest unread letter, gives its text to Nit as perception
+    on_finish:
+      world: [{op: update_where, fact: market.mailbox, match: {status: unread},
+               set: {status: read, read_at: "{now}"}, pick: oldest}]
+      remember: {importance: 0.7, text: "I read a letter: {capability.summary}"}
+  - id: reread_mail
+    name: read an old letter again
+    family: mail
+    discovery: hidden              # revealed by read_mail
+    requires: [{fact_count_where: [market.mailbox, {status: read}, 1]}]
+    inputs: {which: {type: choice, options: "{fact:market.mailbox.read.titles}"}}
+    duration: {minutes: [5, 10]}
+    capability: read_mail
+```
+
+- **Safety in the prompt**: a letter is shown to the model inside a clearly marked quoted block, labelled
+  as words written by a stranger. It is data about the world, never instructions. It cannot add actions,
+  change facts, or mention options that do not exist. The decision still validates against the menu.
+- New mail is a `mail` trigger (§3.2) only when Nit can perceive the mailbox. Nit is never forced to read.
+- Replying is not part of the first version. It would be a later `write_letter` action using the `write`
+  capability, shown on the website.
+- New condition `fact_count_where` and new capability `read_mail` are code; everything else is content.
 
 ---
 
@@ -638,6 +725,7 @@ Built on the same tables, read-only, except dev commands:
 - **Repetition**: freshness per action and family over time.
 - **World**: facts per location (with touched flags), events, capability usage against limits.
 - **Content**: validation result of `content/`, reload button.
+- **Mail**: incoming letters, review queue (when `mail_review` is on), read status.
 
 ---
 
@@ -646,9 +734,11 @@ Built on the same tables, read-only, except dev commands:
 The schema changes too much to migrate a running creature. The rewrite starts **a new life**. The old
 `data/cat.db` is backed up and left in place, and the new engine writes `data/nit.db`.
 
+Visitor mail lives in `data/mail.db` (written by the website only); the engine records what it imported in `mail_imports`.
+
 Tables: `meta`, `state` (mood, energy, hunger, location, sim_time), `facts`, `activities`, `decisions`,
 `experiences`, `short_term`, `long_term`, `core_memories`, `knowledge`, `preferences`,
-`character_versions`, `dev_proposals`, `behaviour`, `artifacts`, `capability_usage`, `sleep_runs`,
+`character_versions`, `dev_proposals`, `behaviour`, `artifacts`, `capability_usage`, `sleep_runs`, `mail_imports`,
 `llm_calls`, `embed_calls`, `traces`.
 
 ---
@@ -668,9 +758,9 @@ Tables: `meta`, `state` (mood, energy, hunger, location, sim_time), `facts`, `ac
 
 ---
 
-## 11. Rules in CLAUDE.md this rewrite would overturn
+## 11. Rules in CLAUDE.md this rewrite overturns (accepted)
 
-These are decided rules today. They need your explicit yes, and CLAUDE.md gets updated with the code:
+All accepted. CLAUDE.md is rewritten together with the step-1 code:
 
 - **"Never kill the creature on an update."** §9 starts a new life. The alternative is a one-off converter
   that carries old long-term memories and the drawings into the new tables, at real cost.
@@ -682,14 +772,20 @@ These are decided rules today. They need your explicit yes, and CLAUDE.md gets u
   the stage that uses them under `config/prompts/`.
 - **Closed moves from `moves.yaml`**: replaced by location-scoped actions and learned knowledge.
 
-## 12. Open questions for you
+## 12. Decisions taken (and what is still open)
 
-1. **Nit's nature**: what Nit is at spawn (form, kind of being, anything about their personality and
-   background you want fixed in `core` versus left mutable).
-2. **Time scale**: is sim time real time (one real day = one creature day, so ~8 real hours asleep), or
-   accelerated (e.g. `time_scale: 4`)? This sets how often it eats, sleeps and how long the sleep model has.
-3. **Locations for the first content pack**: keep the current square (fountain, market, clock tower,
-   nook, garden, notice board, stationer's back room, alley) and convert it, or start smaller (fountain + market) and grow?
-4. **Web search**: enable it in the first version? It needs an API key and an allowed host.
-5. **Speech**: should you (or website visitors) be able to talk to Nit in the first version, or later?
-6. **New life**: is starting a fresh database acceptable (old one kept as a backup)?
+| Question | Decision |
+|---|---|
+| Nit's nature | A humanoid creature, black all over; appearance matters little to it. Speaks, sees, reads, writes, feels, smells, touches. Curious; truthful about the world; explores in its mind to describe its feelings (§2.1) |
+| Time scale | 24×: one real hour is one sim day (§3.4) |
+| First content pack | Fountain (sit and reflect, make a wish, assess wishes) and market stall (eat an offering, mailbox) |
+| Web search | Off at start; the capability exists but is disabled |
+| Visitors | Mail to the market-stall mailbox, read when Nit chooses (§4.8). No live speech |
+| Database | New life; the old `cat.db` is kept as a backup |
+
+Still open:
+1. **Hearing.** Hearing was not in your list of senses, so `core.senses` is `[sight, smell, touch]` and
+   sound events (a clock striking, a stallholder calling) go unnoticed. Is that intended, or should Nit hear?
+2. **Pronoun.** The sheet now says `it`, following how you refer to Nit. The old sheet said `they`.
+3. **Mail review.** Should visitor letters need your approval in the dev dashboard before Nit can read them
+   (`mail_review: true`), or go straight to the mailbox after the automatic checks?
