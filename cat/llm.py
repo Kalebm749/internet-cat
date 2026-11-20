@@ -297,7 +297,8 @@ class MockBackend(LLMBackend):
             pick = (sleepy[0] if sleepy and (tired or not others) and r.random() < 0.6 else
                     r.choice(others or [i for i, _ in ids])) if ids else "m1"
             return {"reaction": "hm, ok.", "thought": "what next?", "move": pick,
-                    "why": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"])}
+                    "why": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"]),
+                    "entry": "I am doing this because I feel idle."}
         if task == "narrator":
             text = messages[-1]["content"] if messages else ""
             m = re.search(r"What happened \(decided by the world\): (.+)", text)

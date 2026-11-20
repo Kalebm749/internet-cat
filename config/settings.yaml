@@ -71,8 +71,8 @@ catch_up_min_gap_ticks: 3       # catch_up only: gaps shorter than this many tic
 catch_up_decay_multiplier: 1.0  # catch_up only: need decay during the gap (1.0 = normal speed)
 
 # --- needs, effects ---
-gain_values: {"0": 0, "+": 15, "++": 30}
-effort_energy_cost: {low: 2, medium: 6, high: 12}   # energy points an action's effort spends
+gain_values: {"0": 0, "+": 7, "++": 14, "meal": 28}   # points per bucket; moves.yaml picks the bucket ("meal" is for a proper meal)
+effort_energy_cost: {none: 0, low: 2, medium: 6, high: 12}   # energy points an effort costs per `moves.reference_minutes` of the move (resting is none)
 repetition_penalty:
   window: 6
   multiplier: 0.4
@@ -87,6 +87,9 @@ sustenance_need: sustenance    # the one need that only rises when an edible obj
 # --- moves: what the brain is offered each decision (config/moves.yaml defines the verbs) ---
 moves:
   max_offered: 30              # the menu is cut to this many: moving, sleeping and project work stay; the rest is a seeded random sample (never by need)
+  reference_minutes: 20        # a move of this length gives its full gains and costs its full effort ...
+  min_scale: 0.25              # ... a shorter one gives and costs proportionally less, down to this fraction
+  max_scale: 2.0               # ... and a longer one more, up to this multiple
   novelty_hours: 24            # a place not visited for this many sim hours counts as new (go: novelty gains)
   narrate: true                # a cheap prose call turns the result into a sentence; false = templated outcome
 

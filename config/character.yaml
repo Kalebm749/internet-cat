@@ -50,7 +50,7 @@ needs:
       empty: "Joy has drained away; everything feels heavy and joyless."
   peace:
     start: 70
-    decay_per_hour: 3
+    decay_per_hour: 4
     meaning: "Inner calm and stillness: freedom from restlessness, noise and worry."
     expressions:
       full: "A deep stillness has settled in you."

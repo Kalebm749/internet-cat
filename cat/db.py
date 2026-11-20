@@ -152,6 +152,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     _add_column(conn, "state", "activity", "JSON")          # what it is in the middle of (see the engine)
     _add_column(conn, "ticks", "activity_minutes", "INT")   # a move's full length when it spans several ticks
     _add_column(conn, "tick_traces", "activity", "JSON")    # an activity started, carried on, interrupted or finished
+    _add_column(conn, "ticks", "entry", "TEXT")             # the creature's own journal entry for the tick
     _add_column(conn, "ticks", "move_key", "TEXT")          # the move chosen: "verb" or "verb:target"
     _add_column(conn, "tick_traces", "director", "JSON")   # the world director's proposal and what code did
     _add_column(conn, "tick_traces", "project", "JSON")    # the narrator's project report and what code did

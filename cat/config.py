@@ -336,6 +336,11 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                 v = mv_.get(k)
                 if isinstance(v, bool) or not isinstance(v, int) or v < lo:
                     errs.append(f"settings.yaml moves.{k}: must be an integer >= {lo}")
+            for k_ in ("reference_minutes", "min_scale", "max_scale"):
+                if not _num(mv_.get(k_)) or mv_[k_] <= 0:
+                    errs.append(f"settings.yaml moves.{k_}: must be a number > 0")
+            if _num(mv_.get("min_scale")) and _num(mv_.get("max_scale")) and mv_["min_scale"] > mv_["max_scale"]:
+                errs.append("settings.yaml moves.min_scale: must not exceed max_scale")
             if not _num(mv_.get("novelty_hours")) or mv_["novelty_hours"] < 0:
                 errs.append("settings.yaml moves.novelty_hours: must be a number >= 0")
             if not isinstance(mv_.get("narrate"), bool):

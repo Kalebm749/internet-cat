@@ -20,7 +20,7 @@ def test_input_is_the_move_the_result_and_the_scene_never_needs(cfg, conn):
     msgs = narrator.build_messages(cfg, "eat a bowl of fish", world_text(cfg, conn), "You ate a bowl of fish.")
     blob = msgs[0]["content"] + msgs[1]["content"]
     assert "The entity chose: eat a bowl of fish" in blob and "You ate a bowl of fish." in blob
-    assert "Place: the kitchen" in blob and "7:40 pm" in blob and "Weather: rain" in blob and "a bowl of fish (edible, movable)" in blob
+    assert "Place: the kitchen" in blob and "7:40 pm" in blob and "Weather: rain" in blob and "- a bowl of fish" in blob and "edible" not in blob
     for word in ("sustenance", "wonder", "needs", "mood", "energy", "affinit", "gain", "project"):
         assert word not in blob.lower(), word
 

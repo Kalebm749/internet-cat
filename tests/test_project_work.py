@@ -104,7 +104,7 @@ def test_no_project_section_without_projects_and_never_a_number(cfg, conn):
 
 
 def test_the_brain_output_schema_has_no_project_field():
-    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling"}
+    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling", "entry"}
 
 
 def test_the_narrator_is_not_told_about_projects(cfg, conn):
@@ -186,6 +186,7 @@ def test_project_work_is_exempt_from_the_repetition_penalty(cfg, tmp_path):
         add_project(e)
         cfg.moves["verbs"]["look_out"]["effects"] = {"wonder": "++"}
         cfg.moves["verbs"]["work_on"]["effects"] = {"wonder": "++"}
+        cfg.moves["verbs"]["look_out"]["minutes"] = cfg.moves["verbs"]["work_on"]["minutes"] = [20, 20]   # full gains
         e.state["needs"]["wonder"] = 5.0
         e.tick()
         first = e.state["needs"]["wonder"]

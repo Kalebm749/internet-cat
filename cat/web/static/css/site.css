@@ -194,3 +194,11 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outlin
   @keyframes zzz { 0% { opacity: 0; transform: translate(0, 10px) scale(.7); } 25% { opacity: 1; } 100% { opacity: 0; transform: translate(14px, -26px) scale(1.2); } }
   .keepsake:nth-child(odd) { transform: rotate(-.6deg); } .keepsake:nth-child(even) { transform: rotate(.6deg); }
 }
+
+.entry-journal { font: 500 19px/1.35 var(--f-hand); margin: 6px 0 0 18px; color: var(--ink); }
+
+.bio-link { font: 500 14px/1 var(--f-head); margin-left: 12px; color: var(--ink-soft, var(--ink)); }
+.bio-page { max-width: 760px; margin: 0 auto; padding: 24px 16px 60px; display: grid; gap: 16px; }
+.bio-page ul { margin: 0; padding-left: 18px; }
+.bio-page li { margin: 4px 0; }
+.bio-page .why { opacity: .7; font-size: 14px; }

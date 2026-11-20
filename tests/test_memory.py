@@ -165,7 +165,7 @@ def test_notable_tick_creates_short_memory_shown_in_next_prompt(cfg):
     b.handlers["brain"] = lambda m, s: (prompts.append(m[-1]["content"]), pick(m, "look out and watch the world for a while", feeling="positive", reaction="wow"))[1]
     e.tick()
     shorts = e.memory.all_short()
-    assert len(shorts) == 1 and "look out and watch the world for a while" in shorts[0]["text"] and 'You felt: "wow"' in shorts[0]["text"]
+    assert len(shorts) == 1 and "look out and watch the world for a while" in shorts[0]["text"] and 'You wrote: "wow"' in shorts[0]["text"]
     assert shorts[0]["embedding"] is not None and shorts[0]["importance"] >= 0.5
     e.tick()
     assert "Earlier today:" in prompts[1] and "look out and watch the world for a while" in prompts[1]

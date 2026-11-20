@@ -95,3 +95,29 @@ def test_habit_settings_are_validated(tmp_path):
         tmp_path, "settings.yaml", lambda s: s["habits"].update(min_count=0))
     assert "habits.min_share: must be a number above 0 and up to 1" in _problems(
         tmp_path / "b", "settings.yaml", lambda s: s["habits"].update(min_share=0))
+
+
+def test_the_biography_page_gathers_what_it_has_learned_and_made(cfg):
+    from cat.web.app import create_app
+    conn = seed(cfg)
+    conn.execute("INSERT INTO preferences(subject,valence,reason,updated_at) VALUES('warm grass',0.5,'rested often','t')")
+    conn.execute("INSERT INTO self_image(text,confidence,formed_day,updated_at) VALUES('I seem to like warmth',0.6,'2026-11-18','t')")
+    conn.execute("INSERT INTO projects(title,activity,why,status,progress) VALUES('A map of the square','drawing','it keeps looking at the places','active',10)")
+    HB.commit(conn, [{"key": "k", "text": "You nap in the evening.", "part": "evening", "count": 5,
+                      "share": .8, "formed_day": "2026-11-18"}], "2026-11-18T22:00")
+    c = TestClient(create_app(cfg))
+    b = c.get("/api/biography").json()
+    assert b["core_traits"] and b["likes"][0]["reason"] == "rested often"
+    assert b["projects"][0]["why"] == "it keeps looking at the places" and b["habits"][0]["text"] == "You nap in the evening."
+    html = c.get("/biography").text
+    assert "A map of the square" in html and "warm grass" in html and "I seem to like warmth" in html
+    assert 'href="/biography"' in c.get("/").text
+
+
+def test_the_journal_shows_the_creatures_own_entry_instead_of_because_and_the_quote(cfg):
+    from cat.web.app import create_app
+    from cat import db as _db
+    conn = seed(cfg)
+    conn.execute("UPDATE ticks SET entry='I went to the garden because it feels familiar.', intent='familiar', reaction='nice' WHERE id=1")
+    html = TestClient(create_app(cfg)).get("/").text
+    assert "I went to the garden because it feels familiar." in html and "because: familiar" not in html

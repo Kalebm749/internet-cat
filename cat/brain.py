@@ -24,8 +24,9 @@ BRAIN_SCHEMA = {
         "move": {"type": "string"},
         "why": {"type": "string"},
         "feeling": {"type": "string", "enum": FEELINGS},
+        "entry": {"type": "string"},
     },
-    "required": ["reaction", "thought", "move", "why", "feeling"],
+    "required": ["reaction", "thought", "move", "why", "feeling", "entry"],
 }
 
 
@@ -223,6 +224,7 @@ def parse(raw: dict, menu: list) -> dict[str, Any]:
     return {"reaction": str(raw.get("reaction") or "").strip(),
             "thought": str(raw.get("thought") or "").strip(),
             "move": move, "why": str(raw.get("why") or "").strip(),
+            "entry": " ".join(str(raw.get("entry") or "").split()),
             "feeling": feeling if feeling in FEELINGS else "neutral"}
 
 

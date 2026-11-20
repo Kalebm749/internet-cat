@@ -56,6 +56,23 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             close(conn)
         return templates.TemplateResponse(request, "index.html", {"s": state, "before": before})
 
+    @app.get("/biography", response_class=HTMLResponse)
+    def biography(request: Request):
+        conn = open_db()
+        try:
+            b = views.biography_view(conn, cfg)
+        finally:
+            close(conn)
+        return templates.TemplateResponse(request, "biography.html", {"b": b})
+
+    @app.get("/api/biography")
+    def api_biography():
+        conn = open_db()
+        try:
+            return JSONResponse(views.biography_view(conn, cfg))
+        finally:
+            close(conn)
+
     @app.get("/healthz")
     def healthz():
         """Liveness for the container healthcheck: the app is up (and whether the DB is readable)."""
