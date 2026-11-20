@@ -37,7 +37,7 @@ class Move:
 
 # ---------- the menu ----------
 def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict],
-            projects: list[dict], can_sleep: bool, inventory_full: bool = False) -> list[Move]:
+            projects: list[dict], can_sleep: bool, inventory_full: bool = False, seed: str = "") -> list[Move]:
     """Every move possible right now, in a fixed order. `here` / `inventory` are world objects,
     `projects` the active projects, `can_sleep` whether going to sleep is allowed."""
     out: list[Move] = []
@@ -63,10 +63,25 @@ def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict
         for tid, name in targets:
             key = verb if tid is None else f"{verb}:{tid}"
             out.append(Move("", key, verb, tid, name, v["label"].format(target=name)))
-    out = out[:cfg.settings["moves"]["max_offered"]]
+    out = _cut(cfg, out, seed)
     for i, m in enumerate(out, 1):
         m.id = f"m{i}"
     return out
+
+
+def _cut(cfg: Config, moves: list[Move], seed: str) -> list[Move]:
+    """Keep the menu to `moves.max_offered`. Going somewhere, sleeping and working on a project always stay;
+    the rest are a seeded random sample (same seed, same menu), kept in file order. The sample ignores needs
+    completely: with a hundred verbs it is what lets every one of them come up now and then."""
+    cap = cfg.settings["moves"]["max_offered"]
+    if len(moves) <= cap:
+        return moves
+    always = {"move_self", "sleep", "work_on"}
+    keep = [i for i, m in enumerate(moves) if cfg.moves["verbs"][m.verb].get("does") in always]
+    rest = [i for i in range(len(moves)) if i not in set(keep)]
+    room = max(cap - len(keep), 0)
+    picked = set(random.Random(f"menu|{seed}").sample(rest, min(room, len(rest))))
+    return [m for i, m in enumerate(moves) if i in picked or i in set(keep)][:max(cap, len(keep))]
 
 
 def choose(menu: list[Move], raw: Any) -> Move | None:

@@ -91,8 +91,8 @@ def test_the_menu_is_identical_under_different_hash_seeds(tmp_path):
         "w = WorldState.seed(c, cfg, '2026-11-18T19:40')\n"
         "with db.transaction(c):\n    w.sync(c)\n"
         "w = WorldState.load(c, cfg, 'clear')\n"
-        "print(','.join(m.key for m in moves.offered(cfg, area_id='living_room', here=w.here('living_room'), "
+        "print(','.join(m.key for m in moves.offered(cfg, area_id='garden', here=w.here('garden'), "
         "inventory=[], projects=[], can_sleep=False)))\n")
     outs = {subprocess.run([sys.executable, str(script)], capture_output=True, text=True, cwd=os.getcwd(),
                            env={**os.environ, "PYTHONHASHSEED": str(s)}).stdout for s in (1, 2, 3, 4)}
-    assert len(outs) == 1 and "go:kitchen" in outs.pop()
+    assert len(outs) == 1 and "go:fountain" in outs.pop()

@@ -100,10 +100,10 @@ def test_the_situation_prompt_text_is_editable(tmp_path, conn):
     from cat.world import WorldState
     cfg = load_config(_edit(tmp_path, lambda d: d["brain"]["situation"].update(heading_who="## About you")))
     w = WorldState.seed(conn, cfg, "2026-11-18T19:40")
-    ctx = brain.BrainContext(sim_time="2026-11-18T19:40", area_id="living_room",
+    ctx = brain.BrainContext(sim_time="2026-11-18T19:40", area_id="garden",
                              needs={k: 50.0 for k in cfg.character["needs"]}, energy=40.0,
                              mood={"description": "calm", "word": "calm"}, tendencies={}, weather="rain",
-                             objects_here=w.here("living_room"), inventory=[])
+                             objects_here=w.here("garden"), inventory=[])
     assert brain.situation_prompt(cfg, ctx).startswith("## About you")
 
 

@@ -1,39 +1,78 @@
-# PLACEHOLDER — replace. A tiny house and garden.
+# PLACEHOLDER — replace. A small town square with a mysterious fountain at its centre.
+# Layout: the fountain connects to the market, the clock tower, the garden and the notice board;
+# the alley links the market and the garden, so there is a loop as well as the hub.
 areas:
-  living_room:
-    name: the living room
-    description: "A cosy room with a sofa and a big window."
-    exits: [kitchen, hallway]
-  kitchen:
-    name: the kitchen
-    description: "Tiles, a table, and the smell of food."
-    exits: [living_room]
-  hallway:
-    name: the hallway
-    description: "A narrow hallway with a door to the garden."
-    exits: [living_room, garden]
+  fountain:
+    name: the fountain
+    description: "The heart of the square. An old stone fountain stands in a wide basin, its water always faintly moving even when there is no wind. Nobody remembers who built it."
+    exits: [market, clock_tower, garden, notice_board]
+  market:
+    name: the market stalls
+    description: "Canvas-roofed stalls and stacked crates, loud with smells of bread and fruit."
+    exits: [fountain, alley]
+  clock_tower:
+    name: the clock tower
+    description: "A tall stone tower with a great clock face. Its stair winds up to where the whole square can be seen."
+    exits: [fountain]
   garden:
     name: the garden
-    description: "A small overgrown garden with a tree."
-    exits: [hallway]
+    description: "A quiet walled garden behind the old church, overgrown and warm, with an old tree."
+    exits: [fountain, alley]
+  notice_board:
+    name: the notice board
+    description: "A covered arcade where the town pins its notes, with a post box and a sheltered bench."
+    exits: [fountain]
+  alley:
+    name: the back alley
+    description: "A narrow shadowy lane between buildings, full of forgotten things and strange small sounds."
+    exits: [market, garden]
 
 objects:
-  - {id: sofa,    name: the sofa,         area: living_room, tags: [soft, warm, climbable], state: {}}
-  - {id: window,  name: the big window,   area: living_room, tags: [climbable], state: {open: "false"}}
-  - {id: cushion, name: a cushion,        area: living_room, tags: [soft, movable], state: {}}
-  - {id: bowl,    name: a bowl of fish,   area: kitchen,     tags: [edible, movable], state: {}}
-  - {id: ball,    name: a red ball,       area: hallway,     tags: [toy, movable], state: {}}
-  - {id: yarn,    name: a loose ball of yarn, area: garden, tags: [toy, movable], state: {}}
-  - {id: tree,    name: the old tree,     area: garden,      tags: [climbable], state: {}}
-  - {id: button,  name: a shiny button,   area: hallway,     tags: [shiny, movable], state: {}}
-  - {id: books,   name: a stack of old books, area: living_room, tags: [movable], state: {}}
-  - {id: stone,   name: a mossy stone,    area: garden,      tags: [movable, fragile], state: {}}
+  # the fountain
+  - {id: fountain,   name: the mysterious fountain,    area: fountain, tags: [wet], state: {wish: "none"}}
+  - {id: coins,      name: a scatter of old coins in the basin, area: fountain, tags: [shiny, wet], state: {}}
+  - {id: plaque,     name: a worn stone plaque,        area: fountain, tags: [], state: {}}
+  - {id: stone_bench, name: a sun-warmed stone bench,  area: fountain, tags: [warm], state: {}}
+  - {id: feather,    name: a white feather,            area: fountain, tags: [movable, toy], state: {}}
+  # the market stalls
+  - {id: bread,      name: a fresh loaf of bread,      area: market, tags: [edible, movable], state: {}}
+  - {id: apple,      name: a ripe apple,               area: market, tags: [edible, movable], state: {}}
+  - {id: stall,      name: the canvas-roofed stall,    area: market, tags: [hideable], state: {}}
+  - {id: crates,     name: a stack of wooden crates,   area: market, tags: [climbable], state: {}}
+  - {id: awning,     name: a rolled-up awning cloth,   area: market, tags: [soft, movable], state: {}}
+  # the clock tower
+  - {id: stair,      name: the winding stair,          area: clock_tower, tags: [climbable], state: {}}
+  - {id: clock,      name: the great clock face,       area: clock_tower, tags: [], state: {}}
+  - {id: bell,       name: the brass bell,             area: clock_tower, tags: [shiny], state: {}}
+  - {id: ledge,      name: a sunlit stone ledge,       area: clock_tower, tags: [warm, climbable], state: {}}
+  - {id: straw,      name: a tangle of nest straw,     area: clock_tower, tags: [soft, movable], state: {}}
+  # the garden
+  - {id: tree,       name: the old tree,               area: garden, tags: [climbable], state: {}}
+  - {id: grass,      name: a patch of warm soft grass, area: garden, tags: [soft, warm], state: {}}
+  - {id: stone,      name: a mossy stone,              area: garden, tags: [movable, fragile], state: {}}
+  - {id: roses,      name: a tangle of rose bushes,    area: garden, tags: [fragile], state: {}}
+  - {id: yarn,       name: a loose ball of yarn,       area: garden, tags: [toy, movable], state: {}}
+  # the notice board
+  - {id: board,      name: the notice board,           area: notice_board, tags: [], state: {}}
+  - {id: note,       name: a scrap of paper with faded writing, area: notice_board, tags: [movable], state: {}}
+  - {id: bellstring, name: a little brass bell on a string, area: notice_board, tags: [toy, shiny, movable], state: {}}
+  - {id: postbox,    name: the red post box,           area: notice_board, tags: [container], state: {}}
+  - {id: bench,      name: a sheltered wooden bench,   area: notice_board, tags: [warm], state: {}}
+  # the back alley
+  - {id: alley_crates, name: crates piled against the wall, area: alley, tags: [climbable, hideable], state: {}}
+  - {id: coin,       name: a dull coin,                area: alley, tags: [shiny, movable], state: {}}
+  - {id: top,        name: a battered wooden top,      area: alley, tags: [toy, movable], state: {}}
+  - {id: puddle,     name: a deep puddle,              area: alley, tags: [wet], state: {}}
+  - {id: sacking,    name: a heap of old sacking,      area: alley, tags: [soft, warm, hideable], state: {}}
 
 weather: [clear, cloudy, rain]   # first entry is the starting weather
 
 events:
   - {text: "It starts to rain.", chance: 0.03, set_weather: rain, drains: {joy: 3}}   # drains: points the world takes from needs when it fires
   - {text: "The rain stops.", chance: 0.08, only_weather: rain, set_weather: clear}
-  - {text: "A bird lands on the windowsill.", chance: 0.04, area: living_room, hours: [8, 18]}
-  - {text: "Someone leaves a bowl of fish.", chance: 0.08, area: kitchen,
-     spawn: {name: a bowl of fish, tags: [edible, movable], area: kitchen}}
+  - {text: "A pigeon lands on the edge of the fountain, looks around, and flies off.", chance: 0.04, area: fountain, hours: [7, 19]}
+  - {text: "Something glints for a moment deep in the fountain's water.", chance: 0.03, area: fountain}
+  - {text: "The clock strikes, slow and deep, and the sound rolls over the square.", chance: 0.03, area: clock_tower}
+  - {text: "A stallholder calls out a price, and someone laughs.", chance: 0.04, area: market, hours: [8, 17]}
+  - {text: "Someone sets out a fresh loaf of bread.", chance: 0.08, area: market,
+     spawn: {name: a fresh loaf of bread, tags: [edible, movable], area: market}}

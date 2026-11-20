@@ -1,0 +1,128 @@
+# The moves the world offers. Each decision, the brain is shown the moves that are possible right now
+# and picks one; CODE decides what the move does (which needs rise, how long it takes, what it costs,
+# what changes in the world). The menu is built from what is here and is never ordered or marked by
+# need. A verb is offered once per valid target, in this file's order.
+#
+#   label      text shown to the brain; {target} is the area, object or project name
+#   target     none | area | object | project
+#   reach      (object) here | carried | any    (default here)
+#   any_tags   (object) the target must have at least one of these tags
+#   effort     low | medium | high              energy cost, from settings effort_energy_cost
+#   minutes    [min, max]                       how long it takes (a seeded random pick)
+#   effects    {need: bucket}                   need gains, buckets as in settings gain_values
+#   by_tag     {tag: {need: bucket}}            extra gains when the target object has the tag
+#   novelty    {need: bucket}                   (area verbs) extra gains for somewhere not visited lately
+#   does       none | move_self | take | drop | consume | work_on | sleep
+#   only_when  always | can_sleep               `can_sleep`: only when it is allowed to go to sleep
+#   outcome    plain-words result, used when no narration is available; {target} as above
+# Only a `consume` verb may feed the sustenance need.
+
+verbs:
+  go:
+    label: "go to {target}"
+    target: area
+    effort: low
+    minutes: [5, 15]
+    effects: {}
+    novelty: {curiosity: "+", wonder: "+"}
+    does: move_self
+    outcome: "You went to {target}."
+  eat:
+    label: "eat {target}"
+    target: object
+    reach: any
+    any_tags: [edible]
+    effort: low
+    minutes: [5, 15]
+    effects: {sustenance: "++"}
+    does: consume
+    outcome: "You ate {target}."
+  play:
+    label: "play with {target}"
+    target: object
+    reach: any
+    any_tags: [toy]
+    effort: medium
+    minutes: [10, 30]
+    effects: {joy: "++"}
+    does: none
+    outcome: "You played with {target} for a while."
+  rest_on:
+    label: "rest on {target}"
+    target: object
+    any_tags: [soft, warm]
+    effort: low
+    minutes: [20, 60]
+    effects: {peace: "+"}
+    does: none
+    outcome: "You rested on {target}."
+  climb:
+    label: "climb {target}"
+    target: object
+    any_tags: [climbable]
+    effort: high
+    minutes: [10, 30]
+    effects: {wonder: "+", joy: "+"}
+    does: none
+    outcome: "You climbed {target}."
+  examine:
+    label: "look closely at {target}"
+    target: object
+    reach: any
+    effort: low
+    minutes: [5, 20]
+    effects: {curiosity: "+"}
+    by_tag: {shiny: {wonder: "+"}, fragile: {wonder: "+"}}
+    does: none
+    outcome: "You looked closely at {target}."
+  take:
+    label: "pick up {target}"
+    target: object
+    any_tags: [movable]
+    effort: low
+    minutes: [2, 5]
+    effects: {}
+    does: take
+    outcome: "You picked up {target}."
+  drop:
+    label: "put down {target}"
+    target: object
+    reach: carried
+    effort: low
+    minutes: [2, 5]
+    effects: {}
+    does: drop
+    outcome: "You put down {target}."
+  look_out:
+    label: "look out and watch the world for a while"
+    target: none
+    effort: low
+    minutes: [10, 30]
+    effects: {wonder: "+", peace: "+"}
+    does: none
+    outcome: "You watched the world for a while."
+  wait:
+    label: "sit quietly and do nothing for a while"
+    target: none
+    effort: low
+    minutes: [10, 30]
+    effects: {peace: "+"}
+    does: none
+    outcome: "You sat quietly for a while."
+  work_on:
+    label: "work on {target}"
+    target: project
+    effort: medium
+    minutes: [20, 60]
+    effects: {curiosity: "+", wonder: "+"}
+    does: work_on
+    outcome: "You worked on {target}."
+  sleep:
+    label: "go to sleep"
+    target: none
+    effort: low
+    minutes: [5, 5]
+    effects: {}
+    does: sleep
+    only_when: can_sleep
+    outcome: "You settled down to sleep."

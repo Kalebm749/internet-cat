@@ -27,7 +27,7 @@ def test_default_config_loads():
 
 
 def test_unmirrored_exit(tmp_path):
-    d = _edit(tmp_path, "world.yaml", lambda w: w["areas"]["kitchen"].update(exits=[]))
+    d = _edit(tmp_path, "world.yaml", lambda w: w["areas"]["clock_tower"].update(exits=[]))
     with pytest.raises(ConfigError, match="not mirrored"):
         load_config(d)
 

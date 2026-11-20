@@ -18,7 +18,7 @@ tendency_labels:
   sociability: [solitary, social]
   tidiness: [scruffy, tidy]
 
-start_area: living_room
+start_area: garden
 
 # Needs (0..100). Each level becomes one of four bands (settings.yaml need_bands): full, okay, low, empty.
 # The brain sees only the expressions of the most pressing needs, in words, never numbers and never a
