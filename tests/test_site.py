@@ -86,6 +86,10 @@ def test_website_pages(site):
     assert d["now"]["name"] == "Nit" and d["now"]["place"] in ("the fountain", "the market stall")
     page = site.get("/api/diary").json()
     assert page["entries"] and page["next"]
+    act = next(e for e in page["entries"] if e["kind"] == "activity" and e["status"] == "finished")
+    assert act["started"] <= act["time"] and act["start_clock"] == act["started"][-5:] and act["minutes"] >= 0
+    assert act["name"] and len(act["decided_real"]) == 8                       # HH:MM:SS, real time of the decision
+    assert f'Day {act["start_day"]}, {act["start_clock"]}</time> → {act["end_clock"]}' in site.get("/").text
     older = site.get("/api/diary", params={"before": page["next"]}).json()
     assert older["entries"] and all(e["time"] <= page["next"] for e in older["entries"])
     assert site.get("/api/now", params={"after": "9999"}).json()["entries"] == []

@@ -88,11 +88,16 @@ def diary(conn: sqlite3.Connection, content: Content, before: str | None = None,
     lo, hi = after or "", before or "9999"
     rows: list[dict] = []
     for r in conn.execute(
-            "SELECT a.id, a.ended_at, a.action_id, a.location, a.status, a.text, d.thought, d.letter "
+            "SELECT a.id, a.started_at, a.ended_at, a.action_id, a.location, a.status, a.text, d.thought, d.letter, "
+            "d.real_time "
             "FROM activities a LEFT JOIN decisions d ON d.id = a.decision_id "
             "WHERE a.ended_at IS NOT NULL AND a.ended_at > ? AND a.ended_at < ? ORDER BY a.ended_at DESC, a.id DESC "
             "LIMIT ?", (lo, hi, limit + 1)):
+        minutes = round((clock.parse(r["ended_at"]) - clock.parse(r["started_at"])).total_seconds() / 60)
         rows.append({"kind": "activity", "id": f"a{r['id']}", "time": r["ended_at"], "status": r["status"],
+                     "started": r["started_at"], "start_day": day_number(conn, r["started_at"]),
+                     "start_clock": r["started_at"][-5:], "end_clock": r["ended_at"][-5:], "minutes": minutes,
+                     "decided_real": (r["real_time"] or "")[11:19] or None,
                      "action": r["action_id"], "name": _name(content, r["action_id"]),
                      "place": _place(content, r["location"]), "text": r["text"], "thought": r["thought"] or None,
                      "answered_letter": bool(r["letter"])})

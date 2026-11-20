@@ -13,9 +13,28 @@
     li.className = `entry ${e.kind} ${e.status || ""}`;
     li.dataset.id = e.id;
     li.dataset.time = e.time;
+    const when = document.createElement("p");
+    when.className = "when";
     const t = document.createElement("time");
-    t.textContent = `Day ${e.day}, ${e.clock}`;
-    li.appendChild(t);
+    if (e.kind === "activity") {
+      t.dateTime = e.started;
+      t.textContent = `Day ${e.start_day}, ${e.start_clock}`;
+      when.appendChild(t);
+      const rest = e.status === "rejected" ? [" · tried to ", e.name, ", but could not"]
+        : [` → ${e.end_clock} (${e.minutes} min${e.status === "interrupted" ? ", stopped early" : ""}) · `, e.name, ""];
+      when.appendChild(document.createTextNode(rest[0]));
+      const b = document.createElement("b"); b.textContent = rest[1]; when.appendChild(b);
+      when.appendChild(document.createTextNode(rest[2]));
+      if (e.decided_real) {
+        const s = document.createElement("span"); s.className = "real";
+        s.textContent = ` decided at ${e.decided_real} your time`; when.appendChild(s);
+      }
+    } else {
+      t.dateTime = e.time;
+      t.textContent = `Day ${e.day}, ${e.clock}`;
+      when.appendChild(t);
+    }
+    li.appendChild(when);
     if (e.kind === "activity" && e.thought) {
       const p = document.createElement("p"); p.className = "thought"; p.textContent = e.thought; li.appendChild(p);
     }
