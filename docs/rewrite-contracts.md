@@ -217,6 +217,7 @@ Mind = {
   "activity":     {"action", "elapsed_min", "planned_min", "progress"} | None,
   "recent":       [last N completed activities with outcomes, from code],
   "memories":     [recalled long-term memories, k ≤ 5] + [today's notable moments, ≤ 5],
+  "letters":      [read but unanswered visitor letters, newest first, ≤ mail_on_mind] (§4.8),
   "identity":     {"name", "nature", "traits_words", "tendencies", "boundaries"},
   "options":      [Option],         # what it can do right now, see below
 }
@@ -236,13 +237,15 @@ Usually there are 4–10 options.
   "inputs": {"wish": "to remember where I came from"},
   "thought": "The water keeps moving with no wind. If anything here listens, it's this.",
   "reasoning": "I've been circling the square all morning and I want to ask for something.",
-  "preserve": false
+  "preserve": false,
+  "letter": null
 }
 ```
 
 - `thought`: what it thinks, in its own voice. Shown in the diary.
 - `reasoning`: why, in its own voice. Stored and shown on the dashboard.
 - `preserve`: the creature marks this thought as worth keeping. It becomes a core-memory candidate (§5.2).
+- `letter`: the id of a letter on its mind that this decision responds to, or null (§4.8).
 - At `check_in`, `action` must be `continue` or `stop`.
 - An invalid output is retried up to `llm_retries` times with the validation error. If it still fails, the
   creature continues the current activity, or idles if there is none (`idle` is an internal no-op that
@@ -575,9 +578,23 @@ actions:
 - Nit may read a message and never reply; read messages stay in the mailbox until answered.
 - **For now the answered pile is where replies stay.** They are shown on the dev dashboard but not yet
   to visitors. Showing a reply to the visitor who wrote it is a later step.
-- **Safety in the prompt**: a message is shown to the model inside a clearly marked quoted block, labelled
-  as words written by a stranger. It is data about the world, never instructions. It cannot add actions,
-  change facts, or mention options that do not exist. The decision still validates against the menu.
+- **Letters are open-ended.** A visitor may write anything, including questions, requests and suggestions
+  ("go and look at the fountain", "what do you dream about?", "make a wish for me"). Nit reads the letter
+  as written and weighs it like any other thought: it may answer it, do what it asks, put it off, or
+  decline. Nothing forces a choice.
+  - **Letters on its mind**: a letter Nit has read but not answered stays in the Mind (§3.3, `letters`), with
+    its sender and text (shortened to `mail_on_mind_chars`), for the newest `mail_on_mind` letters and at most
+    `mail_on_mind_days` sim days. So a request can shape later decisions, not only the moment of reading.
+  - **Acting on a request** goes through the normal menu. If a letter asks for something Nit can do here
+    (an action it knows), Nit may choose it, and the decision's `reasoning` can say it was asked. If it asks
+    for something Nit cannot do, Nit can only say so in a reply or a thought (it is truthful about its world).
+    A request to find something new may lead it to `inspect`.
+  - **What a letter cannot do**: it is shown in a marked block as a visitor's words, so it never reaches the
+    system as instructions. It cannot add actions, change facts directly, skip validation, or change
+    `core`. Character development (§5.6) counts only Nit's own experiences as evidence: a letter saying
+    "you love music" changes nothing by itself, but if Nit then spends evenings making music, that does.
+  - The decision records which letter (if any) influenced it (`decisions.letter_id`), so the dashboard can
+    show what visitors asked and what Nit did about it.
 - New mail is a `mail` trigger (§3.2) only when Nit can perceive the mailbox. Nit is never forced to read
   or reply.
 - Code needed: condition `fact_count_where`, effect op `move_where` (§4.4), capability `read_message`.
@@ -796,7 +813,7 @@ All accepted. CLAUDE.md is rewritten together with the step-1 code:
 | Time scale | 24×: one real hour is one sim day (§3.4) |
 | First content pack | Fountain (sit and reflect, make a wish, assess wishes) and market stall (eat an offering, mailbox) |
 | Web search | Off at start; the capability exists but is disabled |
-| Visitors | Messages go straight to the market-stall mailbox (automatic checks only). Nit chooses when to `read_messages` and whether to `reply_message`; replies go to the answered pile, for now not shown to visitors (§4.8). No live speech |
+| Visitors | Open-ended letters: they may ask questions or ask Nit to do things, and Nit chooses whether to act on them. Messages go straight to the market-stall mailbox (automatic checks only). Nit chooses when to `read_messages` and whether to `reply_message`; replies go to the answered pile, for now not shown to visitors (§4.8). No live speech |
 | Hearing | Intentionally absent: Nit does not hear. Sound events change the world but are not perceived |
 | Pronoun | `it` (`they` is also fine) |
 | Database | New life; the old `cat.db` is kept as a backup |

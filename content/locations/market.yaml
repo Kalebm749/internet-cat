@@ -8,7 +8,8 @@ sheltered: true
 
 facts:
   offerings: {type: int, default: 2, min: 0, max: 3, visible: full, regrow: {amount: 1, at_hours: [6, 12, 18]}}
-  mailbox: {type: list, default: [], max_len: 50, visible: summary}     # visitor messages: unread / read
+  mailbox: {type: list, default: [], max_len: 50, visible: summary}     # visitor letters: unread / read. Open-ended:
+                                                                        # read, unanswered ones stay on Nit's mind (§4.8)
   answered: {type: list, default: [], max_len: 200, visible: summary}   # the answered pile (§4.8)
 
 events:
