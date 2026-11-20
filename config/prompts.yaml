@@ -135,7 +135,6 @@ director:
     - text: one or two plain sentences, at most {text_max_length} characters, saying what happens
     - mood: optional, a small number from -1 to 1 for how the moment tends to feel
     - weather: optional, one of the weather options, only if the weather really changes
-    - spawn: optional {{name, tags}}: a small object that now lies here; tags only from: {allowed_tags}
     - drains: optional {{need: points}} only for something truly unsettling, at most {max_drain_points} points each. Need ids: {need_ids}
   user: |-                                                    # {area} {description} {time} {part} {weather} {weather_options} {objects} {recent_events} {recent_actions} {stale}
     Place: {area}. {description}

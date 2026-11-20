@@ -327,8 +327,8 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
                           "symbol": ARROWS[direction]})
     wc = []
     for c in json.loads(r["changes"] or "[]"):
-        if c.get("op") == "despawn" and c.get("area") != r["area"]:
-            continue                       # something gone somewhere else is not part of this moment
+        if c.get("op") in ("despawn", "create") and c.get("source") in ("world", "source") and c.get("area") != r["area"]:
+            continue                       # something gone, or put out by a source, somewhere else: not this moment
         text = _world_change_text(cfg, c)
         if text:
             wc.append({"op": c["op"], "label": c.get("label") or c.get("name") or "", "text": text})

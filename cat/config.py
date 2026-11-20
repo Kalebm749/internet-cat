@@ -121,7 +121,7 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
         errs.append("settings.yaml: object_lifetime_hours must be a mapping of who made it -> sim hours")
     else:
         for who, h in life.items():
-            if who not in ("event", "director", "creature"):
+            if who not in ("event", "director", "creature", "source"):
                 errs.append(f"settings.yaml: object_lifetime_hours: unknown maker '{who}' (event, director or creature)")
             elif not _num(h) or h < 0:
                 errs.append(f"settings.yaml: object_lifetime_hours.{who} must be a number of sim hours >= 0")
@@ -222,6 +222,23 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             ids.add(o["id"])
             if o["area"] not in areas and o["area"] != "inventory":
                 errs.append(f"world.yaml object '{o['id']}': unknown area '{o['area']}'")
+            for k in sorted(set(o) - {"id", "name", "area", "tags", "state", "purpose", "produces"}):
+                errs.append(f"world.yaml object '{o['id']}': unknown field '{k}'")
+            if "edible" in (o.get("tags") or []):
+                warns.append(f"world.yaml object '{o['id']}': a permanent object is edible; food should come from a source (produces)")
+            pr = o.get("produces")
+            if pr is not None:
+                w = f"world.yaml object '{o['id']}' produces"
+                if not isinstance(pr, dict) or not isinstance(pr.get("name"), str) or not isinstance(pr.get("tags"), list):
+                    errs.append(f"{w}: needs name and tags")
+                elif ("at_hour" in pr) == ("every_hours" in pr):
+                    errs.append(f"{w}: give exactly one of at_hour (0-23) or every_hours")
+                elif "at_hour" in pr and not (isinstance(pr["at_hour"], int) and 0 <= pr["at_hour"] <= 23):
+                    errs.append(f"{w}.at_hour: must be a whole hour 0-23")
+                elif "every_hours" in pr and not (_num(pr["every_hours"]) and pr["every_hours"] > 0):
+                    errs.append(f"{w}.every_hours: must be a number > 0")
+                elif not isinstance(pr.get("max", 1), int) or pr.get("max", 1) < 1:
+                    errs.append(f"{w}.max: must be a whole number >= 1")
     if isinstance(world, dict):
         for k in sorted(set(world) - WORLD_FIELDS):
             warns.append(f"world.yaml: unknown top-level field '{k}' (ignored)")

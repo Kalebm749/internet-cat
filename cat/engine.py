@@ -43,6 +43,7 @@ class Engine:
         self.backend = backend
         self.rng = rng or random.Random()
         self.conn = conn or db.connect(cfg.db_path)
+        self._protect()                 # a life is never lost to an update: back up before anything changes
         db.init_db(self.conn)
         self.time = time.time          # injectable for tests
         self.stop_requested = False
@@ -63,9 +64,101 @@ class Engine:
         self.memory = Memory(self.conn, cfg, backend, self.tracer)
         self._bootstrap()
         self._reconcile_config()
+        db.set_meta(self.conn, "config_fingerprint", self._fingerprint())
         self._load()
         self.dev = DevControl(self)
         self.dev.publish_config()
+
+    # ---------- keeping a life across updates ----------
+    def _fingerprint(self) -> str:
+        """What the world and the data look like to this version: the schema version and every config file."""
+        import hashlib
+        c = self.cfg
+        blob = json.dumps([db.SCHEMA_VERSION, c.world, c.character, c.moves, c.settings], sort_keys=True, default=str)
+        return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+    def _protect(self) -> None:
+        """Before an update touches an existing life (a schema migration, or a changed config that the world sync
+        and reconcile will apply), copy the database to data/backups/cat-<time>-pre-update.db. A brand-new world
+        needs no backup. If the backup fails, the engine refuses to go on rather than risk the life."""
+        try:
+            lived = self.conn.execute("SELECT 1 FROM ticks LIMIT 1").fetchone()
+        except sqlite3.OperationalError:
+            return                                            # a new database: nothing to protect yet
+        if not lived or str(self.cfg.db_path) == ":memory:":
+            return
+        changed = db.schema_version(self.conn) < db.SCHEMA_VERSION \
+            or db.get_meta(self.conn, "config_fingerprint") != self._fingerprint()
+        if changed:
+            dest = db.backup(self.conn, Path(self.cfg.db_path).parent / "backups", "pre-update",
+                             keep=int(self.cfg.settings.get("backup_keep", 14)))
+            log.warning("code or config changed since the last run: backed up the world to %s first", dest)
+
+    def _produce(self, now: str) -> list[dict]:
+        """World sources (world.yaml `produces`): the bread stall puts out a loaf each dawn, the tree drops fruit
+        every few hours, whether or not the creature is there, never more than `max` waiting. Products are made by
+        'source' and expire (settings object_lifetime_hours.source). When each source last made something is kept
+        in meta (written with the tick). Returns change records."""
+        out: list[dict] = []
+        t = clock.parse(now)
+        self._made = getattr(self, "_made", {})
+        for spec in self.cfg.world["objects"]:
+            pr = spec.get("produces")
+            src = self.world.objects.get(spec["id"])
+            if not pr or not src or src["area"] == "inventory":
+                continue
+            last = self._made.get(spec["id"]) or db.get_meta(self.conn, f"produced:{spec['id']}")
+            if "at_hour" in pr:
+                due = t.hour >= int(pr["at_hour"]) and (not last or last[:10] < now[:10])
+            else:
+                due = not last or (t - clock.parse(last)).total_seconds() / 3600 >= float(pr["every_hours"])
+            waiting = sum(1 for o in self.world.here(src["area"]) if o["created_by"] == "source" and o["name"] == pr["name"])
+            if not due or waiting >= int(pr.get("max", 1)) \
+                    or len(self.world.here(src["area"])) >= self.cfg.settings["max_objects_per_area"]:
+                continue
+            o = self.world.add_object(pr["name"], list(pr["tags"]), src["area"], "source", now)
+            self._made[spec["id"]] = now
+            out.append({"op": "create", "source": "source", "object_id": o["id"], "area": o["area"],
+                        "name": o["name"], "label": o["name"], "from": spec["id"]})
+        return out
+
+    def _sync_world(self, sim_time: str) -> list[str]:
+        """Keep the world's permanent things in step with world.yaml (they are the world's, so the file decides):
+        a changed object is updated (name, tags, its place unless carried; its state keeps what the world has done
+        to it), a new one is added, one no longer in the file is taken out. Never touched: anything the creature
+        made (its drawings) or is carrying, and food from sources (it expires). Objects the director made are taken
+        out (it no longer makes objects). Returns notes of what changed."""
+        cfg = self.cfg
+        want = {o["id"]: o for o in cfg.world["objects"]}
+        rows = {r["id"]: dict(r) for r in self.conn.execute("SELECT * FROM objects")}
+        notes: list[str] = []
+        with db.transaction(self.conn):
+            for oid, r in rows.items():
+                carried = r["area"] == "inventory"
+                if r["created_by"] == "world" and oid not in want and not carried:
+                    self.conn.execute("DELETE FROM objects WHERE id=?", (oid,))
+                    notes.append(f"removed '{oid}'")
+                elif r["created_by"] == "director" and not carried:
+                    self.conn.execute("DELETE FROM objects WHERE id=?", (oid,))
+                    notes.append(f"removed the director's '{oid}'")
+                elif r["created_by"] == "world" and oid in want:
+                    o = want[oid]
+                    st = {**(o.get("state") or {}), **json.loads(r["state"] or "{}")}
+                    area = r["area"] if carried else o["area"]
+                    new = (o["name"], dumps(list(o["tags"])), dumps(st), area)
+                    if new != (r["name"], r["tags"], r["state"], r["area"]):
+                        self.conn.execute("UPDATE objects SET name=?, tags=?, state=?, area=? WHERE id=?", (*new, oid))
+                        notes.append(f"updated '{oid}'")
+            for oid, o in want.items():
+                if oid not in rows:
+                    self.conn.execute(
+                        "INSERT INTO objects(id,name,area,tags,state,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+                        (oid, o["name"], o["area"], dumps(list(o["tags"])), dumps(dict(o.get("state") or {})),
+                         "world", sim_time))
+                    notes.append(f"added '{oid}'")
+        if notes:
+            log.warning("world.yaml changed: the world was brought in step: %s", "; ".join(notes))
+        return notes
 
     # ---------- state ----------
     def _bootstrap(self) -> None:
@@ -92,8 +185,8 @@ class Engine:
         Bring the saved state in line with it so a changed config never makes every tick fail:
         new needs/tendencies start at their configured value, removed needs are dropped (learned tendencies
         are never dropped), and a
-        creature standing in an area that no longer exists goes back to the start area.
-        (World objects are seeded once, on first start; a reset is needed to re-seed them.)"""
+        creature standing in an area that no longer exists goes back to the start area, and the world's permanent
+        objects follow world.yaml (`_sync_world`). Nothing the creature lived or made is reset."""
         st = db.get_state(self.conn)
         cfg, notes = self.cfg, []
         needs = {k: v for k, v in st["needs"].items() if k in cfg.character["needs"]}
@@ -116,20 +209,7 @@ class Engine:
         if area not in cfg.world["areas"]:
             area = cfg.character["start_area"]
             notes.append(f"area '{st['area']}' no longer exists: moved to '{area}'")
-        # an area added to world.yaml since the world was seeded gets its objects (e.g. the stationer's back room);
-        # objects of areas the world already knew are not re-added (eaten bread stays eaten)
-        known = {r[0] for r in self.conn.execute("SELECT DISTINCT area FROM objects")} \
-            | {r[0] for r in self.conn.execute("SELECT DISTINCT area FROM ticks")}
-        have = {r[0] for r in self.conn.execute("SELECT id FROM objects")}
-        fresh = [o for o in cfg.world["objects"] if o["area"] not in known and o["id"] not in have]
-        if fresh:
-            with db.transaction(self.conn):
-                for o in fresh:
-                    self.conn.execute(
-                        "INSERT INTO objects(id,name,area,tags,state,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
-                        (o["id"], o["name"], o["area"], dumps(list(o["tags"])), dumps(dict(o.get("state") or {})),
-                         "world", st["sim_time"]))
-            log.warning("new area(s) in world.yaml: added %s", ", ".join(o["id"] for o in fresh))
+        self._sync_world(st["sim_time"])                     # the world's permanent things follow world.yaml
         if not notes:
             return
         log.warning("config changed since the last run; adjusting saved state: %s", "; ".join(notes))
@@ -319,8 +399,9 @@ class Engine:
         now = st["sim_time"]
         dt = clock.parse(now)
 
-        # 0. things the world brought that have had their time are gone (recorded with this tick's changes)
-        self._expired = self.world.expire(now)
+        # 0. things the world brought that have had their time are gone, and sources put out what they make
+        #    (both recorded with this tick's changes)
+        self._expired = self.world.expire(now) + self._produce(now)
         # 1. world events (perceived at the start of the tick)
         rolls: list[dict] = []
         with self.tracer.stage("world"):
@@ -644,7 +725,9 @@ class Engine:
         drains = character.event_drains(fired)
         needs = character.apply_drains(needs, drains)
         calm = 1.0 - cfg.settings["anxiety"]["sleep_restore_penalty"] * anx_prev / 100 if cfg.settings["anxiety"]["enabled"] else 1.0
-        energy = character.restore_energy(st["energy"], sl["restore_per_sim_hour"] * minutes / 60 * calm)   # an anxious sleep rests less
+        nest = any("nest" in o["tags"] for o in self.world.here(st["area"]))     # its own place: it rests deeper
+        deep = float(sl.get("nest_restore_multiplier", 1.0)) if nest else 1.0
+        energy = character.restore_energy(st["energy"], sl["restore_per_sim_hour"] * minutes / 60 * calm * deep)   # an anxious sleep rests less
         self.tracer.set_need_math(character.explain_needs(
             before, minutes, None, cfg, needs, decay_multiplier=sl["decay_multiplier"], anxiety=anx_prev, drains=drains))
         new_time = clock.advance(now, minutes)
@@ -657,7 +740,8 @@ class Engine:
             morning = (new_dt.hour >= sl["wake_not_before_hour"]
                        and not clock.is_night(new_dt, s["phases"]))
             wake = (rested and morning) or slept_h >= sl["max_hours"]
-        mood_inputs: dict = {}
+        mood_inputs: dict = {"sleep_restore": {"per_hour": sl["restore_per_sim_hour"], "anxiety_factor": round(calm, 3),
+                                               "nest": nest, "nest_factor": deep}}
         anx = character.anxiety_next(anx_prev, needs, energy, minutes, cfg, asleep=True)
         mood = character.compute_mood(needs, nudge, None, energy, cfg, trace=mood_inputs, anxiety=anx)
         self.tracer.set_mood(mood_inputs, mood)
@@ -743,6 +827,9 @@ class Engine:
             if row.get("drawing"):          # the drawing's history, if its world change was applied
                 dr = row["drawing"]
                 DW.commit(self.conn, dr["plan"], row["changes"], tick_id, now, dr["sitting"], dr["title"])
+            for sid, when in getattr(self, "_made", {}).items():     # when each source last made something
+                db.set_meta(self.conn, f"produced:{sid}", when)
+            self._made = {}
             cut, self._drawing_cut = getattr(self, "_drawing_cut", None), None
             if cut:                         # a sitting that was interrupted lasted only this long
                 DW.cut_sitting(self.conn, cut[0], cut[1])

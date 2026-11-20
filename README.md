@@ -135,7 +135,9 @@ docker compose start engine web
 
 **Editing the character or world.**
 - Changing `settings.yaml`, `prompts.yaml`, tendencies, needs or areas is picked up on restart (settings and prompts can also be reloaded live from the dev dashboard). If you add or remove a need or tendency, the saved state is adjusted at startup (a new need starts at its `start` value; a creature in a removed area goes back to the start area).
-- World **objects** are seeded once, on the first start. Edits to the object list in `world.yaml` don't change an existing world: reset (above) to re-seed it.
+- **World objects follow `world.yaml`.** At every start the engine brings the world's permanent things in step with the file: changed objects are updated, new ones added, removed ones taken out. It never touches anything the creature made (its drawings) or is carrying, or its memories and history.
+
+**Updates never reset the creature.** When the code or config has changed since the last run, the engine first copies the database to `data/backups/cat-<time>-pre-update.db` (the newest `backup_keep` are kept), then runs any numbered schema migrations (`cat/db.py` `MIGRATIONS`), then syncs the world. If the backup fails, it refuses to start rather than risk the life. To undo an update, restore the pre-update copy (above).
 
 **Downtime** (the laptop was off, or the engine stopped). `downtime_policy` in `settings.yaml`:
 `pause` (default) resumes sim time exactly where it stopped and nothing decays; `catch_up` applies
