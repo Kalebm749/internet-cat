@@ -942,6 +942,15 @@ verbs:
     effects: {peace: +}
     does: move_self
     outcome: "You took the long way to {target}."
+  ring:
+    label: "ring {target}"
+    target: object
+    any_tags: [rings]
+    effort: low
+    minutes: [2, 5]
+    effects: {joy: "++", wonder: "+"}
+    does: none
+    outcome: "You rang {target}, and the sound went out over everything."
   # ---- making things: drawing at a `paper` object (cat/drawings.py). Each sitting adds to a real drawing; code
   #      draws it from what it chose to draw and how it was at each sitting. ----
   start_drawing:

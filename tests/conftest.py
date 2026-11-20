@@ -24,6 +24,7 @@ def cfg(tmp_path):
     c.settings["activity"]["enabled"] = False       # most tests want one decision per tick; test_activity turns it on
     c.settings["moves"]["shuffle"] = False          # most tests read the menu in file order; test_moves checks the shuffle
     c.settings["drives"]["enabled"] = False         # test_reflex turns them on
+    c.settings["director"]["allow_spawn"] = True    # the house tests (and test_director) keep the director's spawns
     return c
 
 

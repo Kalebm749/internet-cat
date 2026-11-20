@@ -94,6 +94,9 @@ def validate(cfg: Config, raw: Any, recent_events: list[str], here_count: int) -
             notes.append(f"unknown weather '{w}' ignored")
     spawn = None
     sp = h.get("spawn")
+    if sp and not d.get("allow_spawn", True):                 # the world's things are defined in world.yaml
+        notes.append("spawn ignored: the director makes happenings, not objects")
+        sp = None
     if isinstance(sp, dict) and str(sp.get("name") or "").strip():
         name = " ".join(str(sp["name"]).split())[:cfg.settings["name_max_length"]].strip()
         if not re.match(r"(?i)(a|an|the|some|two|three|several|many|one)\b", name):

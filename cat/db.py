@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2          # bump with each entry in MIGRATIONS; an existing database is migrated, never reset
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -177,8 +177,61 @@ def init_db(conn: sqlite3.Connection) -> None:
     _add_column(conn, "projects", "medium", "TEXT")       # 'drawing': its work is drawing, its pieces real drawings
     _add_column(conn, "artifacts", "drawing_id", "INT")   # a piece that is a real drawing (drawings.id)
     _add_column(conn, "ticks", "result", "TEXT")         # code's plain account of what the move did (never narrator prose)
+    migrate(conn)
+
+
+# ---------- migrations: an existing life is carried forward, never reset ----------
+def _m2_world_sources(conn: sqlite3.Connection) -> None:
+    """2: objects can be made by a world source (`produces` in world.yaml); nothing structural to change."""
+
+
+# (version, what it does, function). Each runs once, in order, inside one transaction, on any database older than it.
+# Add new ones at the end and bump SCHEMA_VERSION. The engine backs the database up before any of them run.
+MIGRATIONS: list[tuple[int, str, Any]] = [
+    (2, "world sources and the world sync", _m2_world_sources),
+]
+
+
+def schema_version(conn: sqlite3.Connection) -> int:
+    try:
+        return int(get_meta(conn, "schema_version") or 0)
+    except sqlite3.OperationalError:                          # no meta table yet: a new database
+        return 0
+
+
+def migrate(conn: sqlite3.Connection) -> list[str]:
+    """Run every migration newer than the database. A new database is simply stamped current."""
+    have = schema_version(conn)
+    if have == 0 and not conn.execute("SELECT 1 FROM ticks LIMIT 1").fetchone():
+        set_meta(conn, "schema_version", SCHEMA_VERSION)
+        return []
+    done = []
+    for version, what, fn in MIGRATIONS:
+        if version > max(have, 1):
+            with transaction(conn):
+                fn(conn)
+                set_meta(conn, "schema_version", version)
+            done.append(f"{version}: {what}")
     if get_meta(conn, "schema_version") is None:
         set_meta(conn, "schema_version", SCHEMA_VERSION)
+    return done
+
+
+def backup(conn: sqlite3.Connection, dest_dir: Path, label: str, keep: int = 10) -> Path:
+    """A consistent copy of the database (SQLite online backup API), checked; keeps the newest `keep` of this label."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    from datetime import datetime
+    dest = dest_dir / f"cat-{datetime.now():%Y-%m-%d-%H%M%S}-{label}.db"
+    out = sqlite3.connect(dest)
+    try:
+        conn.backup(out)
+        if out.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise RuntimeError("backup failed its integrity check")
+    finally:
+        out.close()
+    for old in sorted(dest_dir.glob(f"cat-*-{label}.db"))[:-keep]:
+        old.unlink(missing_ok=True)
+    return dest
 
 
 @contextmanager

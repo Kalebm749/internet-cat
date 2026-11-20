@@ -151,7 +151,7 @@ def test_tick_detail_explains_every_diary_entry_the_public_site_shows(world):
         # world changes tags come from the effects that were accepted (plus event spawns)
         accepted = [x for x in d["effects"] if x["accepted"]]
         site_ops = {w["op"] for w in e["world_changes"]}
-        assert site_ops <= {x["op"] for x in accepted} | {"create", "despawn"}   # spawns and expiries are the world's, not effects
+        assert site_ops <= {x["op"] for x in accepted} | {"create", "despawn", "work_on"}   # spawns, expiries, project work
         # the brain's and the journal's exact words are recorded
         kinds = {c["kind"] for c in d["llm"] if c["status"] == "ok"}
         if (t["intent"] or "").startswith("an impulse"):       # the fast path: no brain call at all

@@ -1,6 +1,14 @@
-# PLACEHOLDER — replace. A small town square with a mysterious fountain at its centre.
-# Layout: the fountain connects to the market, the clock tower, the garden and the notice board;
-# the alley links the market and the garden, so there is a loop as well as the hub.
+# A small town square with a mysterious fountain at its centre. Every object here is permanent and has a purpose:
+# it serves a need, a craft, or a mystery. Nothing is decoration. The engine keeps an existing world in step with
+# this file at every start (cat/engine.py `_sync_world`): changed objects are updated, new ones added, removed ones
+# taken out, but never anything the creature made or is carrying. A backup is taken first.
+#
+#   object fields: id, name, area, tags, state (optional), purpose (what it is for; documentation only),
+#   produces (optional: a source of things that come and go, e.g. food):
+#     {name, tags, at_hour: H (once a day at or after this hour) | every_hours: N, max: most waiting at once}
+#
+# Layout: the fountain is the hub (market, clock tower, garden, notice board, stationer's back room); the back alley
+# links the market and the garden; the nook is under the clock tower's stair.
 areas:
   fountain:
     name: the fountain
@@ -8,12 +16,16 @@ areas:
     exits: [market, clock_tower, garden, notice_board, studio]
   market:
     name: the market stalls
-    description: "Canvas-roofed stalls and stacked crates, loud with smells of bread and fruit."
+    description: "Canvas-roofed stalls, loud by day with smells of bread and talk."
     exits: [fountain, alley]
   clock_tower:
     name: the clock tower
-    description: "A tall stone tower with a great clock face. Its stair winds up to where the whole square can be seen."
-    exits: [fountain]
+    description: "A tall stone tower with a great clock face. Its stair winds up to where the whole square can be seen, and a brass bell hangs at the top."
+    exits: [fountain, nook]
+  nook:
+    name: the nook under the stair
+    description: "A dry hollow under the clock tower's winding stair, out of the wind and the rain. The bell's hum carries down here."
+    exits: [clock_tower]
   garden:
     name: the garden
     description: "A quiet walled garden behind the old church, overgrown and warm, with an old tree."
@@ -28,51 +40,49 @@ areas:
     exits: [fountain]
   alley:
     name: the back alley
-    description: "A narrow shadowy lane between buildings, full of forgotten things and strange small sounds."
+    description: "A narrow shadowy lane between buildings, full of strange small sounds. A deep puddle lies across it that never seems to dry."
     exits: [market, garden]
 
 objects:
-  # the fountain
-  - {id: fountain,   name: the mysterious fountain,    area: fountain, tags: [wet], state: {wish: "none"}}
-  - {id: coins,      name: a scatter of old coins in the basin, area: fountain, tags: [shiny, wet], state: {}}
-  - {id: plaque,     name: a worn stone plaque,        area: fountain, tags: [], state: {}}
-  - {id: stone_bench, name: a sun-warmed stone bench,  area: fountain, tags: [warm], state: {}}
-  - {id: feather,    name: a white feather,            area: fountain, tags: [movable, toy], state: {}}
-  # the market stalls
-  - {id: bread,      name: a fresh loaf of bread,      area: market, tags: [edible, movable], state: {}}
-  - {id: apple,      name: a ripe apple,               area: market, tags: [edible, movable], state: {}}
-  - {id: stall,      name: the canvas-roofed stall,    area: market, tags: [hideable], state: {}}
-  - {id: crates,     name: a stack of wooden crates,   area: market, tags: [climbable], state: {}}
-  - {id: awning,     name: a rolled-up awning cloth,   area: market, tags: [soft, movable], state: {}}
-  # the clock tower
-  - {id: stair,      name: the winding stair,          area: clock_tower, tags: [climbable], state: {}}
-  - {id: clock,      name: the great clock face,       area: clock_tower, tags: [], state: {}}
-  - {id: bell,       name: the brass bell,             area: clock_tower, tags: [shiny], state: {}}
-  - {id: ledge,      name: a sunlit stone ledge,       area: clock_tower, tags: [warm, climbable], state: {}}
-  - {id: straw,      name: a tangle of nest straw,     area: clock_tower, tags: [soft, movable], state: {}}
-  # the garden
-  - {id: tree,       name: the old tree,               area: garden, tags: [climbable], state: {}}
-  - {id: grass,      name: a patch of warm soft grass, area: garden, tags: [soft, warm], state: {}}
-  - {id: stone,      name: a mossy stone,              area: garden, tags: [movable, fragile], state: {}}
-  - {id: roses,      name: a tangle of rose bushes,    area: garden, tags: [fragile], state: {}}
-  - {id: yarn,       name: a loose ball of yarn,       area: garden, tags: [toy, movable], state: {}}
-  # the notice board
-  - {id: board,      name: the notice board,           area: notice_board, tags: [], state: {}}
-  - {id: note,       name: a scrap of paper with faded writing, area: notice_board, tags: [movable], state: {}}
-  - {id: bellstring, name: a little brass bell on a string, area: notice_board, tags: [toy, shiny, movable], state: {}}
-  - {id: postbox,    name: the red post box,           area: notice_board, tags: [container], state: {}}
-  - {id: bench,      name: a sheltered wooden bench,   area: notice_board, tags: [warm], state: {}}
-  # the back alley
-  - {id: alley_crates, name: crates piled against the wall, area: alley, tags: [climbable, hideable], state: {}}
-  - {id: coin,       name: a dull coin,                area: alley, tags: [shiny, movable], state: {}}
-  - {id: top,        name: a battered wooden top,      area: alley, tags: [toy, movable], state: {}}
-  - {id: puddle,     name: a deep puddle,              area: alley, tags: [wet], state: {}}
-  - {id: sacking,    name: a heap of old sacking,      area: alley, tags: [soft, warm, hideable], state: {}}
-  # the stationer's back room: somewhere to make things, and somewhere to put them up
-  - {id: paper,      name: a stack of drawing paper and charcoal, area: studio, tags: [paper], state: {}}
-  - {id: worktable,  name: a wide work table,          area: studio, tags: [], state: {}}
-  - {id: corkboard,  name: a cork pin board,           area: studio, tags: [board], state: {}}
-  - {id: paints,     name: a tin of watercolours,      area: studio, tags: [paints], state: {}}
+  # the fountain: rest, and the square's oldest mystery
+  - {id: fountain,    name: the mysterious fountain,   area: fountain, tags: [wet],
+     state: {wish: "none"}, purpose: "mystery: water always moving with no wind; a glint deep down"}
+  - {id: coins,       name: a scatter of old coins in the basin, area: fountain, tags: [shiny, wet],
+     purpose: "mystery: whose coins, and why here"}
+  - {id: plaque,      name: a worn stone plaque,       area: fountain, tags: [],
+     purpose: "mystery: words worn too far to read"}
+  - {id: stone_bench, name: a sun-warmed stone bench,  area: fountain, tags: [warm], purpose: "rest"}
+  # the market: food
+  - {id: stall,       name: the bread stall,           area: market, tags: [hideable], purpose: "food: a loaf each dawn",
+     produces: {name: a fresh loaf of bread, tags: [edible, movable], at_hour: 6, max: 2}}
+  # the clock tower: effort, joy, and a mystery
+  - {id: stair,       name: the winding stair,         area: clock_tower, tags: [climbable], purpose: "effort, a view"}
+  - {id: clock,       name: the great clock face,      area: clock_tower, tags: [],
+     purpose: "mystery: does it keep the right time?"}
+  - {id: bell,        name: the brass bell,            area: clock_tower, tags: [shiny, rings], purpose: "joy: ring it"}
+  # the nook: its own place to sleep
+  - {id: nest,        name: a nest of straw,           area: nook, tags: [soft, warm, nest], purpose: "sleep: rests deeper here"}
+  # the garden: rest, wonder, play, food
+  - {id: tree,        name: the old tree,              area: garden, tags: [climbable], purpose: "climb; food: fruit falls",
+     produces: {name: a fallen apple, tags: [edible, movable], every_hours: 9, max: 2}}
+  - {id: grass,       name: a patch of warm soft grass, area: garden, tags: [soft, warm], purpose: "rest"}
+  - {id: roses,       name: a tangle of rose bushes,   area: garden, tags: [fragile], purpose: "wonder"}
+  - {id: yarn,        name: a loose ball of yarn,      area: garden, tags: [toy, movable], purpose: "play"}
+  # the notice board: shelter, and messages that could one day arrive
+  - {id: board,       name: the notice board,          area: notice_board, tags: [], purpose: "mystery: the town's notes"}
+  - {id: note,        name: a scrap of paper with faded writing, area: notice_board, tags: [movable],
+     purpose: "mystery: a message nobody can quite read"}
+  - {id: postbox,     name: the red post box,          area: notice_board, tags: [container],
+     purpose: "mystery: what goes in, and does anything come out"}
+  - {id: bench,       name: a sheltered wooden bench,  area: notice_board, tags: [warm], purpose: "rest out of the rain"}
+  # the stationer's back room: making things
+  - {id: paper,       name: a stack of drawing paper and charcoal, area: studio, tags: [paper], purpose: "craft: drawing"}
+  - {id: paints,      name: a tin of watercolours,     area: studio, tags: [paints], purpose: "craft: colour"}
+  - {id: worktable,   name: a wide work table,         area: studio, tags: [], purpose: "craft: where drawings wait"}
+  - {id: corkboard,   name: a cork pin board,          area: studio, tags: [board], purpose: "craft: where drawings are shown"}
+  # the back alley: the strange place
+  - {id: puddle,      name: a deep puddle,             area: alley, tags: [wet],
+     purpose: "mystery: it never dries, and it is deeper than it looks"}
 
 # What is true of a thing with each tag, as the end of a sentence starting "It ...". Moves with `reveals: true`
 # (looking closely, turning something over, ...) report these, so the diary and the entity's journal have
@@ -93,9 +103,12 @@ tag_facts:
   board: has room to pin things up
   drawing: was drawn by your own hand
   paints: holds colours to paint with
+  rings: rings when it is struck
+  nest: is a place to sleep
 
 weather: [clear, cloudy, rain]   # first entry is the starting weather
 
+# Small things that happen (the world director adds more; it never creates objects). Food comes from `produces`.
 events:
   - {text: "It starts to rain.", chance: 0.03, set_weather: rain, drains: {joy: 3}}   # drains: points the world takes from needs when it fires
   - {text: "The rain stops.", chance: 0.08, only_weather: rain, set_weather: clear}
@@ -103,7 +116,5 @@ events:
   - {text: "Something glints for a moment deep in the fountain's water.", chance: 0.03, area: fountain}
   - {text: "The clock strikes, slow and deep, and the sound rolls over the square.", chance: 0.03, area: clock_tower}
   - {text: "A stallholder calls out a price, and someone laughs.", chance: 0.04, area: market, hours: [8, 17]}
-  - {text: "Someone sets out a fresh loaf of bread.", chance: 0.08, area: market,
-     spawn: {name: a fresh loaf of bread, tags: [edible, movable], area: market}}
-  - {text: "An apple drops from the old tree into the grass.", chance: 0.06, area: garden,
-     spawn: {name: a fallen apple, tags: [edible, movable], area: garden}}
+  - {text: "Something small scuttles in the dark of the alley, and is gone.", chance: 0.05, area: alley}
+  - {text: "The puddle shivers, though nothing has touched it.", chance: 0.03, area: alley}
