@@ -1,0 +1,15 @@
+# Code's plain accounts of what happened (docs/rewrite-contracts.md §4.7). No narrator: these are filled with facts.
+# Every entry and its placeholders are checked at start-up (cat/execute.py WORLD_TEXT_FIELDS).
+arrive: "You walk to {location}."
+inspect_found: "{hint} You realise you could {name} here."
+inspect_nothing: "You look carefully around, but find nothing new here."
+discovered: "You realise you could {name}."
+finished: "You {name}."
+interrupted: "You stop: {name}."
+rejected: "You meant to {name}, but could not: {reason}."
+fall_asleep: "You lie down and fall asleep."
+wake: "You wake up."
+reflection: "Your thoughts have settled; there is room to reflect."
+letter_read: "You read a letter from {sender} (a visitor's words):\n<<<{text}>>>"
+letter_gone: "The letter is not there any more."
+capability_failed: "It does not work out."

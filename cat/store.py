@@ -62,6 +62,63 @@ MIGRATIONS: list[list[str]] = [
             last_outcome  TEXT
         )""",
     ],
+    [  # 4: decisions, activities, experiences and capability use (§3, §4.7, §5.1)
+        # one row per decision: what it saw (mind), what it was asked (messages), every attempt, what it chose
+        """CREATE TABLE decisions (
+            id        INTEGER PRIMARY KEY,
+            sim_time  TEXT NOT NULL,
+            real_time TEXT NOT NULL,
+            kind      TEXT NOT NULL,
+            triggers  TEXT NOT NULL,
+            action    TEXT NOT NULL,
+            inputs    TEXT NOT NULL,
+            thought   TEXT NOT NULL,
+            reasoning TEXT NOT NULL,
+            preserve  INTEGER NOT NULL,
+            letter    TEXT,
+            fallback  INTEGER NOT NULL,
+            notes     TEXT NOT NULL,
+            attempts  TEXT NOT NULL,
+            messages  TEXT NOT NULL,
+            mind      TEXT NOT NULL,
+            dropped   TEXT NOT NULL,
+            ms        INTEGER NOT NULL
+        )""",
+        "CREATE INDEX idx_decisions_time ON decisions(sim_time)",
+        # one row per activity; status: running | finished | interrupted | rejected
+        """CREATE TABLE activities (
+            id              INTEGER PRIMARY KEY,
+            decision_id     INTEGER,
+            action_id       TEXT NOT NULL,
+            location        TEXT NOT NULL,
+            inputs          TEXT NOT NULL,
+            started_at      TEXT NOT NULL,
+            planned_minutes REAL NOT NULL,
+            ended_at        TEXT,
+            status          TEXT NOT NULL,
+            text            TEXT,
+            changes         TEXT NOT NULL DEFAULT '[]',
+            capability      TEXT
+        )""",
+        "CREATE INDEX idx_activities_status ON activities(status)",
+        # what happened, as code's facts: kind activity | event | discovery | note
+        """CREATE TABLE experiences (
+            id          INTEGER PRIMARY KEY,
+            sim_time    TEXT NOT NULL,
+            kind        TEXT NOT NULL,
+            action_id   TEXT,
+            activity_id INTEGER,
+            location    TEXT NOT NULL,
+            text        TEXT NOT NULL,
+            data        TEXT NOT NULL DEFAULT '{}',
+            thought     TEXT,
+            importance  REAL NOT NULL DEFAULT 0,
+            remember    INTEGER NOT NULL DEFAULT 0
+        )""",
+        "CREATE INDEX idx_experiences_time ON experiences(sim_time)",
+        "CREATE TABLE capability_usage (capability TEXT NOT NULL, day TEXT NOT NULL, uses INTEGER NOT NULL, "
+        "PRIMARY KEY (capability, day))",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

@@ -79,16 +79,21 @@ class Result:
 # ---------------------------------------------------------------- prompts
 
 def load_prompts(path: Path | str = PROMPTS_PATH) -> dict[str, str]:
+    return load_prompt_file(path, PROMPT_FIELDS)
+
+
+def load_prompt_file(path: Path | str, fields: dict[str, set[str]]) -> dict[str, str]:
+    """Load a prompt file and check that it has exactly these entries with exactly these placeholders."""
     data = yaml.safe_load(Path(path).read_text()) or {}
     probs = []
-    for key, want in PROMPT_FIELDS.items():
+    for key, want in fields.items():
         if not isinstance(data.get(key), str):
             probs.append(f"missing prompt '{key}'")
             continue
         have = {f for _, f, _, _ in string.Formatter().parse(data[key]) if f}
         if have != want:
             probs.append(f"prompt '{key}': placeholders {sorted(have)} should be {sorted(want)}")
-    for key in sorted(set(data) - set(PROMPT_FIELDS)):
+    for key in sorted(set(data) - set(fields)):
         probs.append(f"unknown prompt '{key}'")
     if probs:
         raise PromptError(f"{Path(path).name}: " + "; ".join(probs))

@@ -376,3 +376,12 @@ nit:
     on_mind: 3                   # read, unanswered letters shown in the Mind (newest first)
     on_mind_chars: 300           # each shortened to this many characters
     on_mind_days: 3              # and only for this many sim days after reading
+  loop:                          # the engine loop (cat/loop.py)
+    step_seconds: 2.5            # REAL seconds between loop steps (1 sim minute at time_scale 24)
+    doze_seconds: 30             # REAL seconds without decisions after the brain failed (Ollama down)
+    max_step_minutes: 60         # SIM minutes one step may advance (a stalled process catches up in pieces)
+  sleep:                         # §5: sleep as an activity (the sleep cycle's stages come in step 5)
+    min_hours: 6                 # SIM hours asleep before it may wake ...
+    wake_energy: 0.9             # ... once energy is back to this, outside the night window ...
+    max_hours: 12                # ... and at the latest after this long
+    night_hours: [21, 6]         # the night: it does not wake on its own in here (unless max_hours)

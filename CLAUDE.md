@@ -34,6 +34,14 @@ database (`data/nit.db`, the old `cat.db` kept as a backup), and world content l
   `cat/scheduler.py` (when to decide: interval while idle, check-ins during activities, merged triggers, never
   interrupts a decision). The mock answers `decide` from the schema. Tests: `test_scheduler.py`, `test_mind.py`,
   `test_decision.py`.
+- Done (step 4): `cat/execute.py` (activities: start/advance/complete/interrupt/reject; builtins move, inspect,
+  sleep; outcomes; world + body consequences; discoveries; events filtered by its senses; experiences), its fixed
+  words in `config/prompts/world.yaml`, `cat/capabilities/` (registry with per-sim-day limits; `read_message`),
+  `cat/loop.py` (the new engine loop: catch up sim time in whole minutes, decide, let thinking time pass, act; each
+  part one transaction; dozes when the brain fails; reloads from the DB after an error; injectable clock).
+  Tests: `test_execute.py`, `test_loop.py`. `draw`/`write` stay disabled until a location offers them.
+- Run the new engine: `.venv/bin/python -m cat.nit --mock --fast --hours 24` (into `data/nit-mock.db`), or
+  `.venv/bin/python -m cat.nit --ollama-host http://127.0.0.1:11434` (real time, `data/nit.db`).
 - See the Mind and one decision: `.venv/bin/python scripts/nit_mind.py [--know make_wish] [--event "..."]
   [--ollama-host http://127.0.0.1:11434]` (a fresh life in memory unless `--db`).
 - When adding to the content schema or the condition/op sets, update the spec, the validator and its tests together.

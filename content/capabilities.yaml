@@ -5,12 +5,12 @@ read_message:
   handler: cat.capabilities.read_message    # gives the chosen visitor message to the creature as perception
   limits: {per_day: 50}
 draw:
-  enabled: true
+  enabled: false                            # until the capability exists (no location offers drawing yet)
   handler: cat.capabilities.draw            # reuses cat/drawings.py + cat/art.py (step 4)
   permissions: {writes_artifacts: true}
   limits: {per_day: 6, llm_calls_per_use: 1}
 write:
-  enabled: true
+  enabled: false                            # until the capability exists
   handler: cat.capabilities.write
   permissions: {writes_artifacts: true}
   limits: {per_day: 10, max_chars: 2000}

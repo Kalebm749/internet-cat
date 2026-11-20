@@ -527,6 +527,23 @@ Resolution = {status: accepted | rejected | completed, activity_id, text, deltas
 
 `text` is a plain account written by code, from the action's `text`/`outcomes`. No narrator.
 
+### 4.7.1 As built (step 4)
+
+- `cat/execute.py` carries out decisions; `cat/loop.py` runs the steps. The sim clock has minute resolution:
+  the loop carries fractions, and durations are whole sim minutes.
+- A decision is checked again when it is carried out (time passed while it thought); if it can no longer
+  happen it is **rejected**: an activity row with status `rejected`, nothing else changes, and the creature
+  perceives "You meant to ..., but could not: ...".
+- A new action replaces the running one (interrupted, with on_interrupt or the progress share of its creature
+  effects); `stop` at a check-in ends it and asks again at once. Actions that are not `continuous` (move,
+  inspect, sleep) cannot be interrupted: triggers wait until they end.
+- Sleep lasts at least `nit.sleep.min_hours` and ends when energy reaches `wake_energy` outside `night_hours`,
+  or after `max_hours`. Nothing is perceived while asleep. (The sleep cycle's stages are step 5.)
+- Events roll every step (`chance_per_hour`, as a Poisson rate), change the world wherever they are, and are
+  perceived only here, awake, through one of its senses.
+- Capabilities run before the transaction, when the action starts; their result is stored with the activity
+  and used at its end. `draw` and `write` stay disabled until their code exists and a location offers them.
+
 ### 4.8 Visitor mail (the mailbox at the market stall)
 
 Visitors write messages on the website. They go straight into a mailbox at the market stall. Nit reads

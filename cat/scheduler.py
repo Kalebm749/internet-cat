@@ -8,7 +8,8 @@
 
 One decision at a time: triggers that arrive while a decision is in flight are queued and merged into the
 next one. The interval is a target: it never interrupts anything. While an activity runs and nothing
-happens, there are no decisions except check-ins. Pure logic: the caller passes the clocks in.
+happens, there are no decisions except check-ins; an activity that is not `continuous` (moving, inspecting,
+sleeping) cannot be interrupted, so triggers wait until it ends. Pure logic: the caller passes the clocks in.
 """
 from __future__ import annotations
 
@@ -54,6 +55,8 @@ class Scheduler:
         """The decision to make now, if any. `activity` is None or has `started` (sim time)."""
         if self.in_flight:
             return None
+        if activity is not None and not activity.get("continuous", True):
+            return None                     # moving, inspecting, sleeping: triggers wait until it ends
         if self.pending:
             finished = any(t.kind == "activity_finished" for t in self.pending)
             return Due("full" if finished or activity is None else "interrupt", list(self.pending))

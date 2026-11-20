@@ -46,6 +46,11 @@ SECTIONS = {
         "recent_activities": (0, 50),
         "prompt_tokens": (300, 32000),
     },
+    "loop": {
+        "step_seconds": (0.05, 60),
+        "doze_seconds": (1, 3600),
+        "max_step_minutes": (1, 24 * 60),
+    },
     "mail": {
         "on_mind": (0, 20),
         "on_mind_chars": (40, 4000),
@@ -55,7 +60,7 @@ SECTIONS = {
 INTEGER_KEYS = {"retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
                 "on_mind", "on_mind_chars"}
 MODEL_KEYS = ("decision_model", "sleep_model", "embed_model")
-TOP = {"db_path", "content_dir", "time_scale", "body", "models"} | set(SECTIONS)
+TOP = {"db_path", "content_dir", "time_scale", "body", "models", "sleep"} | set(SECTIONS)
 
 
 def _num(x: Any) -> bool:
@@ -98,6 +103,18 @@ def validate(nit: Any) -> list[str]:
     for name, spec in SECTIONS.items():
         if name in nit:
             _check_numbers(name, nit[name], spec, probs)
+    sl = nit.get("sleep")
+    if "sleep" in nit:
+        if not isinstance(sl, dict) or set(sl) != {"min_hours", "wake_energy", "max_hours", "night_hours"}:
+            probs.append("sleep must give min_hours, wake_energy, max_hours and night_hours")
+        else:
+            if not (_num(sl["min_hours"]) and _num(sl["max_hours"]) and 0 < sl["min_hours"] <= sl["max_hours"] <= 24):
+                probs.append("sleep: 0 < min_hours <= max_hours <= 24")
+            if not (_num(sl["wake_energy"]) and 0 < sl["wake_energy"] <= 1):
+                probs.append("sleep.wake_energy must be between 0 and 1")
+            nh = sl["night_hours"]
+            if not (isinstance(nh, list) and len(nh) == 2 and all(_num(h) and 0 <= h <= 24 for h in nh)):
+                probs.append("sleep.night_hours must be [from, to] hours")
     body = nit.get("body")
     if not isinstance(body, dict):
         return probs + (["body must be a mapping"] if "body" in nit else [])
