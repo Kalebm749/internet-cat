@@ -249,37 +249,7 @@ def keepsakes_view(conn, cfg: Config, offset: int = 0, limit: int | None = None)
 
 
 # ---------- diary ----------
-VOWELS = set("aeiou")
-REFLEXIVE = {"they": ("themself", "their"), "she": ("herself", "her"), "he": ("himself", "his"), "it": ("itself", "its")}
-
-
-def _gerund(word: str) -> str:
-    """watch -> watching, sit -> sitting, ease -> easing, lie -> lying, go -> going."""
-    w = word.lower()
-    if w.endswith("ie"):
-        return word[:-2] + "ying"
-    if w.endswith("e") and not w.endswith(("ee", "ye", "oe")) and len(w) > 2:
-        return word[:-1] + "ing"
-    if (len(w) <= 4 and len(w) >= 3 and w[-1] not in VOWELS | set("wxy") and w[-2] in VOWELS
-            and w[-3] not in VOWELS):
-        return word + word[-1] + "ing"
-    return word + "ing"
-
-
-def doing_phrase(cfg: Config, label: str) -> str:
-    """A move's label as what it is doing: "watch the ripples ..." -> "watching the ripples ...", with "yourself" and
-    "your" in its own pronoun ("hum a tune to yourself" -> "humming a tune to themself")."""
-    if not label:
-        return ""
-    first, _, rest = label.partition(" ")
-    refl, poss = REFLEXIVE.get(cfg.character.get("pronoun", "they"), REFLEXIVE["they"])
-    verbs = {v["label"].split()[0].lower() for v in cfg.moves["verbs"].values()} | {"do", "listen", "wait", "wonder"}
-    words = rest.split()
-    for i, w in enumerate(words):                      # "stay still and do nothing" -> "... and doing nothing"
-        if i and words[i - 1] == "and" and w.lower() in verbs:
-            words[i] = _gerund(w)
-    rest = " ".join(refl if w == "yourself" else poss if w == "your" else w for w in words)
-    return (_gerund(first) + (" " + rest if rest else "")).strip()
+from cat.moves import doing_phrase  # noqa: E402  (the move as what it is doing; shared with the engine)
 
 
 def _world_change_text(cfg: Config, c: dict) -> str | None:

@@ -154,6 +154,29 @@ def speech_register(cfg: Config, ctx: "BrainContext") -> str | None:
     return None
 
 
+def state_words(cfg: Config, needs: dict[str, float], energy: float, mood: dict) -> tuple[list[str], bool]:
+    """Plain words for how it is when something is wrong ("starving", "exhausted", "on edge"): each low or empty
+    need's own `words`, a tired or exhausted energy word, any anxiety word. Severe = a need empty, exhausted, or
+    anxiety in harms.anxious_words. Most pressing first."""
+    order = {"empty": 0, "low": 1}
+    rows = []
+    for nid, spec in cfg.character["needs"].items():
+        band = character.need_band(float(needs.get(nid, 100)), cfg)
+        w = (spec.get("words") or {}).get(band)
+        if band in order and w:
+            rows.append((order[band], float(needs[nid]), w))
+    words = [w for _, _, w in sorted(rows)]
+    ew = character.energy_word(energy, cfg)
+    if ew in ("exhausted", "tired"):
+        words.append(ew)
+    aw = character.anxiety_word(float(mood.get("anxiety", 0.0)), cfg)
+    if aw:
+        words.append(aw)
+    anxious = (cfg.settings.get("harms") or {}).get("anxious_words", [])
+    severe = any(r[0] == 0 for r in rows) or ew == "exhausted" or aw in anxious
+    return words, severe
+
+
 def state_lines(cfg: Config, mood: dict, energy: float) -> list[str]:
     """How it is right now, as impressions (never "you feel X", never a number): the mood line with the energy
     word, an anxiety line above the calm band, and how its words come. Shared by the brain and the journal."""
@@ -197,6 +220,9 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     L.append(R("time", time=clock.time_label(dt), part=clock.part_of_day(dt), weather=ctx.weather))
     L.append(R("place", area=area["name"], description=area["description"]))
     L.extend(state_lines(cfg, ctx.mood, ctx.energy))
+    words, _ = state_words(cfg, ctx.needs, ctx.energy, ctx.mood)
+    if words:
+        L.append(R("state_words", words=", ".join(words)))
 
     L.append("\n" + "\n".join(pulling_section(cfg, ctx.needs, ctx.stale_here)))
 

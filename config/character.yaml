@@ -24,6 +24,7 @@ needs:
   sustenance:
     start: 70
     decay_per_hour: 3
+    words: {low: hungry, empty: starving}     # plain words when it is severe (journal and brain)
     meaning: "Being nourished: having taken in what is needed to keep going."
     expressions:
       full: "You are thoroughly sustained, with nothing lacking."
@@ -33,6 +34,7 @@ needs:
   wonder:
     start: 60
     decay_per_hour: 3.5
+    words: {low: dulled, empty: deadened}     # plain words when it is severe (journal and brain)
     meaning: "Awe and delight at the world: being moved by what is beautiful, strange or vast."
     expressions:
       full: "The world is astonishing; even small things shimmer."
@@ -42,6 +44,7 @@ needs:
   joy:
     start: 60
     decay_per_hour: 3.5
+    words: {low: glum, empty: joyless}     # plain words when it is severe (journal and brain)
     meaning: "Lightness and play: enjoyment for its own sake."
     expressions:
       full: "You are bubbling with lightness and the urge to play."
@@ -51,6 +54,7 @@ needs:
   peace:
     start: 70
     decay_per_hour: 6
+    words: {low: restless, empty: frayed}     # plain words when it is severe (journal and brain)
     meaning: "Inner calm and stillness: freedom from restlessness, noise and worry."
     expressions:
       full: "A deep stillness has settled in you."
@@ -60,6 +64,7 @@ needs:
   curiosity:
     start: 50
     decay_per_hour: 5.5
+    words: {low: listless, empty: incurious}     # plain words when it is severe (journal and brain)
     meaning: "The pull to find out, explore and understand what is not yet known."
     expressions:
       full: "Questions are buzzing in you; you want to know more."

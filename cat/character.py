@@ -183,7 +183,8 @@ def need_label(need_id: str, cfg: Config) -> str:
 
 
 def apply_gains(needs: dict[str, float], gains: dict[str, str], cfg: Config,
-                consumed: bool = False, multiplier: float = 1.0, scale: float = 1.0) -> dict[str, float]:
+                consumed: bool = False, multiplier: float = 1.0, scale: float = 1.0,
+                factor: float = 1.0) -> dict[str, float]:
     """The narrator's buckets -> numbers, clamped. The narrator only adds. The sustenance need only
     gains when something edible was consumed this tick; the repetition multiplier shrinks only the
     needs listed in settings repetition_penalty.needs. Unknown need ids / buckets are ignored."""
@@ -202,15 +203,16 @@ def apply_gains(needs: dict[str, float], gains: dict[str, str], cfg: Config,
             gain *= scale                       # a longer move gives more (eating is a fixed amount, not scaled)
             if nid in slowed:
                 gain *= multiplier
-        out[nid] = clamp(out[nid] + max(0.0, gain))
+        out[nid] = clamp(out[nid] + max(0.0, gain * factor))
     if consumed and (gains or {}).get(sus) is None:   # eating guarantees a minimum gain
-        out[sus] = clamp(out[sus] + values[str(cfg.settings["consume_min_gain"])])
+        out[sus] = clamp(out[sus] + values[str(cfg.settings["consume_min_gain"])] * factor)
     return out
 
 
 def explain_needs(before: dict[str, float], minutes: float, gains: dict[str, str] | None,
                   cfg: Config, after: dict[str, float], consumed: bool = False,
                   multiplier: float = 1.0, decay_multiplier: float = 1.0, scale: float = 1.0, anxiety: float = 0.0,
+                  factor: float = 1.0,
                   drains: dict[str, float] | None = None,
                   dislike_drains: dict[str, float] | None = None) -> list[dict]:
     """Per-need breakdown of one tick's arithmetic, one row per need, for the dev dashboard. It only
@@ -241,6 +243,7 @@ def explain_needs(before: dict[str, float], minutes: float, gains: dict[str, str
         if consumed and nid == sus and bucket is None:
             shown = str(cfg.settings["consume_min_gain"])
             raw = float(values[shown])                     # eating guarantees a minimum gain
+        raw *= factor                                     # a move that went wrong gives less (harms)
         drain = float((drains or {}).get(nid, 0.0))
         dis = float((dislike_drains or {}).get(nid, 0.0))
         nominal = b - decay - drain - dis + raw * mult

@@ -214,7 +214,7 @@ def test_unknown_top_level_moves_field_is_a_warning(tmp_path, caplog):
 def test_the_default_menu_is_capped_but_always_keeps_moving_and_sleeping():
     from cat.config import load_config
     cfg = load_config(None)
-    assert len(cfg.moves["verbs"]) >= 90
+    assert 40 <= len(cfg.moves["verbs"]) <= 70                     # a curated set (was ~100 generated verbs)
     here = [{"id": "o1", "name": "a toy", "tags": ["toy", "movable", "soft", "warm", "shiny", "climbable"], "state": {}}]
     a = M.offered(cfg, area_id="fountain", here=here, inventory=[], projects=[], can_sleep=True, seed="x")
     assert len(a) <= cfg.settings["moves"]["max_offered"]
@@ -226,6 +226,7 @@ def test_the_default_menu_is_capped_but_always_keeps_moving_and_sleeping():
 def test_the_cut_is_deterministic_and_varies_with_the_seed_not_with_needs():
     from cat.config import load_config
     cfg = load_config(None)
+    cfg.settings["moves"]["max_offered"] = 10                 # fewer than the moves possible here, so there is a cut
     kw = dict(area_id="fountain", here=[], inventory=[], projects=[], can_sleep=False)
     one = [m.key for m in M.offered(cfg, seed="a", **kw)]
     assert one == [m.key for m in M.offered(cfg, seed="a", **kw)]

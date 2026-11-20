@@ -129,7 +129,7 @@ def test_default_needs_are_the_five_with_meaning_and_expressions():
     needs = load_config().character["needs"]
     assert list(needs) == ["sustenance", "wonder", "joy", "peace", "curiosity"]
     for n in needs.values():
-        assert set(n) == {"start", "decay_per_hour", "meaning", "expressions"}
+        assert {"start", "decay_per_hour", "meaning", "expressions"} <= set(n) <= {"start", "decay_per_hour", "meaning", "expressions", "words"}
         assert all(n["expressions"][b] for b in ("empty", "low", "full"))
     assert load_config().character["stale_here"]
 

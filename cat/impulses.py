@@ -74,6 +74,32 @@ def _path(cfg: Config, frm: str, to: str) -> list:
     return out
 
 
+def rest_drive(cfg: Config, world, energy: float, menu: list, area: str, seed: str) -> dict | None:
+    """Exhausted (energy word "exhausted"): with `exhaustion.rest_chance` it gives in. If its nest is a short way
+    off (at most 2 steps) and it can still walk, it heads there; otherwise it sleeps where it is. None otherwise."""
+    from cat import character
+    ex = cfg.settings.get("exhaustion") or {}
+    if character.energy_word(energy, cfg) != "exhausted" or not menu:
+        return None
+    p = float(ex.get("rest_chance", 0))
+    if random.Random(f"rest|{seed}").random() >= p:
+        return None
+    nest_area = next((o["area"] for o in world.objects.values() if "nest" in o["tags"] and o["area"] != "inventory"), None)
+    sleep = next((m for m in menu if cfg.moves["verbs"][m.verb].get("does") == "sleep"), None)
+    move, name = sleep, "rest"
+    if nest_area and nest_area != area:
+        path = _path(cfg, area, nest_area)
+        if None not in path and len(path) <= 2:
+            move = next((m for m in menu if cfg.moves["verbs"][m.verb].get("does") == "move_self"
+                         and m.target_id == path[0]), sleep)
+            name = "rest" if move is sleep else "nest"
+    if move is None:
+        return None
+    key = next((k for k in (f"impulse.drive_{name}", "impulse.drive") if P.lookup(cfg.prompts, k)), "impulse.default")
+    return {"impulse": f"drive: {name}", "move": move, "chance": p, "entry": P.render(cfg, key), "drive": "energy",
+            "band": "exhausted"}
+
+
 def drive(cfg: Config, conn, world, needs: dict[str, float], menu: list, area: str, seed: str) -> dict | None:
     """Innate drives (settings `drives`): the one place code picks a move because of a need. Only the most
     pressing need in a low or empty band may act, with the band's chance: it takes the move on the menu that feeds

@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 2          # bump with each entry in MIGRATIONS; an existing database is migrated, never reset
+SCHEMA_VERSION = 3          # bump with each entry in MIGRATIONS; an existing database is migrated, never reset
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS drawings(
   project_id INT,                                       -- the drawing project it was made for, if any
   sittings JSON,                                        -- [{tick_id, sim_time, minutes, mood, anxiety, energy}]
   started_sim_time TEXT, finished_sim_time TEXT, pinned_sim_time TEXT, discarded_sim_time TEXT, updated_at TEXT);
+
+-- how each moment went, for what it comes to like and dislike (cat/engine.py records, cat/sleep.py reads):
+-- one row per subject of a decision (the place, the thing, the activity) with a score: what happened to its needs
+-- beyond plain decay (gains minus drains and hurts) minus how much its anxiety rose.
+CREATE TABLE IF NOT EXISTS experiences(
+  id INTEGER PRIMARY KEY, tick_id INT, sim_time TEXT,
+  subject_kind TEXT, subject_key TEXT, subject_name TEXT, score REAL, note TEXT);
 
 -- long-term projects: formed in sleep, advanced by choosing their work (a work-on move, or drawing for a
 -- drawing project), with the pieces they leave behind
@@ -187,8 +194,13 @@ def _m2_world_sources(conn: sqlite3.Connection) -> None:
 
 # (version, what it does, function). Each runs once, in order, inside one transaction, on any database older than it.
 # Add new ones at the end and bump SCHEMA_VERSION. The engine backs the database up before any of them run.
+def _m3_experiences(conn: sqlite3.Connection) -> None:
+    """3: the experiences table (created by SCHEMA); older lives simply start with no experiences recorded."""
+
+
 MIGRATIONS: list[tuple[int, str, Any]] = [
     (2, "world sources and the world sync", _m2_world_sources),
+    (3, "experiences: how things went, for likes and dislikes", _m3_experiences),
 ]
 
 

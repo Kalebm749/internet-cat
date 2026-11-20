@@ -354,6 +354,19 @@ The brain sees the lines (text only) and is told it must not assert a form, spec
 
 Nothing here picks an action: code never chooses, suggests or ranks actions by project. It only remembers, reminds, and counts.
 
+### The body and the world have consequences
+
+- **Exhausted** (energy word *exhausted*): high- and medium-effort moves and long work are not offered (`exhaustion.blocks_effort`, `blocks_does`), and with `exhaustion.rest_chance` (0.8) a rest drive takes the decision. It heads for its nest if that is at most 2 steps away (`impulse.drive_nest`), otherwise it sleeps where it is (`impulse.drive_rest`). Sleep can happen by day; it wakes when rested.
+- **An empty need** ends a long activity at its next step (`activity.interrupt_while_empty`), and no project or drawing work is started while a need is empty (`empty_blocks_does`).
+- **Mood changes what is on offer** (`mood_menu`; the relaxed rule): moves.yaml gives moves a `mood`. In a *low* mood each *playful* move (play, dance, sing, games, splash) is left off with chance 0.5; in a *content* mood each *withdrawn* one (sulk, hide, curl up). Seeded, and the tick trace shows what was left off (`menu_shaping`).
+- **The world can hurt** (`cat/harms.py`):
+  - **Moves go wrong** (moves.yaml `hurts`): food left over `harms.stale_after_hours` (10) is stale (half the nourishment, joy drained); the bell hurts when it is on edge (drains peace, gives nothing); the alley puddle is cold (soaked: peace and energy); climbing while tired slips 30% of the time. The outcome text says what happened.
+  - **Exposure**, awake or asleep: in rain in a place that is not `sheltered` (world.yaml: the market, nook, notice board and studio are) it is soaked (`harms.rain`); a `noisy` place wears on it during its hours (the market, 8–17).
+  - Hurts and exposure drain needs (counted as event drains in the need math) and energy, and are traced in the tick's mood inputs.
+- **Likes and dislikes are earned** (table `experiences`, `cat/sleep.py` `evidence`): every decision scores how it went (need points beyond plain decay, minus `experience.anxiety_weight` × the anxiety rise) for its place, the thing it acted on, or an activity without an object. In sleep, a subject with at least `min_count` (3) of its latest `lookback` (12) moments averaging below `bad_below` becomes a dislike (above `good_above`, a like), with valence average ÷ `valence_scale`. The sleeping mind is shown these ("it went badly 3 of the last 4 times") and asked for dislikes as readily as likes; it words them, but their strength is the evidence's, earned ones are added even if it does not name them, and an opinion without evidence is capped at `experience.opinion_cap` (0.3).
+- **It can turn away** from things it dislikes: "turn away from …" and "leave … alone" are offered only for them (moves.yaml `disliked_only`).
+- **It knows how it is**: the brain and the journal get one plain line, "Right now you are: starving, exhausted, on edge." (each need's own `words` in character.yaml, the energy and anxiety words). The journal is also given every low or empty need's expression, and when the state is severe it is told that comes first.
+
 ### Drawing: things it makes that stay in the world
 
 In the **stationer's back room** (off the fountain) there is a stack of drawing paper and charcoal (tag `paper`), a tin of watercolours (tag `paints`), a work table and a cork pin board (tag `board`). Drawing is made of ordinary moves (moves.yaml), and code (`cat/drawings.py`) owns everything they do:
