@@ -328,6 +328,7 @@ def tick_detail(cfg: Config, tick_id: int) -> dict | None:
                 tick[k] = jload(tick[k], {} if k in ("gains", "needs_after", "mood_after") else [])
             ea = tick.get("energy_after")
             d["energy"] = round(ea, 2) if ea is not None else None
+            d["energy_raw"] = ea                                  # the public site rounds the raw value: so do we
             d["energy_effort"] = tick["effort"]
             d["energy_spent"] = cfg.settings["effort_energy_cost"].get(tick["effort"], 0) if tick["effort"] else 0
         d["events"] = rows(conn, "SELECT * FROM events WHERE tick_id=? ORDER BY id", tick_id)
@@ -370,8 +371,8 @@ def _public_view(cfg: Config, d: dict) -> dict | None:
               "word": character.need_word(k, na[k], cfg)} for k in cfg.character["needs"] if k in na]
     mood = tick["mood_after"] or {}
     return {"needs": needs, "mood": mood,
-            "energy": {"value": round(d["energy"]) if d.get("energy") is not None else None,
-                       "word": character.energy_word(d["energy"], cfg) if d.get("energy") is not None else None},
+            "energy": {"value": round(d.get("energy_raw", d["energy"])) if d.get("energy") is not None else None,
+                       "word": character.energy_word(d.get("energy_raw", d["energy"]), cfg) if d.get("energy") is not None else None},
             "area": d["clock"]["area"], "clock": d["clock"]["label"], "action": tick["action"],
             "outcome": tick["outcome"], "reaction": tick["reaction"],
             "events": [e["text"] for e in d["events"]],

@@ -263,29 +263,26 @@ def check(moves: Any, cfg_character: dict, settings: dict) -> tuple[list[str], l
             errs.append(f"{w}: does: {does} needs target: {want[does]}")
         if does == "sleep" and v.get("only_when") != "can_sleep":
             errs.append(f"{w}: does: sleep must set only_when: can_sleep (it is only offered when allowed)")
-    fr = ((settings.get("reflexes") or {}).get("feeding")) if isinstance(settings.get("reflexes"), dict) else None
-    if fr is not None:
-        w = "settings.yaml reflexes.feeding"
-        if not isinstance(fr, dict):
+    dr = settings.get("drives")
+    if dr is not None:
+        w = "settings.yaml drives"
+        if not isinstance(dr, dict):
             errs.append(f"{w}: must be a mapping")
         else:
-            if not isinstance(fr.get("enabled"), bool):
+            if not isinstance(dr.get("enabled"), bool):
                 errs.append(f"{w}.enabled: must be true or false")
-            c = fr.get("chance")
-            if isinstance(c, bool) or not isinstance(c, (int, float)) or not 0 <= c <= 1:
-                errs.append(f"{w}.chance: must be a number from 0 to 1")
-            bands = fr.get("bands")
-            if not isinstance(bands, list) or not bands or any(b not in ("empty", "low", "okay", "full") for b in bands):
-                errs.append(f"{w}.bands: must be a non-empty list of need bands (empty, low, okay, full)")
-            vs = fr.get("verbs")
-            if not isinstance(vs, list) or not vs:
-                errs.append(f"{w}.verbs: must be a non-empty list of verbs")
+            ch = dr.get("chance")
+            if not isinstance(ch, dict) or set(ch) - {"low", "empty"} or not all(
+                    isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1 for v in ch.values()) \
+                    or {"low", "empty"} - set(ch):
+                errs.append(f"{w}.chance: must give low and empty a number from 0 to 1")
+            ns = dr.get("needs")
+            if not isinstance(ns, list):
+                errs.append(f"{w}.needs: must be a list of need ids")
             else:
-                for vb in vs:
-                    if vb not in verbs:
-                        warns.append(f"{w}.verbs: no verb '{vb}' in moves.yaml (skipped)")
-                    elif (verbs[vb] or {}).get("does") != "consume":
-                        errs.append(f"{w}.verbs: '{vb}' is not a consume verb")
+                for n in ns:
+                    if needs and n not in needs:
+                        warns.append(f"{w}.needs: no need '{n}' in character.yaml (skipped)")
     if not any(isinstance(v, dict) and v.get("target") == "none" and v.get("does", "none") == "none" for v in verbs.values()):
         errs.append("moves.yaml: needs at least one verb with target: none and does: none, so there is always something to do")
     return errs, warns

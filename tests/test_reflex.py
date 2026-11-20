@@ -1,6 +1,5 @@
-"""The feeding reflex (settings reflexes.feeding): the one innate link from a need to a move. It fires only when
-sustenance is in a configured band and something edible is on the menu; it is rolled before the brain, traced
-like an impulse and shown in the diary. Plus the menu shuffle and the "(never tried)" marks."""
+"""Drives (settings `drives`): when a need is low or empty, its drive may take the move that feeds it most, or
+forage for food; the one place code picks by need. Plus the menu shuffle and the "(never tried)" marks."""
 import json
 import random
 
@@ -10,61 +9,64 @@ from cat.llm import MockBackend
 from tests.helpers import pick
 
 
-def on(cfg, chance=1.0):
-    cfg.settings["reflexes"]["feeding"].update(enabled=True, chance=chance, bands=["empty"], verbs=["eat"])
+def on(cfg, low=1.0, empty=1.0):
+    cfg.settings["drives"].update(enabled=True, chance={"low": low, "empty": empty})
 
 
-def menu(cfg, food=True):
-    here = [{"id": "fish", "name": "a bowl of fish", "tags": ["edible"], "state": {}}] if food else []
-    return M.offered(cfg, area_id="kitchen", here=here, inventory=[], projects=[], can_sleep=False)
-
-
-def needs(cfg, sus):
-    return {k: (sus if k == cfg.settings["sustenance_need"] else 80.0) for k in cfg.character["needs"]}
-
-
-def test_the_reflex_needs_an_empty_sustenance_and_food_on_the_menu(cfg):
-    on(cfg)
-    assert impulses.feeding_reflex(cfg, needs(cfg, 5.0), menu(cfg), "s")["move"].verb == "eat"
-    assert impulses.feeding_reflex(cfg, needs(cfg, 30.0), menu(cfg), "s") is None        # low, not empty
-    assert impulses.feeding_reflex(cfg, needs(cfg, 5.0), menu(cfg, food=False), "s") is None
-    cfg.settings["reflexes"]["feeding"]["enabled"] = False
-    assert impulses.feeding_reflex(cfg, needs(cfg, 5.0), menu(cfg), "s") is None
-
-
-def test_the_reflex_is_seeded_and_fires_at_about_its_chance(cfg):
-    on(cfg, chance=0.35)
-    hits = [impulses.feeding_reflex(cfg, needs(cfg, 5.0), menu(cfg), f"s{i}") for i in range(200)]
-    assert 40 < sum(1 for h in hits if h) < 100
-    assert impulses.feeding_reflex(cfg, needs(cfg, 5.0), menu(cfg), "s3") == \
-        impulses.feeding_reflex(cfg, needs(cfg, 5.0), menu(cfg), "s3")
-
-
-def test_in_the_engine_the_reflex_eats_without_a_brain_call_and_is_traced(cfg):
-    on(cfg)
-    cfg.settings["journal"]["enabled"] = False
+def make(cfg):
     b = MockBackend(seed=1)
     b.need_ids = list(cfg.character["needs"])
     calls = []
     b.handlers["brain"] = lambda m, s: (calls.append(1), pick(m))[1]
     e = Engine(cfg, b, rng=random.Random(1))
+    return e, calls
+
+
+def test_a_low_need_drives_the_move_that_feeds_it_and_a_fine_one_never_does(cfg):
+    on(cfg)
+    e, _ = make(cfg)
+    sus = cfg.settings["sustenance_need"]
+    e.state["area"] = "kitchen"
+    fine = {k: 80.0 for k in e.state["needs"]}
+    assert impulses.drive(cfg, e.conn, e.world, fine, e._menu(), "kitchen", "s") is None
+    d = impulses.drive(cfg, e.conn, e.world, {**fine, sus: 5.0}, e._menu(), "kitchen", "s")
+    assert d["drive"] == sus and d["move"].verb == "eat" and d["band"] == "empty"
+    cfg.settings["drives"]["chance"]["low"] = 0.0
+    assert impulses.drive(cfg, e.conn, e.world, {**fine, sus: 30.0}, e._menu(), "kitchen", "s") is None   # low: chance 0
+
+
+def test_hungry_with_nothing_here_it_forages_towards_food(cfg):
+    on(cfg)
+    e, _ = make(cfg)
+    sus = cfg.settings["sustenance_need"]
+    e.state["area"] = "garden"
+    with e.conn:                                   # it has been in the kitchen, where the fish is
+        e.conn.execute("INSERT INTO ticks(kind, sim_time, area) VALUES('tick', ?, 'kitchen')", (e.state["sim_time"],))
+    d = impulses.drive(cfg, e.conn, e.world, {**{k: 80.0 for k in e.state["needs"]}, sus: 5.0}, e._menu(), "garden", "s")
+    assert d["impulse"] == "drive: forage" and d["move"].verb == "go"
+    path = impulses._path(cfg, "garden", "kitchen")
+    assert d["move"].target_id == path[0]
+
+
+def test_in_the_engine_a_drive_needs_no_brain_and_is_traced(cfg):
+    on(cfg)
+    cfg.settings["journal"]["enabled"] = False
+    e, calls = make(cfg)
     e.state["area"] = "kitchen"
     e.state["needs"][cfg.settings["sustenance_need"]] = 5.0
     e.tick()
-    row = e.conn.execute("SELECT action, intent, entry, move_key FROM ticks WHERE kind='tick'").fetchone()
-    assert calls == [] and row["move_key"].startswith("eat:") and row["intent"] == "an impulse (feeding)"
-    assert row["entry"] == "The hollow decided before I did."
-    assert e.state["needs"][cfg.settings["sustenance_need"]] > 5.0
+    row = e.conn.execute("SELECT intent, move_key, entry FROM ticks WHERE kind='tick'").fetchone()
+    assert calls == [] and row["move_key"].startswith("eat:") and row["intent"].startswith("an impulse (drive")
     mi = json.loads(e.conn.execute("SELECT inputs FROM mood_math").fetchone()["inputs"])
-    assert mi["impulse"]["impulse"] == "feeding" and mi["impulse"]["reflex"] is True
+    assert mi["impulse"]["drive"] == cfg.settings["sustenance_need"]
 
 
-def test_reflex_settings_are_validated(tmp_path):
-    from tests.test_config import _problems
-    msg = _problems(tmp_path, "settings.yaml", lambda s: s["reflexes"]["feeding"].update(
-        verbs=["wait"], chance=2, bands=["starving"]))
-    assert "'wait' is not a consume verb" in msg and "chance: must be a number from 0 to 1" in msg \
-        and "bands: must be a non-empty list" in msg
+def test_a_need_newly_low_interrupts_what_it_was_doing(cfg):
+    e, _ = make(cfg)
+    act = {"label": "x", "remaining": 40, "total": 60, "empty_at_start": [], "low_at_start": []}
+    st = {"needs": {**{k: 80.0 for k in e.state["needs"]}, "joy": 30.0}}
+    assert e._interrupt_reason(act, [], st) == "need"
+    assert e._interrupt_reason({**act, "low_at_start": ["joy"]}, [], st) is None      # it was already low
 
 
 def test_the_menu_shuffle_is_seeded_and_changes_the_order(cfg):

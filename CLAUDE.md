@@ -26,17 +26,18 @@ A move longer than `activity.step_minutes` runs as one activity with hidden carr
 any event or a newly empty need interrupts it. Habits (`cat/habits.py`) are found by code, worded in sleep,
 and shown as "you tend to...". Need levels shape the brain's prompt
 (band words for the most pressing needs), never its choices: code never picks, suggests or ranks actions
-by need, with **one decided exception: the innate feeding reflex** (`reflexes.feeding`, `cat/impulses.py`): when
-sustenance is empty and something edible is on the menu, a seeded roll may take the eat move before the brain is
-asked (the first real run never ate once). It is traced and shown in the diary like an impulse; add no other
-need-driven picks without a decision. **Relaxed (decided): emotion and impulse may change what is offered, how it is shown and sometimes the
+by need, with **one decided exception: innate drives** (`drives`, `cat/impulses.py` `drive`): when a need is low or empty,
+its drive may take the move on the menu that feeds it most, before the brain is asked; hungry with nothing to eat
+here, it forages (towards where it has eaten or seen food). Only the most pressing need acts, never when needs are
+fine. Traced and shown in the diary like an impulse; add no other need-driven picks without a decision. **Relaxed (decided): emotion and impulse may change what is offered, how it is shown and sometimes the
 final pick** (see the cognitive plan); every override must be traced and visible in the diary. Energy is a **separate resource** (-50..50: effort spends it, sleep restores it), never a need.
 Mood is one number, a slider from -50 (negative) to 50 (positive), computed from need bands.
 
 ## Commands
 ```
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/pytest                                   # all tests (use MockBackend, no network)
+.venv/bin/pytest                                   # all tests, in parallel (pytest.ini: -n auto; -n 0 to debug)
+.venv/bin/pytest -n 0 tests/test_x.py              # while working: only the files you touch
 .venv/bin/python -m cat.main --mock --ticks 100    # run the engine with the mock brain
 .venv/bin/python scripts/simulate_balance.py       # no LLM: time each need spends in each band (tuning aid)
 .venv/bin/python scripts/measure_run.py --db data/cat.db   # read-only numbers on a real run (errors, list bias, needs, anxiety)

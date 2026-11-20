@@ -158,7 +158,9 @@ impulse:                                                   # first-person lines 
   default: "I did not stop to think about it. I just did it."
   restless: "I could not sit still, and before I had thought it through I was already doing this."
   freeze: "Everything felt like too much, so I stopped and held still."
-  feeding: "The hollow decided before I did."              # the innate feeding reflex (settings reflexes.feeding)
+  drive: "Something in me needed it, and I went for it before I had decided anything."   # a drive took over (settings drives)
+  drive_sustenance: "I needed something taken in, and went for it before I had decided anything."   # optional: impulse.drive_<need>
+  drive_forage: "I went looking for something to take in before I had decided to."   # hungry with nothing here
 
 habits:
   fallback: "You tend to {label} in the {part}."                 # {label} {part}; used when the model gives no line
