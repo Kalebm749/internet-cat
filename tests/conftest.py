@@ -25,6 +25,12 @@ def cfg(tmp_path):
     c.settings["moves"]["shuffle"] = False          # most tests read the menu in file order; test_moves checks the shuffle
     c.settings["drives"]["enabled"] = False         # test_reflex turns them on
     c.settings["director"]["allow_spawn"] = True    # the house tests (and test_director) keep the director's spawns
+    # the body's rules and earned likes are off for the older tests; test_body turns them on
+    c.settings["exhaustion"].update(rest_chance=0.0, blocks_effort=[], blocks_does=[])
+    c.settings["empty_blocks_does"] = []
+    c.settings["mood_menu"] = {}
+    c.settings["activity"]["interrupt_while_empty"] = False
+    c.settings["experience"].update(min_count=10 ** 6, opinion_cap=1.0)
     return c
 
 

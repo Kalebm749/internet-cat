@@ -14,6 +14,7 @@ from typing import Callable
 
 
 from cat import brain, character, clock, db, downtime, effects, impulses, journal, logs, sleep
+from cat import harms
 from cat import moves as MV
 from cat import drawings as DW
 from cat import director as DR
@@ -93,6 +94,29 @@ class Engine:
             dest = db.backup(self.conn, Path(self.cfg.db_path).parent / "backups", "pre-update",
                              keep=int(self.cfg.settings.get("backup_keep", 14)))
             log.warning("code or config changed since the last run: backed up the world to %s first", dest)
+
+    def _experiences(self, n: dict, row: dict, decayed: dict, needs: dict, anx_rise: float) -> list[dict]:
+        """One score for this decision (need points beyond plain decay: gains minus drains and hurts, minus the
+        anxiety rise), recorded for each of its subjects: the place, the thing it acted on, and an activity without
+        an object. Sleep turns the ones that keep going one way into likes and dislikes (cat/sleep.py evidence)."""
+        cfg, st = self.cfg, self.state
+        w = float((cfg.settings.get("experience") or {}).get("anxiety_weight", 0.5))
+        score = round(sum(needs[k] - decayed.get(k, needs[k]) for k in needs) - w * anx_rise, 2)
+        note = (n.get("hurt") or {}).get("outcome") or ""
+        out = [{"kind": "place", "key": st["area"], "name": cfg.world["areas"][st["area"]]["name"], "score": score,
+                "note": note}]
+        t = n.get("target")
+        if t:
+            out.append({"kind": "thing", "key": t["id"], "name": t["name"], "score": score, "note": note})
+        elif n["does"] == "none":
+            out.append({"kind": "activity", "key": row["move_key"], "name": MV.doing_phrase(cfg, row["action"]),
+                        "score": score, "note": note})
+        return out
+
+    def _harsh(self, minutes: float) -> dict:
+        """What the place and the weather take from it over these minutes (rain in the open, a noisy market)."""
+        st = self.state
+        return harms.exposure(self.cfg, st["area"], self.world.weather, st["sim_time"], minutes)
 
     def _produce(self, now: str) -> list[dict]:
         """World sources (world.yaml `produces`): the bread stall puts out a loaf each dawn, the tree drops fruit
@@ -289,11 +313,23 @@ class Engine:
                      or clock.is_night(dt, s["phases"]))
         seed = f"{st['sim_time']}|{st['area']}"
         drawing = DW.enabled(cfg) and any("paper" in o["tags"] for o in here)
-        return MV.offered(cfg, area_id=st["area"], here=here, inventory=inv,
+        blocked, effort = set(DW.blocked(cfg, self.world)), set()
+        ex = s.get("exhaustion") or {}
+        if character.energy_word(st["energy"], cfg) == "exhausted":       # the body can't: no effort, no long work
+            effort |= set(ex.get("blocks_effort") or [])
+            blocked |= set(ex.get("blocks_does") or [])
+        if any(character.need_band(v, cfg) == "empty" for v in st["needs"].values()):
+            blocked |= set(s.get("empty_blocks_does") or [])             # no starting projects while a need is empty
+        disliked = [r[0] for r in self.conn.execute("SELECT subject FROM preferences WHERE valence<0")]
+        menu = MV.offered(cfg, area_id=st["area"], here=here, inventory=inv,
                           projects=PJ.active(self.conn), can_sleep=can_sleep,
                           inventory_full=len(inv) >= s["inventory_max"], seed=seed,
                           subjects=DW.offered_subjects(cfg, self.conn, self.world, seed) if drawing else [],
-                          blocked=DW.blocked(cfg, self.world))
+                          blocked=blocked, disliked=disliked, blocked_effort=effort)
+        menu, dropped = MV.shape_by_mood(cfg, menu, (st.get("mood") or {}).get("word", ""), seed)
+        self._menu_shaping = {"mood": (st.get("mood") or {}).get("word"), "left_off": dropped,
+                              "exhausted": bool(effort), "blocked": sorted(blocked)}
+        return menu
 
     def _untried(self, menu: list) -> set[str]:
         """Verbs on this menu it has never made (a fact of its own history; `moves.mark_untried`). The prompt marks
@@ -447,8 +483,9 @@ class Engine:
                 # an impulse is the fast path: rolled BEFORE the brain, so when it fires there is no brain call
                 # and nothing it would have thought or felt is recorded against a move it did not choose
                 menu_now = self._menu()
-                impulse = (impulses.drive(cfg, self.conn, self.world, st["needs"], menu_now, st["area"],
-                                          f"{now}|{st['area']}")
+                impulse = (impulses.rest_drive(cfg, self.world, st["energy"], menu_now, st["area"], f"{now}|{st['area']}")
+                           or impulses.drive(cfg, self.conn, self.world, st["needs"], menu_now, st["area"],
+                                             f"{now}|{st['area']}")
                            or impulses.take_over(cfg, anx_prev, menu_now, f"{now}|{st['area']}"))
                 if impulse:                  # anxiety took the decision over: the world still only offers this menu
                     b = {"move": impulse["move"], "entry": impulse["entry"], "reaction": "", "thought": "",
@@ -460,15 +497,22 @@ class Engine:
                         ctx = self._brain_context(fired, recalled)
                         self.tracer.set_pressing({
                             **brain.select_needs(cfg, ctx.needs), "stale_here": ctx.stale_here,
+                            "menu_shaping": getattr(self, "_menu_shaping", None),
                             "ticks_in_area": self._ticks_in_area(), "stale_after_ticks": s["stale_after_ticks"],
                             "stale_text": cfg.character.get("stale_here") if ctx.stale_here else None})
                         b = brain.think(self.backend, cfg, ctx)
                 mv = b["move"]
                 res = self._resolve_move(mv, b["why"], now)
+                # the world can hurt: a move can go wrong (stale food, the bell when on edge, a slip, cold water)
+                target = dict(self.world.objects[mv.target_id]) if mv.target_id in self.world.objects else None
+                hurt = harms.move_hurt(cfg, mv.verb, target, anx_prev, st["energy"], now, f"{now}|{mv.key}")
+                if hurt:
+                    res["template"] = f"{res['template']} {hurt['outcome']}"
                 # what the diary shows as having happened is code's plain account: no prose layer can add to it
                 n = {"outcome": res["template"], "gains": res["gains"], "effort": res["effort"],
                      "duration": res["duration"], "changes": res["changes"], "project": res["project"],
-                     "does": res["does"], "template": res["template"], "drawing": res.get("drawing")}
+                     "does": res["does"], "template": res["template"], "drawing": res.get("drawing"), "hurt": hurt,
+                     "target": target}
                 result = (b, n)
             except BackendError as e:
                 log.warning("brain unavailable (%s): dozing", e)
@@ -499,22 +543,27 @@ class Engine:
             if exempt:
                 mult = 1.0
             needs = character.decay(before, minutes, cfg, anxiety=anx_prev)
-            drains = character.event_drains(fired)
+            decayed = dict(needs)                                 # for how this went (experiences)
+            hurt, harsh = n.get("hurt"), self._harsh(minutes)
+            drains = harms.merge(character.event_drains(fired), (hurt or {}).get("drains"), harsh["drains"])
             needs = character.apply_drains(needs, drains)
             dis, _ = self._dislike_drains(minutes, b["move"].label)
             needs = character.apply_drains(needs, dis)
             scale = character.duration_scale(cfg, n["duration"])
+            gf = float((hurt or {}).get("gain_factor", 1.0))
             needs = character.apply_gains(needs, n["gains"], cfg,
-                                          consumed=fx.consumed, multiplier=mult, scale=scale)
+                                          consumed=fx.consumed, multiplier=mult, scale=scale, factor=gf)
             if adv and adv.get("ok") and adv["completed"]:        # finishing a project feels good (code pays it)
                 needs = character.add_points(needs, cfg.settings["projects"]["completion_gains"])
             energy = character.spend_energy(st["energy"], n["effort"], cfg, scale=scale)
+            energy = character.clamp_energy(energy - (hurt or {}).get("energy", 0.0) - harsh["energy"])
+            self._harm_trace = {"hurt": hurt, "exposure": harsh}
             if adv is not None:
                 self.tracer.set_project({**adv, "repetition_exempt": exempt})
             self.tracer.set_effects(fx.log)
             self.tracer.set_need_math(character.explain_needs(
                 before, minutes, n["gains"], cfg, needs, consumed=fx.consumed, multiplier=mult, scale=scale,
-                anxiety=anx_prev, drains=drains, dislike_drains=dis))
+                anxiety=anx_prev, drains=drains, dislike_drains=dis, factor=gf))
             feeling = b["feeling"]
             new_area = fx.area
             row = {"kind": "tick", "entry": None, "reaction": b["reaction"], "thought": b["thought"],
@@ -550,12 +599,17 @@ class Engine:
                    "intent": None, "outcome": "dozing", "gains": {}, "effort": None,
                    "duration": minutes, "changes": [], "rejected": []}
 
-        mood_inputs: dict = {}
+        mood_inputs: dict = {k: v for k, v in (getattr(self, "_harm_trace", None) or {}).items() if v
+                              and (k != "exposure" or v.get("texts"))}
+        self._harm_trace = None
         if impulse:
             mood_inputs["impulse"] = {k: v for k, v in impulse.items() if k != "move"} | {"move": impulse["move"].key}
         anx = character.anxiety_next(anx_prev, needs, energy, minutes, cfg)
         mood_inputs["anxiety_before"] = round(anx_prev, 2)
         mood = character.compute_mood(needs, nudge, feeling, energy, cfg, trace=mood_inputs, anxiety=anx)
+        if result:                                        # how this went, for what it comes to like and dislike
+            row["experiences"] = self._experiences(result[1], row, decayed, needs, anx - anx_prev)
+            mood_inputs["experience"] = row["experiences"][0]["score"] if row["experiences"] else None
         self.tracer.set_mood(mood_inputs, mood)
         new_state = {**st, "area": new_area, "sim_time": clock.advance(now, minutes),
                      "needs": needs, "mood": mood, "energy": energy,
@@ -666,6 +720,9 @@ class Engine:
             empty = {k for k, v in st["needs"].items() if character.need_band(v, self.cfg) == "empty"}
             if empty - set(act.get("empty_at_start", [])):
                 return "need"
+        if a.get("interrupt_while_empty") and any(character.need_band(v, self.cfg) == "empty"
+                                                  for v in st["needs"].values()):
+            return "need"                               # an empty need ends whatever it was doing
         if a.get("interrupt_on_low_need"):              # a need newly low comes before what it was doing
             low = {k for k, v in st["needs"].items() if character.need_band(v, self.cfg) in ("low", "empty")}
             if low - set(act.get("low_at_start", act.get("empty_at_start", []))):
@@ -690,19 +747,21 @@ class Engine:
         minutes = min(s["activity"]["step_minutes"], act["remaining"])
         anx_prev = character.anxiety_of(st["mood"], cfg)
         needs = character.decay(before, minutes, cfg, anxiety=anx_prev)
-        drains = character.event_drains(fired)
+        harsh = self._harsh(minutes)
+        drains = harms.merge(character.event_drains(fired), harsh["drains"])
         needs = character.apply_drains(needs, drains)
         dis, _ = self._dislike_drains(minutes, act["label"])
         needs = character.apply_drains(needs, dis)
         self.tracer.set_need_math(character.explain_needs(before, minutes, None, cfg, needs, anxiety=anx_prev,
                                                           drains=drains, dislike_drains=dis))
-        mood_inputs: dict = {}
-        anx = character.anxiety_next(anx_prev, needs, st["energy"], minutes, cfg)
-        mood = character.compute_mood(needs, nudge, None, st["energy"], cfg, trace=mood_inputs, anxiety=anx)
+        energy = character.clamp_energy(st["energy"] - harsh["energy"])      # soaked in the rain wears it down
+        mood_inputs: dict = {"exposure": harsh} if harsh["texts"] else {}
+        anx = character.anxiety_next(anx_prev, needs, energy, minutes, cfg)
+        mood = character.compute_mood(needs, nudge, None, energy, cfg, trace=mood_inputs, anxiety=anx)
         self.tracer.set_mood(mood_inputs, mood)
         remaining = act["remaining"] - minutes
         new_act = None if remaining <= 0 else {**act, "remaining": remaining}
-        new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs, "mood": mood,
+        new_state = {**st, "sim_time": clock.advance(now, minutes), "needs": needs, "mood": mood, "energy": energy,
                      "weather": self.world.weather, "activity": new_act}
         self.tracer.set_activity({"state": "finished" if new_act is None else "carried", "label": act["label"],
                                   "minutes": minutes, "remaining": max(0, remaining)})
@@ -722,12 +781,14 @@ class Engine:
         minutes = sl["sim_minutes_per_tick"]
         anx_prev = character.anxiety_of(st["mood"], cfg)
         needs = character.decay(before, minutes * sl["decay_multiplier"], cfg, anxiety=anx_prev)
-        drains = character.event_drains(fired)
+        harsh = self._harsh(minutes)                       # asleep in the rain in the open: soaked all the same
+        drains = harms.merge(character.event_drains(fired), harsh["drains"])
         needs = character.apply_drains(needs, drains)
         calm = 1.0 - cfg.settings["anxiety"]["sleep_restore_penalty"] * anx_prev / 100 if cfg.settings["anxiety"]["enabled"] else 1.0
         nest = any("nest" in o["tags"] for o in self.world.here(st["area"]))     # its own place: it rests deeper
         deep = float(sl.get("nest_restore_multiplier", 1.0)) if nest else 1.0
         energy = character.restore_energy(st["energy"], sl["restore_per_sim_hour"] * minutes / 60 * calm * deep)   # an anxious sleep rests less
+        energy = character.clamp_energy(energy - harsh["energy"])
         self.tracer.set_need_math(character.explain_needs(
             before, minutes, None, cfg, needs, decay_multiplier=sl["decay_multiplier"], anxiety=anx_prev, drains=drains))
         new_time = clock.advance(now, minutes)
@@ -741,7 +802,8 @@ class Engine:
                        and not clock.is_night(new_dt, s["phases"]))
             wake = (rested and morning) or slept_h >= sl["max_hours"]
         mood_inputs: dict = {"sleep_restore": {"per_hour": sl["restore_per_sim_hour"], "anxiety_factor": round(calm, 3),
-                                               "nest": nest, "nest_factor": deep}}
+                                               "nest": nest, "nest_factor": deep},
+                       **({"exposure": harsh} if harsh["texts"] else {})}
         anx = character.anxiety_next(anx_prev, needs, energy, minutes, cfg, asleep=True)
         mood = character.compute_mood(needs, nudge, None, energy, cfg, trace=mood_inputs, anxiety=anx)
         self.tracer.set_mood(mood_inputs, mood)
@@ -824,6 +886,9 @@ class Engine:
                 db.set_meta(self.conn, "sleep_started", now)
                 db.set_meta(self.conn, "sleep_tick_id", tick_id)
                 db.set_meta(self.conn, "sleep_pending", 1)
+            for x in row.get("experiences") or []:
+                self.conn.execute("INSERT INTO experiences(tick_id,sim_time,subject_kind,subject_key,subject_name,score,note)"
+                                  " VALUES(?,?,?,?,?,?,?)", (tick_id, now, x["kind"], x["key"], x["name"], x["score"], x["note"]))
             if row.get("drawing"):          # the drawing's history, if its world change was applied
                 dr = row["drawing"]
                 DW.commit(self.conn, dr["plan"], row["changes"], tick_id, now, dr["sitting"], dr["title"])

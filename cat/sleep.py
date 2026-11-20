@@ -127,12 +127,48 @@ def clamp_tendencies(cfg: Config, current: dict[str, float],
     return new, changes
 
 
-def merge_preferences(cfg: Config, existing: dict[str, dict], proposed: Any) -> list[dict]:
+def evidence(conn: Connection, cfg: Config) -> dict[str, dict]:
+    """Likes and dislikes earned by what actually happened (table experiences): per subject, its latest
+    `experience.lookback` moments; at least `min_count`, with an average below `bad_below` (a dislike) or above
+    `good_above` (a like). {name lower: {subject, kind, valence, count, mean, reason}}."""
+    ex = cfg.settings.get("experience") or {}
+    if not ex:
+        return {}
+    try:
+        rows = conn.execute("SELECT subject_kind, subject_name, score FROM experiences ORDER BY id DESC LIMIT 5000").fetchall()
+    except Exception:
+        return {}
+    groups: dict[tuple[str, str], list[float]] = {}
+    for r in rows:
+        g = groups.setdefault((r["subject_kind"], r["subject_name"]), [])
+        if len(g) < int(ex["lookback"]):
+            g.append(float(r["score"]))
+    out = {}
+    for (kind, name), scores in groups.items():
+        if len(scores) < int(ex["min_count"]):
+            continue
+        mean = sum(scores) / len(scores)
+        if mean <= float(ex["bad_below"]) or mean >= float(ex["good_above"]):
+            val = round(max(-1.0, min(1.0, mean / float(ex["valence_scale"]))), 3)
+            bad = sum(1 for s_ in scores if s_ < 0)
+            reason = (f"it went badly {bad} of the last {len(scores)} times" if mean < 0
+                      else f"it went well {len(scores) - bad} of the last {len(scores)} times")
+            out[name.lower()] = {"subject": name, "kind": kind, "valence": val, "count": len(scores),
+                                 "mean": round(mean, 2), "reason": reason}
+    return out
+
+
+def merge_preferences(cfg: Config, existing: dict[str, dict], proposed: Any,
+                      earned: dict[str, dict] | None = None) -> list[dict]:
     """Blend tonight's opinions into existing valences. A brand-new preference starts weak
-    (proposal x blend) and strengthens only if the experience repeats."""
+    (proposal x blend) and strengthens only if the experience repeats. With `earned` (from `evidence`), how strong
+    a like or dislike is comes from what happened, not from the opinion: a proposal that names an earned subject
+    takes its earned valence, one without evidence is capped at `experience.opinion_cap`, and earned ones it did
+    not name are added anyway (strongest first), so dislikes form even if the sleeping mind leans positive."""
     sl = cfg.settings["sleep"]
     if not isinstance(proposed, list):
-        return []
+        proposed = []
+    cap = float((cfg.settings.get("experience") or {}).get("opinion_cap", 1.0)) if earned is not None else 1.0
     items = []
     for p in proposed:
         if not isinstance(p, dict):
@@ -141,7 +177,11 @@ def merge_preferences(cfg: Config, existing: dict[str, dict], proposed: Any) -> 
         v = p.get("valence")
         if not subj or isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
             continue
-        items.append((subj, max(-1.0, min(1.0, float(v))), str(p.get("reason") or "").strip()))
+        e = (earned or {}).get(subj.lower())
+        v = e["valence"] if e else max(-cap, min(cap, float(v)))
+        items.append((subj, max(-1.0, min(1.0, v)), str(p.get("reason") or (e or {}).get("reason") or "").strip()))
+    named = {t[0].lower() for t in items}
+    items += [(e["subject"], e["valence"], e["reason"]) for k, e in (earned or {}).items() if k not in named]
     items.sort(key=lambda t: -abs(t[1]))
     out, seen = [], set()
     for subj, v, reason in items:
@@ -282,11 +322,13 @@ def tendencies_messages(cfg: Config, summary: str, current: dict[str, float]) ->
 
 
 def preferences_messages(cfg: Config, summary: str, log_lines: list[str],
-                         existing: dict[str, dict]) -> list[dict]:
+                         existing: dict[str, dict], earned: dict[str, dict] | None = None) -> list[dict]:
     ex = "\n".join(f"- {p['subject']} ({p['valence']:+.1f})" for p in existing.values()) \
         or P.render(cfg, "sleep.none_existing_preferences")
+    ev = "\n".join(f"- {e['subject']}: {e['reason']}" for e in sorted((earned or {}).values(), key=lambda e: e["valence"])) \
+        or P.render(cfg, "sleep.none_evidence")
     user = P.render(cfg, "sleep.preferences", summary=summary, log=_lines(cfg, log_lines, "none_log"),
-                    existing=ex, n=cfg.settings["sleep"]["max_preferences_per_night"])
+                    existing=ex, n=cfg.settings["sleep"]["max_preferences_per_night"], evidence=ev)
     return [{"role": "system", "content": _sys(cfg, "preferences")},
             {"role": "user", "content": user}]
 
@@ -332,10 +374,11 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
 
     rows = conn.execute("SELECT subject, valence, reason FROM preferences").fetchall()
     existing = {r["subject"].lower(): dict(r) for r in rows}
+    earned = evidence(conn, cfg)
     raw_p = call_json(backend, "preferences", model,
-                      preferences_messages(cfg, summary, lines, existing),
+                      preferences_messages(cfg, summary, lines, existing, earned),
                       PREFERENCES_SCHEMA, lambda r: r.get("preferences"), retries)
-    prefs = merge_preferences(cfg, existing, raw_p)
+    prefs = merge_preferences(cfg, existing, raw_p, earned)
 
     si_rows = [dict(r) for r in conn.execute(
         "SELECT id, text, confidence, formed_day FROM self_image ORDER BY id")]

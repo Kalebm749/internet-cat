@@ -107,6 +107,7 @@ activity:
   interrupt_on_events: true    # any event (hand-written, injected or the director's) ends it
   interrupt_on_empty_need: true   # a need newly dropping into the empty band ends it
   interrupt_on_low_need: true  # ... and so does one newly dropping into the low band (needs come before what it was doing)
+  interrupt_while_empty: true  # ... and any need sitting in the empty band ends it at the next step
 
 # --- anxiety: the pressure it is under, 0..100. Low needs and tiredness push it up; being fed and rest ease it ---
 anxiety:
@@ -144,6 +145,31 @@ drawing:
     charcoal: {black: "#1f1d1b", "dark grey": "#4a4744", grey: "#7c7873", "pale grey": "#aaa59e"}   # object tagged
     paints: {red: "#b8402e", orange: "#d9822b", yellow: "#e2b93b", green: "#5d8a3a", teal: "#2f8a83",
              blue: "#3a5f9e", violet: "#6d4b8f", pink: "#d47a92", brown: "#7a5232", white: "#f7f3ea"}   # `paints` is here
+
+# --- the body and the world can hurt: code rules, traced; the outcome text says what happened ---
+exhaustion:                    # energy word "exhausted" (energy_words)
+  blocks_effort: [high, medium]   # moves of this effort are not possible
+  blocks_does: [work_on, draw_new, draw_more]   # nor long work
+  rest_chance: 0.8             # each decision, a rest drive takes it to sleep (towards its nest if it can reach it)
+empty_blocks_does: [work_on, draw_new, draw_more]   # no project or drawing work is started while a need is empty
+mood_menu:                     # emotion changes what is offered (traced): chance a move of that mood is left off
+  low: {playful: 0.5}          # mood word low: half the playful moves are not on offer
+  content: {withdrawn: 0.5}    # mood word content: half the withdrawn moves are not on offer
+harms:
+  stale_after_hours: 10        # food from a source or event older than this has gone stale (moves.yaml hurts if: stale)
+  rain: {per_hour: {peace: 4}, energy_per_hour: 3, text: "The rain is soaking you."}   # awake or asleep, in rain, not sheltered
+  anxious_words: [on edge, frantic]   # hurts if: anxious
+  tired_words: [tired, exhausted]     # hurts if: tired
+
+# --- experiences: what it comes to like and dislike, from what actually happened (not from an LLM's opinion) ---
+experience:
+  anxiety_weight: 0.5          # score = need points beyond decay (gains - drains - hurts) - this x anxiety rise
+  lookback: 12                 # the latest moments per subject that count
+  min_count: 3                 # at least this many before it can become a like or dislike
+  bad_below: -3                # average score below this: a dislike candidate ...
+  good_above: 8                # ... above this: a like candidate
+  valence_scale: 12            # valence = average / this, clamped to -1..1
+  opinion_cap: 0.3             # a like or dislike the sleeping mind names without evidence is at most this strong
 
 # --- drives: innate, and the ONE place code picks a move because of a need. When a need is LOW or EMPTY, its drive
 #     may take the decision before the brain is asked: the move on the menu that feeds it most. Hungry with nothing
@@ -212,7 +238,7 @@ max_objects_per_area: 12       # event spawns are skipped when the area is this 
 object_lifetime_hours: {event: 18, director: 30, source: 20}   # sim hours before something the world brought is gone (by who made
                                # it: event | director | creature; missing or 0 = it stays). Carried things and the
                                # objects the world started with never expire.
-allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet, paper, board, drawing, paints, rings, nest]
+allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet, paper, board, drawing, paints, rings, nest, water, wishing, cold]
 state_value_max_length: 40
 
 # --- mood: ONE number, a slider from -50 (negative) to 50 (positive) ---

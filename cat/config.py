@@ -80,7 +80,7 @@ REQUIRED_SETTINGS = [
 CHARACTER_FIELDS = {"name", "pronoun", "core_traits", "tendencies", "tendency_labels", "needs",
                     "start_area", "voice", "backstory", "self_image", "stale_here"}
 WORLD_FIELDS = {"areas", "objects", "weather", "events", "tag_facts"}
-NEED_FIELDS = {"start", "decay_per_hour", "meaning", "expressions"}
+NEED_FIELDS = {"start", "decay_per_hour", "meaning", "expressions", "words"}
 BANDS = ("empty", "low", "okay", "full")            # ascending; the band names the brain's prompt uses
 REQUIRED_BANDS = ("empty", "low", "full")           # `okay` may be null
 EVENT_FIELDS = {"text", "chance", "area", "hours", "only_weather", "set_weather", "mood", "spawn", "drains"}

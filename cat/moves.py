@@ -24,7 +24,9 @@ DOES = ("none", "move_self", "take", "drop", "consume", "work_on", "sleep",
 DRAWING_DOES = ("draw_new", "draw_more", "finish_drawing", "pin", "discard")
 ONLY_WHEN = ("always", "can_sleep")
 VERB_FIELDS = {"label", "target", "reach", "any_tags", "effort", "minutes", "effects", "by_tag", "novelty",
-               "does", "only_when", "outcome", "reveals", "needs_here", "when_state"}
+               "does", "only_when", "outcome", "reveals", "needs_here", "when_state",
+               "mood", "hurts", "disliked_only"}
+HURT_IF = ("always", "tired", "anxious", "stale")
 
 
 @dataclass
@@ -37,10 +39,45 @@ class Move:
     label: str
 
 
+VOWELS = set("aeiou")
+REFLEXIVE = {"they": ("themself", "their"), "she": ("herself", "her"), "he": ("himself", "his"), "it": ("itself", "its")}
+
+
+def gerund(word: str) -> str:
+    """watch -> watching, sit -> sitting, ease -> easing, lie -> lying, go -> going."""
+    w = word.lower()
+    if w.endswith("ie"):
+        return word[:-2] + "ying"
+    if w.endswith("e") and not w.endswith(("ee", "ye", "oe")) and len(w) > 2:
+        return word[:-1] + "ing"
+    if (len(w) <= 4 and len(w) >= 3 and w[-1] not in VOWELS | set("wxy") and w[-2] in VOWELS
+            and w[-3] not in VOWELS):
+        return word + word[-1] + "ing"
+    return word + "ing"
+
+
+def doing_phrase(cfg: Config, label: str) -> str:
+    """A move's label as what it is doing: "watch the ripples ..." -> "watching the ripples ...", with "yourself" and
+    "your" in its own pronoun ("hum a tune to yourself" -> "humming a tune to themself")."""
+    if not label:
+        return ""
+    first, _, rest = label.partition(" ")
+    refl, poss = REFLEXIVE.get(cfg.character.get("pronoun", "they"), REFLEXIVE["they"])
+    verbs = {v["label"].split()[0].lower() for v in cfg.moves["verbs"].values()} | {"do", "listen", "wait", "wonder"}
+    words = rest.split()
+    for i, w in enumerate(words):                      # "stay still and do nothing" -> "... and doing nothing"
+        if i and words[i - 1] == "and" and w.lower() in verbs:
+            words[i] = gerund(w)
+    rest = " ".join(refl if w == "yourself" else poss if w == "your" else w for w in words)
+    return (gerund(first) + (" " + rest if rest else "")).strip()
+
+
+
 # ---------- the menu ----------
 def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict],
             projects: list[dict], can_sleep: bool, inventory_full: bool = False, seed: str = "",
-            subjects: list[tuple[str, str]] | None = None, blocked: set[str] | None = None) -> list[Move]:
+            subjects: list[tuple[str, str]] | None = None, blocked: set[str] | None = None,
+            disliked: list[str] | None = None, blocked_effort: set[str] | None = None) -> list[Move]:
     """Every move possible right now. `here` / `inventory` are world objects, `projects` the active projects,
     `can_sleep` whether going to sleep is allowed. With `moves.shuffle` the order is a seeded shuffle (same time
     and place, same order), so where a move sits in the list never steers the pick: the first real run took 40%
@@ -51,8 +88,8 @@ def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict
     for verb, v in cfg.moves["verbs"].items():
         if v.get("only_when", "always") == "can_sleep" and not can_sleep:
             continue
-        if v.get("does", "none") in (blocked or set()):
-            continue                                    # e.g. no room for another drawing, the board is full
+        if v.get("does", "none") in (blocked or set()) or v.get("effort") in (blocked_effort or set()):
+            continue                                    # no room for another drawing; too exhausted for this
         if v.get("needs_here") and not set(v["needs_here"]) & here_tags:
             continue                                    # e.g. drawing needs paper here
         if inventory_full and v.get("does") == "take":
@@ -75,6 +112,9 @@ def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict
             ws = v.get("when_state") or {}
             targets = [(o["id"], o["name"]) for o in pool if (not need or need & set(o["tags"]))
                        and all(str((o.get("state") or {}).get(k, "")) in vals for k, vals in ws.items())]
+            if v.get("disliked_only"):                  # turning away: only from what it dislikes
+                dl = [d.lower() for d in (disliked or []) if d.strip()]
+                targets = [(i, n) for i, n in targets if any(d in n.lower() for d in dl)]
         for tid, name in targets:
             key = verb if tid is None else f"{verb}:{tid}"
             out.append(Move("", key, verb, tid, name, v["label"].format(target=name)))
@@ -99,6 +139,22 @@ def _cut(cfg: Config, moves: list[Move], seed: str) -> list[Move]:
     room = max(cap - len(keep), 0)
     picked = set(random.Random(f"menu|{seed}").sample(rest, min(room, len(rest))))
     return [m for i, m in enumerate(moves) if i in picked or i in set(keep)][:max(cap, len(keep))]
+
+
+def shape_by_mood(cfg: Config, menu: list[Move], mood_word: str, seed: str) -> tuple[list[Move], list[str]]:
+    """Emotion changes what is offered (settings mood_menu; the relaxed rule): in a low mood some playful moves are
+    not on offer, in a bright one some withdrawn ones. Seeded. Returns (menu, keys left off) for the trace."""
+    rule = (cfg.settings.get("mood_menu") or {}).get(mood_word) or {}
+    if not rule:
+        return menu, []
+    rng = random.Random(f"mood|{seed}")
+    kept, dropped = [], []
+    for m in menu:
+        p = float(rule.get(cfg.moves["verbs"][m.verb].get("mood", ""), 0))
+        (dropped if p and rng.random() < p else kept).append(m)
+    for i, m in enumerate(kept, 1):
+        m.id = f"m{i}"
+    return kept, [m.key for m in dropped]
 
 
 def choose(menu: list[Move], raw: Any) -> Move | None:
@@ -236,6 +292,20 @@ def check(moves: Any, cfg_character: dict, settings: dict) -> tuple[list[str], l
         does = v.get("does", "none")
         if does not in DOES:
             errs.append(f"{w}: does must be one of {', '.join(DOES)}")
+        if v.get("mood") not in (None, "playful", "withdrawn"):
+            errs.append(f"{w}: mood must be playful or withdrawn")
+        if "disliked_only" in v and (not isinstance(v["disliked_only"], bool) or tgt != "object"):
+            errs.append(f"{w}: disliked_only must be true or false, on an object verb")
+        for h in v.get("hurts") or []:
+            if not isinstance(h, dict) or h.get("if") not in HURT_IF or not isinstance(h.get("outcome"), str):
+                errs.append(f"{w}: each hurt needs if ({', '.join(HURT_IF)}) and an outcome")
+                continue
+            for nid in (h.get("drains") or {}):
+                if needs and nid not in needs:
+                    errs.append(f"{w}: hurt drains unknown need '{nid}'")
+            c = h.get("chance", 1.0)
+            if isinstance(c, bool) or not isinstance(c, (int, float)) or not 0 <= c <= 1:
+                errs.append(f"{w}: hurt chance must be 0..1")
         nh = v.get("needs_here")
         if nh is not None and (not isinstance(nh, list) or not all(isinstance(t, str) for t in nh)):
             errs.append(f"{w}: needs_here must be a list of tag names")

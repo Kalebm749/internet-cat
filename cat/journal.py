@@ -95,8 +95,19 @@ def user_prompt(cfg: Config, *, sim_time: str, area_id: str, weather: str, actio
         L.append(J("finishing", name=finishing))
 
     L.append("\n" + J("heading_now"))
-    L.extend(need_changes(cfg, before, after))
+    changed = need_changes(cfg, before, after)
+    L.extend(changed)
+    for nid, spec in cfg.character["needs"].items():         # every need that is low or empty, not only a change
+        band = character.need_band(float(after.get(nid, 100)), cfg)
+        expr = (spec.get("expressions") or {}).get(band)
+        if band in ("low", "empty") and expr and expr.strip() not in changed:
+            L.append(expr.strip())
     L.extend(brain.state_lines(cfg, mood, energy))
+    words, severe = brain.state_words(cfg, after, energy, mood)
+    if words:
+        L.append(P.render(cfg, "brain.situation.state_words", words=", ".join(words)))
+    if severe:
+        L.append(J("severe"))
 
     if memories:
         L.append("\n" + J("heading_memories"))

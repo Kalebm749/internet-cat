@@ -55,6 +55,7 @@ brain:
     time: "It is {time} ({part}). Weather: {weather}."        # {time} {part} {weather}
     place: "You are in {area}. {description}"                 # {area} {description}
     feeling: "{mood} Energy: {energy}."                       # {mood} (an impression line) {energy} (a word)
+    state_words: "Right now you are: {words}."                 # {words}: plain words for what is wrong (starving, exhausted, on edge)
     heading_pulling: "## What's pulling at you right now"
     none_pulling: "Nothing in particular is pulling at you right now."   # shown when no need is in the low or empty band
     heading_around: "## Around you"
@@ -103,6 +104,7 @@ journal:                                                     # the entity's own 
   finishing: "You have just called {name} finished. If you want to, give it a title in your own words: add \"title\" to your reply."   # {name}
   need_eased: "Something that had been lacking in you eased."  # a need left the low or empty band and its new band has no wording
   heading_now: "## How you are now"
+  severe: "How you are right now is severe. It comes before anything else you write about."
   heading_memories: "## What came to mind"
   closing: "Write your journal entry for this moment."
 
@@ -160,6 +162,8 @@ impulse:                                                   # first-person lines 
   drive: "Something in me needed it, and I went for it before I had decided anything."   # a drive took over (settings drives)
   drive_sustenance: "I needed something taken in, and went for it before I had decided anything."   # optional: impulse.drive_<need>
   drive_forage: "I went looking for something to take in before I had decided to."   # hungry with nothing here
+  drive_rest: "I could not keep going. I stopped where I was."   # exhausted: it sleeps where it is
+  drive_nest: "I could not keep going, and went to find my nest."   # exhausted: it heads for its nest
 
 habits:
   fallback: "You tend to {label} in the {part}."                 # {label} {part}; used when the model gives no line
@@ -177,6 +181,7 @@ sleep:
   none_tendencies: "(nothing noticed yet)"
   none_log: "(nothing)"
   none_existing_preferences: "(none yet)"
+  none_evidence: "(nothing has kept going one way yet)"
   none_existing_self_image: "(nothing yet)"
   none_likes: "(nothing yet)"
   none_existing_projects: "(none)"
@@ -196,16 +201,19 @@ sleep:
     {tendencies}
 
     Name, in your own plain words, the ways you tend to be that today showed: a short phrase each (for example "restless when it is quiet" or "drawn to shiny things"). For each, give a number from -1 to 1: how much today pushed it (-1 = clearly less, 0 = no change, 1 = clearly more). You may add at most {max_new} new tendency, only if today really showed it. Return only what today actually touched, and keep most numbers small. Core traits never change.
-  preferences: |-                                             # {summary} {log} {existing} {n}
+  preferences: |-                                             # {summary} {log} {existing} {n} {evidence}
     Summary of the day: {summary}
 
     Today's log:
     {log}
 
+    What has kept going badly or well (counted from what really happened):
+    {evidence}
+
     Existing likes (+) and dislikes (-):
     {existing}
 
-    Name up to {n} specific things (a place, object, weather, activity) the creature clearly liked or disliked today. valence: -1 (strongly dislikes) to 1 (strongly likes). reason: a few words. Return an empty list if nothing stood out.
+    Name up to {n} specific things (a place, object, weather, activity) the creature has come to like or dislike. Dislikes matter as much as likes: what wore it down, hurt it, left it hungry or uneasy. Use the counted things above first. valence: -1 (strongly dislikes) to 1 (strongly likes). reason: a few words. Return an empty list if nothing stood out.
   self_image: |-                                              # {summary} {shorts} {log} {seed_hint} {existing}
     Summary of the day: {summary}
 
