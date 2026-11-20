@@ -24,7 +24,7 @@ changes tendencies, preferences, self-image, projects and habits.
 | Needs | `character.py`, `character.yaml` | five levels 0..100, decay per hour, bands, band words, what is "pressing" | needs never rank the menu; they only shape the prompt (max 2 pressing) and mood |
 | Energy | `engine.py` | a separate −50..50 resource: effort spends it, sleep restores it | not a need; never shown as a number |
 | Mood | `character.py`, `mood.*` | one −50..50 number from need bands, event nudges, the brain's 3-value `feeling` | mood does not change what is offered or picked |
-| Moves | `moves.py`, `moves.yaml` | the menu (fixed order, cut at `moves.max_offered`) and each move's effect | no ranking, no marking by need |
+| Moves | `moves.py`, `moves.yaml` | the menu (seeded shuffled order, cut at `moves.max_offered`, "(never tried)" marks) and each move's effect | no ranking, no marking by need (the feeding reflex is the one need-driven pick) |
 | Brain | `brain.py`, `prompts.yaml` | prompt assembly; JSON schema `reaction, thought, move, why, feeling` | an invalid or off-menu move fails the call (retry once, then doze) |
 | Journal | `journal.py` | its own entry, written after code decided what happened, from facts only | cannot add details, change numbers or the world |
 | Effects | `effects.py` | the only code that changes the world: seven validated ops | rejected changes are logged, not applied |

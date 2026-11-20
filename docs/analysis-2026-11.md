@@ -20,6 +20,19 @@ A second change followed the first real diary entries, which read as performance
 - **The journal is written after the outcome.** `cat/journal.py` writes it in the entity's voice, from facts only. It reuses the narrator's call, so there are still two calls per decision. It mentions memories, tendencies or projects only when they bear on the moment, never names its traits or needs, and may say "I don't know".
 - **Looking closely reveals something true.** Examine-type verbs (`reveals: true`) report what is true of the target, from world.yaml `tag_facts`. This is a first step towards roadmap 2.1.
 
+The first real run (213 decisions over 3 sim days) then measured two things the review had predicted:
+- **List order was steering choices.** 40% of picks came from the top tenth of the menu.
+- **It never ate.** Food was on the menu 51 times and eaten 0 times, including 39 times while hungry.
+
+The follow-up changes:
+- The menu order is a seeded shuffle.
+- The menu opens with "every move listed here is something you can actually do; what a move does to you, you find out by doing it".
+- Moves it has never tried are marked "(never tried)".
+- Nit's hunger lines now say the hollow wants something taken in.
+- An innate **feeding reflex** (`reflexes.feeding`) may eat when sustenance is empty. This is a deliberate, traced exception to "code never picks by need".
+
+Earlier notes in this section about Nit's sheet and menu order describe the first baseline.
+
 Deliberately not changed: Nit's character sheet (core traits stay), menu order and tags (so the first run measures list-order bias as it is), and anything in phases 2–5.
 
 ---

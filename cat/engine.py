@@ -148,6 +148,7 @@ class Engine:
     def _brain_context(self, fired: list[dict], long_mems: list[dict] | None = None,
                        menu: list | None = None) -> brain.BrainContext:
         cfg, st, s = self.cfg, self.state, self.cfg.settings
+        menu = self._menu() if menu is None else menu
         n = s["recent_actions_shown"]
         recent = [r["action"] for r in self.conn.execute(
             "SELECT action FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT ?", (n,))][::-1]
@@ -164,7 +165,7 @@ class Engine:
             last_outcome=self.last_outcome, events=[e["text"] for e in fired],
             recent_actions=recent, preferences=prefs, self_image=self._self_image_lines(),
             stale_here=self._stale_here(), habits=HB.shown(self.conn, cfg), projects=PJ.brain_view(cfg, self.conn, st["sim_time"]),
-            menu=self._menu() if menu is None else menu,
+            menu=menu, untried=self._untried(menu),
             just_woke_from_doze=self.last_kind in ("doze", "catchup"),
             long_memories=[m["text"] for m in (long_mems or [])],
             short_memories=[m["text"] for m in self.memory.recent_short()])
@@ -194,6 +195,15 @@ class Engine:
                           projects=PJ.active(self.conn), can_sleep=can_sleep,
                           inventory_full=len(inv) >= s["inventory_max"],
                           seed=f"{st['sim_time']}|{st['area']}")
+
+    def _untried(self, menu: list) -> set[str]:
+        """Verbs on this menu it has never made (a fact of its own history; `moves.mark_untried`). The prompt marks
+        them "(never tried)": what a move does, it can only find out by doing it. Not a ranking by need."""
+        if not self.cfg.settings["moves"].get("mark_untried", True):
+            return set()
+        tried = {(r[0] or "").split(":")[0] for r in self.conn.execute(
+            "SELECT DISTINCT move_key FROM ticks WHERE kind='tick' AND move_key IS NOT NULL")}
+        return {m.verb for m in menu} - tried
 
     def _is_new_area(self, area_id: str, now: str) -> bool:
         """Somewhere not visited for `moves.novelty_hours` sim hours (or never) counts as new."""
@@ -328,7 +338,9 @@ class Engine:
             try:
                 # an impulse is the fast path: rolled BEFORE the brain, so when it fires there is no brain call
                 # and nothing it would have thought or felt is recorded against a move it did not choose
-                impulse = impulses.take_over(cfg, anx_prev, self._menu(), f"{now}|{st['area']}")
+                menu_now = self._menu()
+                impulse = (impulses.feeding_reflex(cfg, st["needs"], menu_now, f"{now}|{st['area']}")
+                           or impulses.take_over(cfg, anx_prev, menu_now, f"{now}|{st['area']}"))
                 if impulse:                  # anxiety took the decision over: the world still only offers this menu
                     b = {"move": impulse["move"], "entry": impulse["entry"], "reaction": "", "thought": "",
                          "why": f"an impulse ({impulse['impulse']})", "feeling": None}
