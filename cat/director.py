@@ -7,6 +7,7 @@ proposal (length, repeats, caps, known weather, allowed tags, need ids) and appl
 shape as an event, so it is traced and audited like one. Nothing here picks or ranks the entity's actions."""
 from __future__ import annotations
 
+import re
 import logging
 import math
 from typing import Any
@@ -95,6 +96,8 @@ def validate(cfg: Config, raw: Any, recent_events: list[str], here_count: int) -
     sp = h.get("spawn")
     if isinstance(sp, dict) and str(sp.get("name") or "").strip():
         name = " ".join(str(sp["name"]).split())[:cfg.settings["name_max_length"]].strip()
+        if not re.match(r"(?i)(a|an|the|some|two|three|several|many|one)\b", name):
+            name = ("an " if name[:1].lower() in "aeiou" else "a ") + name      # "a butterfly", never a bare noun
         tags = [t for t in (sp.get("tags") or []) if isinstance(t, str) and t in cfg.settings["allowed_tags"]]
         if here_count >= cfg.settings["max_objects_per_area"]:
             notes.append("spawn skipped: the area is full")

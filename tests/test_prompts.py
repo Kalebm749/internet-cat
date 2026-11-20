@@ -68,8 +68,8 @@ def test_the_brain_menu_is_in_the_prompt_in_order(cfg, conn):
 
 
 def test_the_brain_output_schema_is_move_and_why():
-    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling"}
-    assert set(brain.BRAIN_SCHEMA["required"]) == {"reaction", "thought", "move", "why", "feeling"}
+    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling", "entry"}
+    assert set(brain.BRAIN_SCHEMA["required"]) == {"reaction", "thought", "move", "why", "feeling", "entry"}
 
 
 def test_narrator_is_prose_only(cfg, conn):
@@ -78,7 +78,7 @@ def test_narrator_is_prose_only(cfg, conn):
     assert "gains" not in sysmsg and "consume" not in sysmsg and "changes" not in sysmsg
     w = WorldState.seed(conn, cfg, "2026-11-18T19:40")
     d = narrator.describe_world(cfg, "2026-11-18T19:40", "kitchen", "rain", w.here("kitchen"), [])
-    assert "a bowl of fish (edible, movable)" in d and "Place: the kitchen" in d
+    assert "- a bowl of fish" in d and "edible" not in d and "Place: the kitchen" in d
     msgs = narrator.build_messages(cfg, "eat a bowl of fish", d, "You ate a bowl of fish.")
     assert "The entity chose: eat a bowl of fish" in msgs[1]["content"]
     assert "What happened (decided by the world): You ate a bowl of fish." in msgs[1]["content"]

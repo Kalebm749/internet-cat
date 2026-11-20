@@ -19,7 +19,7 @@ def _edit(tmp_path, fname, fn):
 def test_default_config_loads():
     c = load_config()
     assert c.character["name"]
-    assert set(c.settings["gain_values"]) == {"0", "+", "++"}
+    assert set(c.settings["gain_values"]) == {"0", "+", "++", "meal"}
 
 
 

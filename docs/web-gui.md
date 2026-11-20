@@ -140,6 +140,9 @@ orange over the rooftops.
 - **What it thinks it is:** the entity's current self-image lines (learned during sleep; see `creature-architecture.md` §7), one per row in italics, oldest first. Hover shows how sure it is and the day it was formed. If there are none, the section says *still figuring that out*. The entity starts with no self-image; a line may also come from an optional `character.yaml` `self_image.seed` hint.
 - **Loves / dislikes:** two short lists, top 5 each by |valence|. Small heart / cross marks drawn as inline SVG (no emoji). Hover shows the reason ("keeps coming back here at dusk").
 
+### 4.9 Biography page (`/biography`, `GET /api/biography`)
+A read-only page about who the creature has become: core traits, what it thinks it is, how it tends to be (learned tendencies), likes and dislikes with reasons, habits, projects with why and where they got to (and what it made), all long-term memories with day and importance, and how each night went. Linked from the journal header.
+
 ### 4.7b Habits (right column, above Projects)
 A card listing the lines the sleeping mind wrote for patterns code found (`state.habits.rows`: `text`, `title`; `empty_text` when none). It is the `#habits` list with `<template id="tpl-habit">` for live updates.
 
@@ -202,7 +205,7 @@ Polled every 10s. Everything except old diary pages.
 }
 ```
 
-Tick entries also carry `why` / `why_text` ("because: …", the brain's own reason), `carried` / `carried_text` ("carried on for N more steps, no new decision") and `span` ("about N min" for a move longer than one step). `state.habits` is `{rows, empty, empty_text}`.
+Tick entries carry `entry` (the creature's own journal text; when present it replaces the "because" line and the quoted reaction). They also carry `why` / `why_text` ("because: …", the brain's own reason), `carried` / `carried_text` ("carried on for N more steps, no new decision") and `span` ("about N min" for a move longer than one step). `state.habits` is `{rows, empty, empty_text}`.
 
 ### Diary entry shape
 ```json

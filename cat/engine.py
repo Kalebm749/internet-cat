@@ -351,7 +351,7 @@ class Engine:
                     outcome = self._narrate(mv, res)
                 n = {"outcome": outcome, "gains": res["gains"], "effort": res["effort"],
                      "duration": res["duration"], "changes": res["changes"], "project": res["project"],
-                     "does": res["does"]}
+                     "does": res["does"], "template": res["template"]}
                 result = (b, n)
             except BackendError as e:
                 log.warning("brain unavailable (%s): dozing", e)
@@ -385,20 +385,21 @@ class Engine:
             needs = character.apply_drains(needs, drains)
             dis, _ = self._dislike_drains(minutes, b["move"].label)
             needs = character.apply_drains(needs, dis)
+            scale = character.duration_scale(cfg, n["duration"])
             needs = character.apply_gains(needs, n["gains"], cfg,
-                                          consumed=fx.consumed, multiplier=mult)
+                                          consumed=fx.consumed, multiplier=mult, scale=scale)
             if adv and adv.get("ok") and adv["completed"]:        # finishing a project feels good (code, not the narrator)
                 needs = character.add_points(needs, cfg.settings["projects"]["completion_gains"])
-            energy = character.spend_energy(st["energy"], n["effort"], cfg)
+            energy = character.spend_energy(st["energy"], n["effort"], cfg, scale=scale)
             if adv is not None:
                 self.tracer.set_project({**adv, "repetition_exempt": exempt})
             self.tracer.set_effects(fx.log)
             self.tracer.set_need_math(character.explain_needs(
-                before, minutes, n["gains"], cfg, needs, consumed=fx.consumed, multiplier=mult,
+                before, minutes, n["gains"], cfg, needs, consumed=fx.consumed, multiplier=mult, scale=scale,
                 drains=drains, dislike_drains=dis))
             feeling = b["feeling"]
             new_area = fx.area
-            row = {"kind": "tick", "reaction": b["reaction"], "thought": b["thought"],
+            row = {"kind": "tick", "entry": b["entry"], "reaction": b["reaction"], "thought": b["thought"],
                    "action": b["move"].label, "intent": b["why"], "move_key": b["move"].key, "outcome": n["outcome"],
                    "gains": n["gains"], "effort": n["effort"], "duration": minutes,
                    "changes": fx.applied, "rejected": fx.rejected,
@@ -452,10 +453,12 @@ class Engine:
                     why.append("made something")
             if why:
                 t = clock.time_label(dt)
+                # what is remembered is what the world did (code's plain account) and what the creature itself
+                # said, never the narrator's prose, which can invent details that were not there
                 text = (f"{t}, {cfg.world['areas'][st['area']]['name']}: {row['action']}. "
-                        f"{row['outcome']}")
-                if row["reaction"]:
-                    text += f' You felt: "{row["reaction"]}"'
+                        f"{result[1].get('template') or ''}").strip()
+                if row.get("entry") or row["reaction"]:
+                    text += f' You wrote: "{row.get("entry") or row["reaction"]}"'
                 with self.tracer.stage("record"):
                     short_mem = self.memory.prepare(text, importance_for(cfg, len(why)), now)
 
@@ -600,11 +603,12 @@ class Engine:
             cur = self.conn.execute(
                 "INSERT INTO ticks(kind,sim_time,real_time,area,reaction,thought,action,intent,"
                 "outcome,gains,effort,duration,changes,rejected_changes,needs_after,mood_after,"
-                "energy_after,move_key,activity_minutes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "energy_after,move_key,activity_minutes,entry) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (row["kind"], now, real, area, row["reaction"], row["thought"],
                  row["action"], row["intent"], row["outcome"], dumps(row["gains"]), row["effort"],
                  row["duration"], dumps(row["changes"]), dumps(row["rejected"]), dumps(needs),
-                 dumps(mood), new_state["energy"], row.get("move_key"), row.get("activity_minutes")))
+                 dumps(mood), new_state["energy"], row.get("move_key"), row.get("activity_minutes"),
+                 row.get("entry")))
             tick_id = cur.lastrowid
             for e in fired:
                 self.conn.execute("INSERT INTO events(tick_id,sim_time,area,text) VALUES(?,?,?,?)",

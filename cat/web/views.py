@@ -260,8 +260,10 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
     carried = conn.execute("SELECT COUNT(*) FROM ticks WHERE kind='carry' AND id>? AND id<?",
                            (r["id"], nxt if nxt is not None else 2 ** 62)).fetchone()[0]
     why = (r["intent"] or "").strip()
+    entry = ((r["entry"] or "") if "entry" in r.keys() else "").strip()
     return {"type": "tick", "key": f"t{r['id']}", "id": r["id"], "span": span,
-            "why": why, "why_text": f"because: {why}" if why else "",
+            "why": why, "entry": entry,
+            "why_text": f"because: {why}" if (why and not entry) else "",
             "carried": carried,
             "carried_text": (f"carried on for {carried} more step{'s' if carried != 1 else ''}, "
                              "no new decision") if carried else "",
@@ -269,6 +271,7 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
             "time_label": clock.time_label(dt), "area": _area_name(cfg, r["area"]),
             "action": r["action"] or "", "outcome": r["outcome"] or "", "reaction": r["reaction"] or "",
             "reaction_quoted": f"“{r['reaction']}”" if r["reaction"] else "",
+            "reaction_only": r["reaction"] if (r["reaction"] and not ((r["entry"] if "entry" in r.keys() else ""))) else "",
             "events": events, "need_changes": chips, "world_changes": wc}
 
 
@@ -355,6 +358,38 @@ def diary_view(conn, cfg: Config, before: int | None = None,
                     return entries, (r["id"] if more else None)
     except sqlite3.OperationalError:
         return [], None
+
+
+# ---------- the biography page ----------
+def biography_view(conn, cfg: Config) -> dict:
+    """Who this creature has become, gathered in one place: what it is told it has (core traits), and
+    everything it has learned or made: its own picture of itself, tendencies, likes and dislikes, projects
+    and why, habits, long-term memories and how each night went. Read-only."""
+    first = first_dt(conn, cfg)
+    st = _state_row(conn, cfg)
+    ch = cfg.character
+    big = 10 ** 6
+    prefs = _safe(conn, lambda c: [dict(r) for r in c.execute(
+        "SELECT subject, valence, reason FROM preferences ORDER BY abs(valence) DESC")], [])
+    projs = projects_view(conn, cfg)
+    keeps, _ = keepsakes_view(conn, cfg, 0, big)
+    nights = []
+    for r in _safe(conn, lambda c: c.execute("SELECT * FROM sleep_log ORDER BY id DESC").fetchall(), []):
+        d = clock.parse(r["sim_date"] + "T00:00")
+        nights.append({"day_text": f"Day {clock.day_number(first, d)}", "summary": r["summary"] or ""})
+    return {
+        "name": ch["name"], "core_traits": list(ch["core_traits"]),
+        "self_image": self_image_view(conn, cfg, first),
+        "tendencies": [{"text": brain_tendency_text(cfg, t["id"], t["value"])} for t in tendencies_view(conn, cfg, st)],
+        "likes": [p for p in prefs if p["valence"] > 0], "dislikes": [p for p in prefs if p["valence"] < 0],
+        "projects": projs["rows"], "made": projs["artifacts"],
+        "habits": habits_view(conn, cfg)["rows"], "memories": keeps, "nights": nights,
+    }
+
+
+def brain_tendency_text(cfg: Config, name: str, value: float) -> str:
+    from cat import brain
+    return brain.tendency_phrase(cfg, name, value)
 
 
 # ---------- the whole state ----------

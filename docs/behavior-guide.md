@@ -130,10 +130,10 @@ A cheap check against Ollama (`/api/tags`, `health_timeout_seconds`), cached for
 1. **Recall** (only if there are long-term memories): the engine builds a short query from the current area, the objects here, the mood word and what just happened, embeds it, and scores every long-term memory (§7). The top `recall.k` (5) go into the prompt.
 2. **The menu**: code builds the list of moves that are possible right now from config/moves.yaml (go to each area, eat/play with/rest on/climb/examine/take each fitting object, drop a carried thing, look out, wait, work on each active project, and **sleep only when sleep is allowed**). The order is fixed by the file; it is **never ranked, filtered or marked by need**. At most `moves.max_offered` are shown.
 3. **Prompt** (§10): self-image, tendencies, habits ("you tend to…"), likes/dislikes, time and place, mood and energy words, **"What's pulling at you right now"**, objects around, what just happened, recent actions, memories, active projects, and the menu.
-4. The brain returns JSON: `reaction, thought, move (a menu id such as m3), why, feeling (negative|neutral|positive)`. A `move` that is not on the menu is invalid and counts as a failed call. `why` is shown on the website as "because: …".
+4. The brain returns JSON: `reaction, thought, move (a menu id such as m3), why, feeling (negative|neutral|positive), entry`. A `move` that is not on the menu is invalid and counts as a failed call. **`entry`** is the creature's own first-person journal entry for the moment (what it is doing and why, drawing on how it feels, what it remembers, how it tends to be and its projects); the website shows it as the main text of the diary entry, with the narrator's world note above it. (Older entries without one show "because: …" and the quote.) Short-term memories are built from the world's plain account of the move plus the creature's own entry, never from the narrator's prose.
 
 ### Step 4b: resolve the move (code) and narrate it (LLM)
-**Code decides what the move does** (`cat/moves.py`): the need gains (`effects` and `by_tag` buckets, `novelty` for a place not visited for `moves.novelty_hours`), the effort, a duration drawn from the verb's `minutes`, and the world change (go, take, drop, consume), validated by `cat/effects.py`. A project move reports validated progress. The **narrator only writes the sentence** describing what happened; it can no longer change any number. With `moves.narrate: false`, or if the call fails, the verb's `outcome` text is used. When a project milestone or the finish is reached, a separate call asks the brain, in its own voice, for the piece it made.
+**Code decides what the move does** (`cat/moves.py`): the need gains (`effects` and `by_tag` buckets, `novelty` for a place not visited for `moves.novelty_hours`), the effort, a duration drawn from the verb's `minutes`, and the world change (go, take, drop, consume), validated by `cat/effects.py`. A project move reports validated progress. The **narrator only describes the world** in one or two plain sentences (where it is, what is there, what changed: "You are in the garden. The grass is warm."). It never describes the creature's body, senses or feelings (only the creature's own mind knows those), is not shown object tags, and can change no number. With `moves.narrate: false`, or if the call fails, the verb's `outcome` text is used. When a project milestone or the finish is reached, a separate call asks the brain, in its own voice, for the piece it made.
 
 ### Step 5: apply, in this exact order
 1. **Validate and apply world changes** (§9). Rejected changes are logged and do not happen.
@@ -141,7 +141,7 @@ A cheap check against Ollama (`/api/tags`, `health_timeout_seconds`), cached for
 3. **Event drains**: subtract the drains of the events that fired.
 4. **Dislike drains**: if something the entity dislikes is present, subtract from the configured needs (§4). (Awake and dozing ticks only; a sleeping entity is spared.)
 5. **Project work** (§8): if the move is `work_on` an active project, advance it (a tapering step), keep the note, save any artifact, and **exempt this action from the repetition penalty**; finishing a project pays `projects.completion_gains`.
-6. **Gains**: convert the move's buckets (`+` = 15, `++` = 30) to points, **adding only**, with the two special rules: sustenance rises only through a `consume` move; the gains of the repetition-penalised needs shrink if the same move repeats.
+6. **Gains**: convert the move's buckets (`+` = 7, `++` = 14, `meal` = 28) to points, **scaled by the move's length** (a move of `moves.reference_minutes`, 20, gives its full amount; shorter gives proportionally less, down to `moves.min_scale`; longer more, up to `moves.max_scale`), **adding only**, with the two special rules: sustenance rises only through a `consume` move; the gains of the repetition-penalised needs shrink if the same move repeats.
 7. **Spend energy**: the action's `effort` costs 2 / 6 / 12 energy.
 8. **Clamp**: needs to 0..100, energy to −50..50.
 9. **Mood** is recomputed from the new bands, the event nudge, the brain's `feeling` and the energy (§6).
@@ -168,7 +168,7 @@ Five needs in the placeholder character, each 0..100: **sustenance, wonder, joy,
 | Cause | Direction | Details |
 |---|---|---|
 | **Decay** | down | `decay_per_hour` × sim hours. The baseline: needs always fall. Slower while asleep (`sleep.decay_multiplier` 0.5). |
-| **Move gains** | up | The move's configured buckets, `+` (+15) or `++` (+30), decided by code from moves.yaml. They only add. |
+| **Move gains** | up | The move's configured buckets, `+` (7), `++` (14) or `meal` (28), scaled by how long the move takes, decided by code from moves.yaml. They only add. |
 | **Event drains** | down | `drains` on a world event, applied when it fires. |
 | **Dislike drains** | down | While something it dislikes is present (§8). |
 | **Repetition** | shrinks *gains* | A repeated action pays less (below). |
@@ -195,7 +195,7 @@ Sim hours from the starting levels until each band is crossed:
 | sustenance | 70 | 5 | 6 h | 11 h |
 | wonder | 60 | 4 | 5 h | 11.25 h |
 | joy | 60 | 6 | 3.3 h | 7.5 h |
-| peace | 70 | 3 | 10 h | 18.3 h |
+| peace | 70 | 4 | 7.5 h | 13.75 h |
 | curiosity | 50 | 5 | 2 h | 7 h |
 
 At ~13 sim hours per real hour, an entity that never eats and never has a good moment is empty on sustenance about 50 real minutes in. Gains (+15/+30) from moves are what push levels back up. To reach `full` (≥ 75) a need must be fed well above its start.
@@ -205,7 +205,7 @@ At ~13 sim hours per real hour, an entity that never eats and never has a good m
 ## 5. Energy, sleep and dozing
 
 ### Energy is not a need
-**Energy** is a separate resource, a single number from **−50 to 50**, starting at `energy_start` (30). It is **spent by effort** (each action's effort: low 2, medium 6, high 12 points, `effort_energy_cost`) and **restored only by sleeping or dozing**. It is never derived from needs and the narrator cannot touch it. Its words (`energy_words`): exhausted (< −25), tired (< 0), fine (< 25), wide awake (≥ 25). The words go into the prompt ("Energy: tired"); the number does not.
+**Energy** is a separate resource, a single number from **−50 to 50**, starting at `energy_start` (30). It is **spent by effort** (low 2, medium 6, high 12 points per 20 minutes of the move, scaled by its length; resting costs none: `effort_energy_cost`) and **restored only by sleeping or dozing**. It is never derived from needs and the narrator cannot touch it. Its words (`energy_words`): exhausted (< −25), tired (< 0), fine (< 25), wide awake (≥ 25). The words go into the prompt ("Energy: tired"); the number does not.
 
 ### Falling asleep: three ways
 1. **Exhaustion at night:** night **and** energy < −25 → falls asleep immediately, with no brain call.
@@ -467,7 +467,7 @@ Tuning principle: change **one thing at a time**, let it run for a few sim days,
 | `dislike_drain.points_per_hour` / `max_matches` / `needs` | how costly dislikes are | stronger aversion | `0` makes dislikes cosmetic |
 | event `drains` (`world.yaml`) | one-off hits | e.g. `{peace: 15}` for a loud event | |
 
-Reading the numbers: a need that decays 5/hour needs about +15 every 3 sim hours just to hold steady, i.e. one `+` per ~3 hours of activity.
+Reading the numbers: a need that decays 5/hour loses 25 points in 5 hours, so it needs about one `++` per 3 hours of full-length moves just to hold steady.
 
 ### Energy and sleep
 

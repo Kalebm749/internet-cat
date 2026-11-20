@@ -135,7 +135,7 @@ def test_repetition_only_looks_back_a_window(cfg):
 def test_repetition_only_shrinks_the_listed_needs(cfg):
     e, b = make(cfg, events=[])
     cfg.moves["verbs"]["look_out"]["effects"] = {"wonder": "++", "joy": "++"}
-    cfg.moves["verbs"]["look_out"]["minutes"] = [10, 10]
+    cfg.moves["verbs"]["look_out"]["minutes"] = [20, 20]      # the reference length: full gains
     b.handlers["brain"] = lambda m, s: pick(m, "look out and watch the world for a while")
     e.state["needs"].update(wonder=10.0, joy=10.0)
     e.tick()
@@ -187,3 +187,29 @@ def test_stale_flag_reaches_the_brain_context_and_survives_a_restart(cfg):
     assert e._brain_context([]).stale_here is True
     e2 = Engine(cfg, b, rng=random.Random(1))
     assert e2._ticks_in_area() == 2 and e2._brain_context([]).stale_here is True
+
+
+# ---------- gains and energy follow the move's length; memories are built from facts ----------
+def test_a_longer_move_gives_and_costs_more_and_resting_costs_no_energy(cfg):
+    from cat import character as ch
+    assert ch.duration_scale(cfg, 20) == 1.0 and ch.duration_scale(cfg, 2) == cfg.settings["moves"]["min_scale"]
+    assert ch.duration_scale(cfg, 500) == cfg.settings["moves"]["max_scale"]
+    short = ch.apply_gains({"joy": 10.0}, {"joy": "+"}, cfg, scale=0.25)["joy"]
+    full = ch.apply_gains({"joy": 10.0}, {"joy": "+"}, cfg, scale=1.0)["joy"]
+    assert short - 10 == 0.25 * (full - 10)
+    assert ch.spend_energy(10, "medium", cfg, scale=0.5) == 10 - 0.5 * cfg.settings["effort_energy_cost"]["medium"]
+    assert ch.spend_energy(10, "none", cfg, scale=2.0) == 10                       # resting is free
+
+
+def test_eating_is_a_fixed_amount_whatever_its_length(cfg):
+    from cat import character as ch
+    a = ch.apply_gains({"sustenance": 10.0}, {"sustenance": "++"}, cfg, consumed=True, scale=0.25)["sustenance"]
+    b = ch.apply_gains({"sustenance": 10.0}, {"sustenance": "++"}, cfg, consumed=True, scale=2.0)["sustenance"]
+    assert a == b
+
+
+def test_the_default_verbs_name_no_body_parts():
+    import re
+    from cat.config import load_config
+    text = " ".join(f"{v['label']} {v['outcome']}" for v in load_config(None).moves["verbs"].values())
+    assert not re.search(r"\b(hand|hands|finger|fingers|foot|feet|eye|eyes|sleeve|skin|shoulders?|paws?)\b", text), text

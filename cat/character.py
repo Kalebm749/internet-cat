@@ -68,9 +68,16 @@ def add_points(needs: dict[str, float], points: dict[str, float]) -> dict[str, f
     return out
 
 
-def spend_energy(energy: float, effort: str | None, cfg: Config) -> float:
-    """Effort spends energy (a separate resource, -50..50)."""
-    return clamp_energy(energy - cfg.settings["effort_energy_cost"].get(effort, 0))
+def duration_scale(cfg: Config, minutes: float) -> float:
+    """A move's length against `moves.reference_minutes`, clamped: a two-minute move gives and costs a
+    fraction of what a long one does, so spamming tiny moves is no better than doing something properly."""
+    m = cfg.settings["moves"]
+    return max(m["min_scale"], min(m["max_scale"], float(minutes) / m["reference_minutes"]))
+
+
+def spend_energy(energy: float, effort: str | None, cfg: Config, scale: float = 1.0) -> float:
+    """Effort spends energy (a separate resource, -50..50), in proportion to how long the move took."""
+    return clamp_energy(energy - cfg.settings["effort_energy_cost"].get(effort, 0) * scale)
 
 
 def restore_energy(energy: float, amount: float) -> float:
@@ -113,7 +120,7 @@ def need_label(need_id: str, cfg: Config) -> str:
 
 
 def apply_gains(needs: dict[str, float], gains: dict[str, str], cfg: Config,
-                consumed: bool = False, multiplier: float = 1.0) -> dict[str, float]:
+                consumed: bool = False, multiplier: float = 1.0, scale: float = 1.0) -> dict[str, float]:
     """The narrator's buckets -> numbers, clamped. The narrator only adds. The sustenance need only
     gains when something edible was consumed this tick; the repetition multiplier shrinks only the
     needs listed in settings repetition_penalty.needs. Unknown need ids / buckets are ignored."""
@@ -128,8 +135,10 @@ def apply_gains(needs: dict[str, float], gains: dict[str, str], cfg: Config,
         if nid == sus:
             if not consumed:
                 continue
-        elif nid in slowed:
-            gain *= multiplier
+        else:
+            gain *= scale                       # a longer move gives more (eating is a fixed amount, not scaled)
+            if nid in slowed:
+                gain *= multiplier
         out[nid] = clamp(out[nid] + max(0.0, gain))
     if consumed and (gains or {}).get(sus) is None:   # eating guarantees a minimum gain
         out[sus] = clamp(out[sus] + values[str(cfg.settings["consume_min_gain"])])
@@ -138,7 +147,7 @@ def apply_gains(needs: dict[str, float], gains: dict[str, str], cfg: Config,
 
 def explain_needs(before: dict[str, float], minutes: float, gains: dict[str, str] | None,
                   cfg: Config, after: dict[str, float], consumed: bool = False,
-                  multiplier: float = 1.0, decay_multiplier: float = 1.0,
+                  multiplier: float = 1.0, decay_multiplier: float = 1.0, scale: float = 1.0,
                   drains: dict[str, float] | None = None,
                   dislike_drains: dict[str, float] | None = None) -> list[dict]:
     """Per-need breakdown of one tick's arithmetic, one row per need, for the dev dashboard. It only
@@ -162,7 +171,7 @@ def explain_needs(before: dict[str, float], minutes: float, gains: dict[str, str
                 else:
                     shown = f"{bucket} (ignored: only consuming something edible raises this)"
             else:
-                raw = float(values[bucket])
+                raw = float(values[bucket]) * scale
                 mult = multiplier if nid in slowed else 1.0
         elif bucket is not None:
             shown = f"{bucket} (invalid bucket, ignored)"

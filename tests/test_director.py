@@ -172,6 +172,14 @@ def test_its_spawn_follows_the_same_rules_as_events(cfg):
     assert o and o["created_by"] == "director" and json.loads(o["tags"]) == ["movable"]
 
 
+def test_a_spawned_name_always_has_an_article(cfg):
+    cfg.settings["director"]["every_ticks"] = 1
+    e, b, calls = make(cfg, {"text": "Something lands.", "spawn": {"name": "butterfly", "tags": ["toy"]}})
+    e.tick()
+    e.tick()
+    assert e.conn.execute("SELECT name FROM objects WHERE created_by='director'").fetchone()["name"] == "a butterfly"
+
+
 def test_its_weather_change_only_takes_known_names(cfg):
     cfg.settings["director"]["every_ticks"] = 1
     e, b, _ = make(cfg, {"text": "The sky opens.", "weather": "rain"})

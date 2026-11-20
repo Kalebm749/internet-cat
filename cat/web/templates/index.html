@@ -16,6 +16,7 @@
 <header class="site-header">
   <div class="header-inner">
     <h1 class="creature-name" data-f="creature.name">{{ s.creature.name }}</h1>
+    <a class="bio-link" href="/biography">Biography</a>
     <p class="header-mid">
       <span data-f="location.name">{{ s.location.name }}</span> ·
       <time data-f="time.label">{{ s.time.label }}</time>
@@ -207,9 +208,10 @@
     <p class="entry-meta"><span class="time" data-f="time_label"></span> · <span class="area" data-f="area"></span><span data-show="span"> · <span class="span" data-f="span"></span></span></p>
     <p class="entry-action" data-f="action"></p>
     <p class="entry-outcome" data-f="outcome"></p>
+    <p class="entry-journal" data-f="entry" data-show="entry"></p>
     <p class="entry-why" data-f="why_text" data-show="why_text"></p>
     <p class="entry-carried" data-f="carried_text" data-show="carried_text"></p>
-    <p class="entry-reaction" data-f="reaction_quoted" data-show="reaction"></p>
+    <p class="entry-reaction" data-f="reaction_quoted" data-show="reaction_only"></p>
     <p class="entry-tags" data-show-any="need_changes,world_changes">
       <template data-each="need_changes"><span class="chip chip-need" data-f-class="dir"><span data-f="label"></span> <span aria-hidden="true" data-f="symbol"></span><span class="sr" data-f="dir"></span></span></template>
       <template data-each="world_changes"><span class="chip chip-world" data-f="text"></span></template>

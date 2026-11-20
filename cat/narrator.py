@@ -25,7 +25,7 @@ def describe_world(cfg: Config, sim_time: str, area_id: str, weather: str,
     dt = clock.parse(sim_time)
 
     def fmt(o):
-        return f"- {o['name']} ({', '.join(o['tags']) or 'no tags'})"
+        return f"- {o['name']}"          # no tags: they are the engine's own labels and would leak into the prose
 
     return (f"Place: {areas[area_id]['name']}: {areas[area_id]['description']}. "
             f"Time: {clock.time_label(dt)}. Weather: {weather}.\n"

@@ -93,10 +93,12 @@ def test_mock_tick_writes_complete_trace(cfg):
         assert r["effort_cost"] == 0                          # effort spends energy, not needs
         assert rebuilt == pytest.approx(r["after"], abs=2e-3)
     cur = next(r for r in nm if r["need"] == "curiosity")          # going somewhere new: novelty gains
-    assert cur["bucket"] == "+" and cur["gain_raw"] == cfg.settings["gain_values"]["+"]
+    assert cur["bucket"] == "+" and 0 < cur["gain_raw"] <= cfg.settings["gain_values"]["+"] * cfg.settings["moves"]["max_scale"]
     prev = rows(e, "SELECT energy_after FROM ticks WHERE id<? ORDER BY id DESC LIMIT 1", tid)
     start = prev[0]["energy_after"] if prev else cfg.settings["energy_start"]
-    assert tick_row["energy_after"] == pytest.approx(start - cfg.settings["effort_energy_cost"]["low"])
+    dur = tick_row["duration"]
+    assert tick_row["energy_after"] == pytest.approx(
+        start - cfg.settings["effort_energy_cost"]["low"] * min(2.0, max(0.25, dur / 20)))   # per minute of the move
 
     mm = rows(e, "SELECT * FROM mood_math WHERE tick_id=?", tid)[0]
     mood_after = json.loads(tick_row["mood_after"])
