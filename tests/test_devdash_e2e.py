@@ -56,7 +56,7 @@ def dash(cfg):
 def test_the_seed_covers_everything(world):
     cfg, s = world
     assert s["ticks"] >= 101 and s["dozing"] >= 1 and s["asleep"] >= 1 and s["nights"] >= 2 and s["keepsakes"] >= 2
-    assert s["LLM calls"] > 100 and s["embed calls"] > 100 and s["recall logs"] > 5
+    assert s["LLM calls"] > 100 and s["embed calls"] > 50 and s["recall logs"] > 5   # drawing sittings carry on without recall
     assert s["dev commands"] == 8 and s["playground runs"] == 2 and s["log services"] == ["devdash", "engine", "web"]
     conn = db.connect(cfg.db_path)
     assert conn.execute("SELECT COUNT(*) FROM sleep_traces").fetchone()[0] >= 6

@@ -34,7 +34,11 @@
   <section class="card"><h2 class="section-title">Projects</h2>
     {% if not b.projects %}<p class="empty">no projects yet.</p>{% endif %}
     <ul>{% for p in b.projects %}<li><b>{{ p.title }}</b> <span class="why">{{ p.status_label }} · {{ p.stage }}{% if p.why %} · why: {{ p.why }}{% endif %}{% if p.note %} · where it got to: {{ p.note }}{% endif %}</span></li>{% endfor %}</ul>
-    {% if b.made %}<h3 class="sub-title">Made so far</h3><ul>{% for a in b.made %}<li><b>{{ a.title }}</b> <span class="why">{{ a.kind }} · {{ a.day_text }}</span><br>{{ a.text }}</li>{% endfor %}</ul>{% endif %}</section>
+    {% if b.made %}<h3 class="sub-title">Made so far</h3><ul>{% for a in b.made %}<li><b>{{ a.title }}</b> <span class="why">{{ a.kind }} · {{ a.day_text }}</span>{% if a.img %}<br><img class="af-img" src="{{ a.img }}" alt="{{ a.title }}" loading="lazy">{% endif %}<br>{{ a.text }}</li>{% endfor %}</ul>{% endif %}</section>
+
+  <section class="card"><h2 class="section-title">Drawings</h2>
+    {% if not b.drawings %}<p class="empty">nothing drawn yet.</p>{% endif %}
+    <ul class="drawings">{% for d in b.drawings %}<li class="drawing"><img src="{{ d.img }}" alt="{{ d.alt }}" loading="lazy"><p class="dw-head"><b>{{ d.title }}</b> <span class="why">{{ d.status_label }} · {{ d.meta }}{% if d.subject and d.subject not in d.title %} · of {{ d.subject }}{% endif %}</span></p></li>{% endfor %}</ul></section>
 
   <section class="card"><h2 class="section-title">Memories</h2>
     {% if not b.memories %}<p class="empty">no memories kept yet. They are made while it sleeps.</p>{% endif %}

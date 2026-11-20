@@ -17,12 +17,14 @@ from typing import Any
 from cat.config import Config
 
 EFFORTS = ("low", "medium", "high")
-TARGETS = ("none", "area", "object", "project")
+TARGETS = ("none", "area", "object", "project", "subject")
 REACHES = ("here", "carried", "any")
-DOES = ("none", "move_self", "take", "drop", "consume", "work_on", "sleep")
+DOES = ("none", "move_self", "take", "drop", "consume", "work_on", "sleep",
+        "draw_new", "draw_more", "finish_drawing", "pin", "discard")
+DRAWING_DOES = ("draw_new", "draw_more", "finish_drawing", "pin", "discard")
 ONLY_WHEN = ("always", "can_sleep")
 VERB_FIELDS = {"label", "target", "reach", "any_tags", "effort", "minutes", "effects", "by_tag", "novelty",
-               "does", "only_when", "outcome", "reveals"}
+               "does", "only_when", "outcome", "reveals", "needs_here", "when_state"}
 
 
 @dataclass
@@ -37,16 +39,22 @@ class Move:
 
 # ---------- the menu ----------
 def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict],
-            projects: list[dict], can_sleep: bool, inventory_full: bool = False, seed: str = "") -> list[Move]:
+            projects: list[dict], can_sleep: bool, inventory_full: bool = False, seed: str = "",
+            subjects: list[tuple[str, str]] | None = None, blocked: set[str] | None = None) -> list[Move]:
     """Every move possible right now. `here` / `inventory` are world objects, `projects` the active projects,
     `can_sleep` whether going to sleep is allowed. With `moves.shuffle` the order is a seeded shuffle (same time
     and place, same order), so where a move sits in the list never steers the pick: the first real run took 40%
     of its picks from the top tenth of a menu in file order. Never ordered by need."""
     out: list[Move] = []
     areas = cfg.world["areas"]
+    here_tags = {t for o in here for t in o["tags"]}
     for verb, v in cfg.moves["verbs"].items():
         if v.get("only_when", "always") == "can_sleep" and not can_sleep:
             continue
+        if v.get("does", "none") in (blocked or set()):
+            continue                                    # e.g. no room for another drawing, the board is full
+        if v.get("needs_here") and not set(v["needs_here"]) & here_tags:
+            continue                                    # e.g. drawing needs paper here
         if inventory_full and v.get("does") == "take":
             continue                                    # nothing to pick up with full hands
         kind = v["target"]
@@ -56,12 +64,17 @@ def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict
         elif kind == "area":
             targets = [(a, areas[a]["name"]) for a in areas[area_id]["exits"]]
         elif kind == "project":
-            targets = [(str(p["id"]), p["title"]) for p in projects]
+            # a drawing project's work is drawing itself: it has no separate work-on move
+            targets = [(str(p["id"]), p["title"]) for p in projects if p.get("medium") != "drawing"]
+        elif kind == "subject":
+            targets = list(subjects or [])
         else:
             reach = v.get("reach", "here")
             pool = (here if reach in ("here", "any") else []) + (inventory if reach in ("carried", "any") else [])
             need = set(v.get("any_tags") or [])
-            targets = [(o["id"], o["name"]) for o in pool if not need or need & set(o["tags"])]
+            ws = v.get("when_state") or {}
+            targets = [(o["id"], o["name"]) for o in pool if (not need or need & set(o["tags"]))
+                       and all(str((o.get("state") or {}).get(k, "")) in vals for k, vals in ws.items())]
         for tid, name in targets:
             key = verb if tid is None else f"{verb}:{tid}"
             out.append(Move("", key, verb, tid, name, v["label"].format(target=name)))
@@ -80,7 +93,7 @@ def _cut(cfg: Config, moves: list[Move], seed: str) -> list[Move]:
     cap = cfg.settings["moves"]["max_offered"]
     if len(moves) <= cap:
         return moves
-    always = {"move_self", "sleep", "work_on"}
+    always = {"move_self", "sleep", "work_on", "draw_more"}     # an unfinished drawing in reach is always offered
     keep = [i for i, m in enumerate(moves) if cfg.moves["verbs"][m.verb].get("does") in always]
     rest = [i for i in range(len(moves)) if i not in set(keep)]
     room = max(cap - len(keep), 0)
@@ -223,6 +236,14 @@ def check(moves: Any, cfg_character: dict, settings: dict) -> tuple[list[str], l
         does = v.get("does", "none")
         if does not in DOES:
             errs.append(f"{w}: does must be one of {', '.join(DOES)}")
+        nh = v.get("needs_here")
+        if nh is not None and (not isinstance(nh, list) or not all(isinstance(t, str) for t in nh)):
+            errs.append(f"{w}: needs_here must be a list of tag names")
+        wsv = v.get("when_state")
+        if wsv is not None and (tgt != "object" or not isinstance(wsv, dict) or not all(
+                isinstance(k, str) and isinstance(vals, list) and all(isinstance(x, str) for x in vals)
+                for k, vals in wsv.items())):
+            errs.append(f"{w}: when_state must map a state key to a list of values, on an object verb")
         if "reveals" in v and (not isinstance(v["reveals"], bool) or (v["reveals"] and tgt != "object")):
             errs.append(f"{w}: reveals must be true or false, and only an object verb can reveal")
         if v.get("only_when", "always") not in ONLY_WHEN:
@@ -235,7 +256,9 @@ def check(moves: Any, cfg_character: dict, settings: dict) -> tuple[list[str], l
             if tgt != "area":
                 errs.append(f"{w}: novelty only makes sense for target: area")
             gains_ok(w, v["novelty"], "novelty", is_consume)
-        want = {"move_self": "area", "work_on": "project", "take": "object", "drop": "object", "consume": "object"}
+        want = {"move_self": "area", "work_on": "project", "take": "object", "drop": "object", "consume": "object",
+                "draw_new": "subject", "draw_more": "object", "finish_drawing": "object", "pin": "object",
+                "discard": "object"}
         if does in want and tgt != want[does]:
             errs.append(f"{w}: does: {does} needs target: {want[does]}")
         if does == "sleep" and v.get("only_when") != "can_sleep":

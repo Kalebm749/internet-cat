@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -72,6 +72,18 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             return JSONResponse(views.biography_view(conn, cfg))
         finally:
             close(conn)
+
+    @app.get("/drawings/{did}.svg")
+    def drawing_svg(did: int):
+        """One of its drawings as a picture, drawn by code from the drawing's history (cat/art.py)."""
+        conn = open_db()
+        try:
+            svg = views.drawing_svg(conn, cfg, did)
+        finally:
+            close(conn)
+        if svg is None:
+            return Response(status_code=404)
+        return Response(svg, media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
 
     @app.get("/healthz")
     def healthz():

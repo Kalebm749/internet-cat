@@ -15,6 +15,7 @@ from typing import Callable
 
 from cat import brain, character, clock, db, downtime, effects, impulses, journal, logs, sleep
 from cat import moves as MV
+from cat import drawings as DW
 from cat import director as DR
 from cat import habits as HB
 from cat import projects as PJ
@@ -115,6 +116,20 @@ class Engine:
         if area not in cfg.world["areas"]:
             area = cfg.character["start_area"]
             notes.append(f"area '{st['area']}' no longer exists: moved to '{area}'")
+        # an area added to world.yaml since the world was seeded gets its objects (e.g. the stationer's back room);
+        # objects of areas the world already knew are not re-added (eaten bread stays eaten)
+        known = {r[0] for r in self.conn.execute("SELECT DISTINCT area FROM objects")} \
+            | {r[0] for r in self.conn.execute("SELECT DISTINCT area FROM ticks")}
+        have = {r[0] for r in self.conn.execute("SELECT id FROM objects")}
+        fresh = [o for o in cfg.world["objects"] if o["area"] not in known and o["id"] not in have]
+        if fresh:
+            with db.transaction(self.conn):
+                for o in fresh:
+                    self.conn.execute(
+                        "INSERT INTO objects(id,name,area,tags,state,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+                        (o["id"], o["name"], o["area"], dumps(list(o["tags"])), dumps(dict(o.get("state") or {})),
+                         "world", st["sim_time"]))
+            log.warning("new area(s) in world.yaml: added %s", ", ".join(o["id"] for o in fresh))
         if not notes:
             return
         log.warning("config changed since the last run; adjusting saved state: %s", "; ".join(notes))
@@ -184,17 +199,21 @@ class Engine:
         return recalled
 
     def _menu(self, st: dict | None = None) -> list:
-        """The moves on offer right now: built from what is possible, in a fixed order, never by need."""
+        """The moves on offer right now: built from what is possible (seeded order), never by need."""
         cfg, s = self.cfg, self.cfg.settings
         st = st or self.state
         dt = clock.parse(st["sim_time"])
         inv = self.world.inventory()
+        here = self.world.here(st["area"])
         can_sleep = (st["energy"] < s["sleep"]["wants_sleep_energy_below"]
                      or clock.is_night(dt, s["phases"]))
-        return MV.offered(cfg, area_id=st["area"], here=self.world.here(st["area"]), inventory=inv,
+        seed = f"{st['sim_time']}|{st['area']}"
+        drawing = DW.enabled(cfg) and any("paper" in o["tags"] for o in here)
+        return MV.offered(cfg, area_id=st["area"], here=here, inventory=inv,
                           projects=PJ.active(self.conn), can_sleep=can_sleep,
-                          inventory_full=len(inv) >= s["inventory_max"],
-                          seed=f"{st['sim_time']}|{st['area']}")
+                          inventory_full=len(inv) >= s["inventory_max"], seed=seed,
+                          subjects=DW.offered_subjects(cfg, self.conn, self.world, seed) if drawing else [],
+                          blocked=DW.blocked(cfg, self.world))
 
     def _untried(self, menu: list) -> set[str]:
         """Verbs on this menu it has never made (a fact of its own history; `moves.mark_untried`). The prompt marks
@@ -223,6 +242,12 @@ class Engine:
         res = MV.resolve(cfg, mv, target_tags=tags, rng=self.move_rng, novel=novel, project_progress_bucket=bucket)
         res["project"] = ({"id": int(mv.target_id), "advance": bucket, "note": why}
                           if res["does"] == "work_on" and str(mv.target_id).isdigit() else None)
+        if res["does"] in MV.DRAWING_DOES:
+            proj = DW.active_project(PJ.active(self.conn))
+            res["drawing"] = DW.plan(cfg, self.conn, self.world, mv, res["does"], proj)
+            res["changes"] = res["drawing"]["changes"]
+            if proj and res["does"] in ("draw_new", "draw_more"):    # a sitting is the drawing project's work
+                res["project"] = {"id": proj["id"], "advance": bucket, "note": why}
         return res
 
     def _repetition_multiplier(self, key: str, area: str) -> float:
@@ -307,6 +332,8 @@ class Engine:
         rest_now = st["is_asleep"] or (clock.is_night(dt, s["phases"])
                                        and st["energy"] < s["sleep"]["fall_asleep_energy_below"])
         if act and rest_now:                              # sleep ends whatever it was doing
+            if act.get("drawing_object"):                 # a sitting at a drawing cut short by sleep
+                self._drawing_cut = (act["drawing_object"], act["total"] - act["remaining"])
             self.state["activity"] = st["activity"] = act = None
         reason = self._interrupt_reason(act, fired, st) if act else None
         if act and not reason:
@@ -359,7 +386,7 @@ class Engine:
                 # what the diary shows as having happened is code's plain account: no prose layer can add to it
                 n = {"outcome": res["template"], "gains": res["gains"], "effort": res["effort"],
                      "duration": res["duration"], "changes": res["changes"], "project": res["project"],
-                     "does": res["does"], "template": res["template"]}
+                     "does": res["does"], "template": res["template"], "drawing": res.get("drawing")}
                 result = (b, n)
             except BackendError as e:
                 log.warning("brain unavailable (%s): dozing", e)
@@ -383,8 +410,9 @@ class Engine:
             if adv and adv.get("ok") and cfg.settings["projects"]["artifacts_enabled"] \
                     and (adv["milestones"] or adv["completed"]) and not adv["artifact"]:
                 proj = PJ.get(self.conn, adv["id"])
-                with self.tracer.stage("create"):
-                    adv["artifact"] = PJ.create_artifact(self.backend, cfg, proj, adv) if proj else None
+                if proj and proj.get("medium") != "drawing":      # a drawing project's pieces are its real drawings
+                    with self.tracer.stage("create"):
+                        adv["artifact"] = PJ.create_artifact(self.backend, cfg, proj, adv)
             exempt = bool(adv and adv.get("ok") and adv["advanced"])
             if exempt:
                 mult = 1.0
@@ -417,6 +445,9 @@ class Engine:
                 new_activity = {"label": b["move"].label, "key": b["move"].key, "why": b["why"], "total": total,
                                 "remaining": total - step, "started_at": now,
                                 "empty_at_start": [k for k, v in needs.items() if character.need_band(v, cfg) == "empty"]}
+                if n.get("drawing") and n["does"] in ("draw_new", "draw_more"):     # so an interruption can cut it
+                    made = next((c.get("object_id") for c in fx.applied if c.get("op") in ("create", "set_state")), None)
+                    new_activity["drawing_object"] = made
                 self.tracer.set_activity({"state": "started", "label": new_activity["label"], "total": total,
                                           "step": step, "remaining": new_activity["remaining"]})
         else:
@@ -450,7 +481,16 @@ class Engine:
 
         # its own journal entry, written now that code has decided what happened (LLM call, outside the txn)
         if result:
-            row["entry"] = self._journal(result[0], row, fired, before, needs, mood, energy, recalled, impulse)
+            dplan = result[1].get("drawing")
+            row["entry"], title = self._journal(result[0], row, fired, before, needs, mood, energy, recalled, impulse,
+                                                finishing=dplan["name"] if dplan and dplan["does"] == "finish_drawing" else None)
+            if dplan:          # recorded with the tick: the sitting carries how it was when it sat down to draw
+                sitting = {"minutes": result[1]["duration"], "planned": result[1]["duration"],
+                           "mood": st["mood"].get("value", 0.0), "anxiety": character.anxiety_of(st["mood"], cfg),
+                           "energy": st["energy"]}
+                if dplan["does"] in ("draw_new", "draw_more"):
+                    sitting.update(self._sketch(dplan, result[1]["duration"]) or {})
+                row["drawing"] = {"plan": dplan, "title": title, "sitting": sitting}
 
         # the creature chose to sleep (honoured when tired enough, or at night)
         falls_asleep = bool(result) and result[1]["does"] == "sleep"      # offered only when allowed
@@ -492,24 +532,46 @@ class Engine:
             self._try_sleep_cycle()
         return info
 
+    def _sketch(self, dplan: dict, minutes: float) -> dict | None:
+        """Its own marks for this sitting (cat/drawings.py `sketch`, one LLM call, outside the transaction), placed
+        knowing the subject's real facts, what is already on this sheet and its earlier drawings. None: code's
+        marks are drawn for the sitting instead."""
+        cfg, st = self.cfg, self.state
+        if dplan["does"] == "draw_new":
+            sub, sittings, exclude = dplan["subject"], [], None
+        else:
+            d = DW.row_for(self.conn, dplan["object_id"])
+            if not d:
+                return None
+            sub = {"kind": d["subject_kind"], "key": d["subject_key"], "name": d["subject_name"],
+                   "tags": d["subject_tags"]}
+            sittings, exclude = d["sittings"], d["id"]
+        with self.tracer.stage("sketch"):
+            return DW.sketch(self.backend, cfg, self.conn, sub=sub, minutes=minutes,
+                             colours=DW.colours_here(cfg, self.world.here(st["area"])), sittings=sittings,
+                             exclude_id=exclude, mood=st["mood"], energy=st["energy"])
+
     def _journal(self, b: dict, row: dict, fired: list[dict], before: dict, needs: dict, mood: dict,
-                 energy: float, recalled: list[dict], impulse: dict | None) -> str | None:
-        """The entity's own entry for this moment, from facts only (cat/journal.py). Without one (journaling off or
-        the call failed) an impulse keeps its fixed first-person line; otherwise the moment has no entry."""
+                 energy: float, recalled: list[dict], impulse: dict | None,
+                 finishing: str | None = None) -> tuple[str | None, str | None]:
+        """The entity's own entry for this moment, from facts only (cat/journal.py), and the title it gave a drawing
+        it has just finished. Without an entry (journaling off or the call failed) an impulse keeps its fixed
+        first-person line; otherwise the moment has no entry."""
         cfg, st = self.cfg, self.state
         prefs = [dict(r) for r in self.conn.execute(
             "SELECT subject, valence FROM preferences ORDER BY abs(valence) DESC LIMIT ?",
             (2 * cfg.settings["preferences_shown"],))]
         with self.tracer.stage("journal"):
-            text = journal.write(
+            out = journal.write_full(
                 self.backend, cfg, sim_time=st["sim_time"], area_id=st["area"], weather=self.world.weather,
                 action=row["action"], why=b.get("why") or "", impulse=bool(impulse), result=row["result"],
                 events=[e["text"] for e in fired], before=before, after=needs, mood=mood, energy=energy,
                 self_image=self._self_image_lines(), tendencies=st["tendencies"], preferences=prefs,
-                projects=PJ.brain_view(cfg, self.conn, st["sim_time"]), memories=[m["text"] for m in recalled])
-        if text is None and impulse:
-            return impulse["entry"]
-        return text
+                projects=PJ.brain_view(cfg, self.conn, st["sim_time"]), memories=[m["text"] for m in recalled],
+                finishing=finishing)
+        if out["entry"] is None and impulse:
+            return impulse["entry"], out["title"]
+        return out["entry"], out["title"]
 
     # ---------- sleeping ----------
     def _interrupt_reason(self, act: dict, fired: list[dict], st: dict) -> str | None:
@@ -527,6 +589,8 @@ class Engine:
         """It was interrupted: drop the rest of the move and tell the brain, in words, what was broken off."""
         self.state["activity"] = None
         self.last_outcome = P.render(self.cfg, f"brain.situation.interrupted_{reason}", label=act["label"])
+        if act.get("drawing_object"):        # the sitting at the drawing lasted only this long
+            self._drawing_cut = (act["drawing_object"], act["total"] - act["remaining"])
         self.tracer.set_activity({"state": "interrupted", "reason": reason, "label": act["label"],
                                   "remaining": act["remaining"]})
 
@@ -670,6 +734,12 @@ class Engine:
                 db.set_meta(self.conn, "sleep_started", now)
                 db.set_meta(self.conn, "sleep_tick_id", tick_id)
                 db.set_meta(self.conn, "sleep_pending", 1)
+            if row.get("drawing"):          # the drawing's history, if its world change was applied
+                dr = row["drawing"]
+                DW.commit(self.conn, dr["plan"], row["changes"], tick_id, now, dr["sitting"], dr["title"])
+            cut, self._drawing_cut = getattr(self, "_drawing_cut", None), None
+            if cut:                         # a sitting that was interrupted lasted only this long
+                DW.cut_sitting(self.conn, cut[0], cut[1])
             if project_adv and project_adv.get("ok"):
                 aid = PJ.commit_advance(self.conn, project_adv, tick_id, new_state["sim_time"])
                 if aid:

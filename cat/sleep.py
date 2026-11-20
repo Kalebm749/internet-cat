@@ -355,7 +355,10 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
                        projects_messages(cfg, summary, lines, likes, open_rows),
                        PJ.OPS_SCHEMA, lambda r: r.get("projects"), retries)
     upkeep = PJ.idle_upkeep(cfg, open_rows)
-    pj_op = PJ.decide_ops(cfg, open_rows, raw_pj, day)
+    draw_verbs = {v for v, spec in cfg.moves["verbs"].items() if spec.get("does") in ("draw_new", "draw_more")}
+    drew_today = any((r[0] or "").split(":")[0] in draw_verbs for r in conn.execute(
+        "SELECT move_key FROM ticks WHERE kind='tick' AND id>?", (_last_sleep_tick_id(conn),)))
+    pj_op = PJ.decide_ops(cfg, open_rows, raw_pj, day, drew_today=drew_today)
     log.info("project proposal: %s", pj_op["action"], extra={"event": "projects", "extra": pj_op})
 
     new_habits = None

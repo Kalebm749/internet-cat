@@ -1,8 +1,8 @@
 """Long-term projects: something the entity keeps coming back to across ticks and days.
 
 A project is formed during sleep (the sleeping mind notices a liked activity it keeps returning to),
-advanced tick by tick by the narrator's judgement (small, tapering steps), and leaves artifacts (short
-saved pieces of what it made). Project work is exempt from the repetition penalty: progress replaces it.
+advanced tick by tick when the brain chooses its work (small, tapering steps), and leaves artifacts (short
+saved pieces of what it made; a drawing project's pieces are its real drawings, cat/drawings.py). Project work is exempt from the repetition penalty: progress replaces it.
 Code owns every number here; the LLMs only describe. Nothing in this module picks or ranks actions."""
 from __future__ import annotations
 
@@ -25,7 +25,8 @@ OPS_SCHEMA = {
         "type": "object",
         "properties": {"op": {"type": "string", "enum": ["start", "pause", "resume", "drop"]},
                        "id": {"type": "integer"}, "title": {"type": "string"},
-                       "activity": {"type": "string"}, "why": {"type": "string"}},
+                       "activity": {"type": "string"}, "why": {"type": "string"},
+                       "medium": {"type": "string", "enum": ["drawing", "other"]}},
         "required": ["op"]}}},
     "required": ["projects"],
 }
@@ -62,7 +63,7 @@ def _clean(text: Any, limit: int) -> str:
 
 
 # ---------- sleep: forming, pausing, resuming, dropping (at most one op a night) ----------
-def decide_ops(cfg: Config, existing: list[dict], proposed: Any, sim_day: str) -> dict:
+def decide_ops(cfg: Config, existing: list[dict], proposed: Any, sim_day: str, drew_today: bool = False) -> dict:
     """The sleeping mind's proposal -> an outcome the commit applies. `existing` is every open
     (active or paused) project. Always returns a dict with an `action`:
     none | rejected | start | pause | resume | drop."""
@@ -82,9 +83,14 @@ def decide_ops(cfg: Config, existing: list[dict], proposed: Any, sim_day: str) -
         if n_active >= pc["max_active"]:
             return {"action": "rejected", "op": op, "title": title,
                     "reason": f"already {n_active} active (max_active {pc['max_active']}): pause or drop one first"}
+        # a drawing project only if it really drew today (code checks the log): its work is then drawing itself,
+        # and its pieces are the real drawings, never LLM text
+        medium = "drawing" if p.get("medium") == "drawing" and drew_today else None
         return {"action": "start", "title": title,
                 "activity": _clean(p.get("activity"), pc["title_max_length"]) or title,
-                "why": _clean(p.get("why"), pc["why_max_length"]), "formed_day": sim_day}
+                "why": _clean(p.get("why"), pc["why_max_length"]), "formed_day": sim_day, "medium": medium,
+                **({"note": "medium 'drawing' ignored: it did not draw today"}
+                   if p.get("medium") == "drawing" and not drew_today else {})}
     pid = p.get("id")
     target = next((e for e in existing if not isinstance(pid, bool) and e["id"] == pid), None)
     if op in ("pause", "resume", "drop"):
@@ -122,9 +128,10 @@ def commit_sleep(conn: Connection, upkeep: list[dict], op: dict, sim_time: str) 
                      (u["idle_nights"], "paused" if u["pause"] else "active", sim_time, u["id"]))
     a = op["action"]
     if a == "start":
-        conn.execute("INSERT INTO projects(title,activity,why,status,progress,note,formed_day,updated_at) "
-                     "VALUES(?,?,?,?,?,?,?,?)",
-                     (op["title"], op["activity"], op["why"], "active", 0.0, "", op["formed_day"], sim_time))
+        conn.execute("INSERT INTO projects(title,activity,why,status,progress,note,formed_day,updated_at,medium) "
+                     "VALUES(?,?,?,?,?,?,?,?,?)",
+                     (op["title"], op["activity"], op["why"], "active", 0.0, "", op["formed_day"], sim_time,
+                      op.get("medium")))
     elif a in ("pause", "resume", "drop"):
         status = {"pause": "paused", "resume": "active", "drop": "dropped"}[a]
         conn.execute("UPDATE projects SET status=?, idle_nights=0, updated_at=? WHERE id=?",

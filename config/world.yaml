@@ -5,7 +5,7 @@ areas:
   fountain:
     name: the fountain
     description: "The heart of the square. An old stone fountain stands in a wide basin, its water always faintly moving even when there is no wind. Nobody remembers who built it."
-    exits: [market, clock_tower, garden, notice_board]
+    exits: [market, clock_tower, garden, notice_board, studio]
   market:
     name: the market stalls
     description: "Canvas-roofed stalls and stacked crates, loud with smells of bread and fruit."
@@ -21,6 +21,10 @@ areas:
   notice_board:
     name: the notice board
     description: "A covered arcade where the town pins its notes, with a post box and a sheltered bench."
+    exits: [fountain]
+  studio:
+    name: the stationer's back room
+    description: "A cramped back room behind a stationer's shop, smelling of paper and dust. A wide table stands under the window, and a cork board hangs on the wall."
     exits: [fountain]
   alley:
     name: the back alley
@@ -64,6 +68,11 @@ objects:
   - {id: top,        name: a battered wooden top,      area: alley, tags: [toy, movable], state: {}}
   - {id: puddle,     name: a deep puddle,              area: alley, tags: [wet], state: {}}
   - {id: sacking,    name: a heap of old sacking,      area: alley, tags: [soft, warm, hideable], state: {}}
+  # the stationer's back room: somewhere to make things, and somewhere to put them up
+  - {id: paper,      name: a stack of drawing paper and charcoal, area: studio, tags: [paper], state: {}}
+  - {id: worktable,  name: a wide work table,          area: studio, tags: [], state: {}}
+  - {id: corkboard,  name: a cork pin board,           area: studio, tags: [board], state: {}}
+  - {id: paints,     name: a tin of watercolours,      area: studio, tags: [paints], state: {}}
 
 # What is true of a thing with each tag, as the end of a sentence starting "It ...". Moves with `reveals: true`
 # (looking closely, turning something over, ...) report these, so the diary and the entity's journal have
@@ -80,6 +89,10 @@ tag_facts:
   hideable: has room to hide in
   shiny: catches the light
   wet: is wet
+  paper: is something to draw on
+  board: has room to pin things up
+  drawing: was drawn by your own hand
+  paints: holds colours to paint with
 
 weather: [clear, cloudy, rain]   # first entry is the starting weather
 

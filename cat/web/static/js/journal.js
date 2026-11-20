@@ -111,6 +111,13 @@
       $("#projects-empty").hidden = !s.projects.empty;
       $("#artifacts-empty").hidden = !s.projects.artifacts_empty;
     }
+    if (s.art && changed("art", s.art)) {
+      setList($("#board"), "tpl-drawing", s.art.pinned);
+      setList($("#drawing-table"), "tpl-drawing-table", s.art.table);
+      $("#art-empty").hidden = !s.art.empty;
+      $("#board-title").hidden = s.art.pinned_empty;
+      $("#table-title").hidden = s.art.table_empty;
+    }
     if (changed("keepsakes", s.keepsakes)) {
       setList($("#keepsakes"), "tpl-keepsake", s.keepsakes);
       $("#keepsakes-empty").hidden = s.keepsakes.length > 0;
@@ -252,7 +259,7 @@
 (function () {
   var rail = document.getElementById("rail");
   if (!rail) return;
-  var ids = ["about-card", "habits-card", "projects-card", "keepsakes-card"];
+  var ids = ["about-card", "habits-card", "projects-card", "art-card", "keepsakes-card"];
   var cards = ids.map(function (id) { return document.getElementById(id); }).filter(Boolean);
   document.documentElement.classList.add("book");
   rail.hidden = false;

@@ -249,3 +249,9 @@ html.book .col-right .card[hidden] { display: none; }
 .rail button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
 @media (max-width: 1250px) { html.book .col-right { position: static; width: auto; max-height: none; box-shadow: none; margin-top: 20px; } .rail { display: none; } }
 @media (max-width: 1000px) { .col-left { grid-template-columns: 1fr; } .col-left .portrait-card { grid-row: auto; } .col-left #mood-card { grid-template-columns: 1fr; } .needs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* drawings: pictures code made from what it drew and how it was at each sitting */
+.drawings { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.drawing img, .af-img { display: block; width: 100%; max-width: 240px; height: auto; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.18); background: #f3eee2; }
+.drawing .dw-head { margin: 4px 0 0; font-size: .85em; }
+.drawing .dw-meta { opacity: .7; }

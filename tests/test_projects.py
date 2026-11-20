@@ -24,7 +24,14 @@ def test_start_a_project(cfg):
     out = PJ.decide_ops(cfg, [], [{"op": "start", "title": "  drawing   the   old tree ",
                                    "activity": "drawing", "why": "it keeps coming back"}], "2026-11-18")
     assert out == {"action": "start", "title": "drawing the old tree", "activity": "drawing",
-                   "why": "it keeps coming back", "formed_day": "2026-11-18"}
+                   "why": "it keeps coming back", "formed_day": "2026-11-18", "medium": None}
+
+
+def test_a_drawing_project_only_if_it_really_drew_today(cfg):
+    ask = [{"op": "start", "title": "the fountain series", "activity": "drawing", "medium": "drawing"}]
+    assert PJ.decide_ops(cfg, [], ask, "2026-11-18", drew_today=True)["medium"] == "drawing"
+    out = PJ.decide_ops(cfg, [], ask, "2026-11-18", drew_today=False)
+    assert out["medium"] is None and "did not draw today" in out["note"]
 
 
 def test_start_is_limited_by_max_active_and_duplicates_and_empty_titles(cfg):

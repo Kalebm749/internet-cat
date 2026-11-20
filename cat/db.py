@@ -52,7 +52,20 @@ CREATE TABLE IF NOT EXISTS habits(
   id INTEGER PRIMARY KEY, key TEXT, text TEXT, part TEXT, count INT, share REAL,
   formed_day TEXT, updated_at TEXT);
 
--- long-term projects: formed in sleep, advanced by the narrator, with the pieces they leave behind
+-- drawings: real things it makes at a `paper` object, one sitting at a time (cat/drawings.py). The world object
+-- (tag `drawing`) is the thing itself; this row is its history: subject, every sitting and the state it was in.
+CREATE TABLE IF NOT EXISTS drawings(
+  id INTEGER PRIMARY KEY, object_id TEXT,
+  subject_kind TEXT, subject_key TEXT, subject_name TEXT,  -- place | thing | happening: only what it has known
+  subject_tags JSON,                                    -- the thing's tags when it was drawn (they shape the marks)
+  title TEXT,                                           -- its own name for it, given when it calls it finished
+  status TEXT,                                          -- in progress | finished | pinned | discarded
+  project_id INT,                                       -- the drawing project it was made for, if any
+  sittings JSON,                                        -- [{tick_id, sim_time, minutes, mood, anxiety, energy}]
+  started_sim_time TEXT, finished_sim_time TEXT, pinned_sim_time TEXT, discarded_sim_time TEXT, updated_at TEXT);
+
+-- long-term projects: formed in sleep, advanced by choosing their work (a work-on move, or drawing for a
+-- drawing project), with the pieces they leave behind
 CREATE TABLE IF NOT EXISTS projects(
   id INTEGER PRIMARY KEY, title TEXT, activity TEXT, why TEXT,
   status TEXT,                                          -- active | paused | done | dropped
@@ -161,6 +174,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     _add_column(conn, "need_math", "event_drain", "REAL")   # points an event drained from this need
     _add_column(conn, "ticks", "energy_after", "REAL")  # energy is a separate resource, -50..50
     _add_column(conn, "memories", "tick_id", "INT")      # which tick wrote this memory (for tracing)
+    _add_column(conn, "projects", "medium", "TEXT")       # 'drawing': its work is drawing, its pieces real drawings
+    _add_column(conn, "artifacts", "drawing_id", "INT")   # a piece that is a real drawing (drawings.id)
     _add_column(conn, "ticks", "result", "TEXT")         # code's plain account of what the move did (never narrator prose)
     if get_meta(conn, "schema_version") is None:
         set_meta(conn, "schema_version", SCHEMA_VERSION)

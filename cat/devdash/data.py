@@ -865,6 +865,8 @@ def _change_detail(cfg: Config, c: dict) -> str:
         return f"created '{c.get('name') or c.get('label')}' in {nm(c.get('area'))}" + (" (spawned by a world event)" if c.get("source") == "event" else " (by the creature)")
     if op == "consume":
         return "eaten / used up"
+    if op == "discard":
+        return "thrown away by the creature (only its own things)"
     if op == "despawn":
         return f"gone from {nm(c.get('area'))}: the world brought it and its time was up (object_lifetime_hours)"
     if op == "take":

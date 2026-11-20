@@ -9,7 +9,7 @@ embed_model: nomic-embed-text
 ollama_think: false            # qwen3: disable thinking so JSON `format` output stays clean
 llm_timeout_seconds: 600   # a 14B model split between GPU and RAM can take minutes
 health_timeout_seconds: 3
-llm_temperature: {brain: 0.9, journal: 0.7, sleep: 0.5, director: 0.8, create: 0.9}
+llm_temperature: {brain: 0.9, journal: 0.7, sleep: 0.5, director: 0.8, create: 0.9, sketch: 0.9}
 llm_num_ctx: 4096
 error_backoff_seconds: 30      # extra wait after a tick that raised an unexpected error
 llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
@@ -80,7 +80,7 @@ repetition_penalty:
 create_limit_per_tick: 1
 max_changes_per_tick: 6        # extra narrator changes beyond this are rejected
 inventory_max: 3
-name_max_length: 40            # created object names / set_state keys
+name_max_length: 80            # created object names (e.g. "a drawing of ...") / set_state keys
 consume_min_gain: "+"          # eating an edible guarantees at least this bucket on the sustenance need
 sustenance_need: sustenance    # the one need that only rises when an edible object is consumed this tick
 
@@ -125,6 +125,24 @@ anxiety:
   impulses:                                # what an impulse does: it takes over with one of the listed moves
     restless: {weight: 3, verbs: [go, pace, fidget, search_around, wander_edge, follow_sound]}
     freeze: {weight: 1, verbs: [wait, breathe, listen, hide_in]}
+
+# --- drawing: real things it makes at a `paper` object over several sittings (cat/drawings.py, moves.yaml
+#     start_drawing / draw_more / finish_drawing / pin_drawing / discard_drawing). Code draws the picture. ---
+drawing:
+  enabled: true
+  subjects_offered: 4          # subjects from its own history offered for a new drawing (a seeded pick)
+  happenings_considered: 30    # the most recent happenings it witnessed that it could draw
+  max_in_progress: 3           # unfinished drawings at once; no new one is offered past this
+  board_capacity: 6            # drawings that fit on a `board`; pinning is not offered when it is full
+  marks_per_sitting: 14        # without its own marks (the sketch call failed): strokes code adds per reference_minutes
+  sketch: true                 # each sitting, one LLM call (brain_model) places its own marks; false = code's marks only
+  marks_max: 12                # most marks one sitting may place (a 60-minute sitting; shorter sittings get fewer)
+  marks_min: 3                 # fewest marks a sitting is allowed
+  history_shown: 4             # its past drawings it is reminded of, so a style can grow from its own history
+  colours:                     # what it can draw with: charcoal is always with the paper; paints only while an
+    charcoal: {black: "#1f1d1b", "dark grey": "#4a4744", grey: "#7c7873", "pale grey": "#aaa59e"}   # object tagged
+    paints: {red: "#b8402e", orange: "#d9822b", yellow: "#e2b93b", green: "#5d8a3a", teal: "#2f8a83",
+             blue: "#3a5f9e", violet: "#6d4b8f", pink: "#d47a92", brown: "#7a5232", white: "#f7f3ea"}   # `paints` is here
 
 # --- reflexes: innate, and the ONE place code picks a move because of a need. Rolled before the brain; traced
 #     like an impulse and shown in the diary (prompts.yaml impulse.<name>). The first real run never ate at all. ---
@@ -191,7 +209,7 @@ max_objects_per_area: 12       # event spawns are skipped when the area is this 
 object_lifetime_hours: {event: 18, director: 30}   # sim hours before something the world brought is gone (by who made
                                # it: event | director | creature; missing or 0 = it stays). Carried things and the
                                # objects the world started with never expire.
-allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet]
+allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet, paper, board, drawing, paints]
 state_value_max_length: 40
 
 # --- mood: ONE number, a slider from -50 (negative) to 50 (positive) ---
@@ -271,6 +289,11 @@ web_ui:
   trend_min_delta: 2           # trend arrow only if a need moved more than this since last tick
   chip_min_delta: 5            # diary need chips (up/down) only for moves at least this big
   keepsake_dots: [0.4, 0.7]    # importance below the 1st => 1 dot, below the 2nd => 2, else 3
+  drawing:                     # how the website draws a drawing (cat/art.py)
+    width: 240
+    height: 180
+    jitter_max: 7              # how far a stroke wanders at anxiety 100 (calm strokes are steady)
+    pinned_shown: 6            # drawings on the board panel
   preferences_shown: 5         # loves / dislikes each
   max_page_size: 100
   keepsakes_all_limit: 200

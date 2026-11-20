@@ -117,6 +117,7 @@
       <button type="button" data-panel="about-card" aria-pressed="true">About</button>
       <button type="button" data-panel="habits-card" aria-pressed="false">Habits</button>
       <button type="button" data-panel="projects-card" aria-pressed="false">Projects</button>
+      <button type="button" data-panel="art-card" aria-pressed="false">Art</button>
       <button type="button" data-panel="keepsakes-card" aria-pressed="false">Keepsakes</button>
       <a href="/biography">Biography</a>
     </nav>
@@ -188,8 +189,26 @@
         {% for a in s.projects.artifacts %}
         <li class="artifact">
           <p class="af-head"><b>{{ a.title }}</b> <span class="af-meta">{{ a.kind }}{% if a.project %} · {{ a.project }}{% endif %} · {{ a.day_text }}</span></p>
+          <img class="af-img" src="{{ a.img }}" alt="{{ a.title }}" loading="lazy" {% if not a.img %}hidden{% endif %}>
           <p class="af-text">{{ a.text }}</p>
         </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="card" id="art-card">
+      <h2 class="section-title">Art</h2>
+      <p id="art-empty" class="empty" {% if not s.art.empty %}hidden{% endif %}>{{ s.art.empty_text }}</p>
+      <h3 class="sub-title" id="board-title" {% if s.art.pinned_empty %}hidden{% endif %}>On the board</h3>
+      <ul class="drawings" id="board">
+        {% for d in s.art.pinned %}
+        <li class="drawing"><img src="{{ d.img }}" alt="{{ d.alt }}" loading="lazy"><p class="dw-head"><b>{{ d.title }}</b> <span class="dw-meta">{{ d.meta }}</span></p></li>
+        {% endfor %}
+      </ul>
+      <h3 class="sub-title" id="table-title" {% if s.art.table_empty %}hidden{% endif %}>On the table</h3>
+      <ul class="drawings" id="drawing-table">
+        {% for d in s.art.table %}
+        <li class="drawing"><img src="{{ d.img }}" alt="{{ d.alt }}" loading="lazy"><p class="dw-head"><b>{{ d.title }}</b> <span class="dw-meta">{{ d.status_label }} · {{ d.meta }}</span></p></li>
         {% endfor %}
       </ul>
     </section>
@@ -249,7 +268,11 @@
 
 <template id="tpl-project"><li class="project" data-f-class="cls" data-f-attr="title:title_attr"><span class="pj-title" data-f="title"></span><span class="pj-stage"><span data-f="status_label"></span> · <span data-f="stage"></span></span><span class="pj-note" data-f="note" data-show="note"></span></li></template>
 
-<template id="tpl-artifact"><li class="artifact"><p class="af-head"><b data-f="title"></b> <span class="af-meta"><span data-f="kind"></span> · <span data-f="project"></span> · <span data-f="day_text"></span></span></p><p class="af-text" data-f="text"></p></li></template>
+<template id="tpl-artifact"><li class="artifact"><p class="af-head"><b data-f="title"></b> <span class="af-meta"><span data-f="kind"></span> · <span data-f="project"></span> · <span data-f="day_text"></span></span></p><img class="af-img" loading="lazy" data-f-attr="src:img;alt:title" data-show="img"><p class="af-text" data-f="text"></p></li></template>
+
+<template id="tpl-drawing"><li class="drawing"><img loading="lazy" data-f-attr="src:img;alt:alt"><p class="dw-head"><b data-f="title"></b> <span class="dw-meta" data-f="meta"></span></p></li></template>
+
+<template id="tpl-drawing-table"><li class="drawing"><img loading="lazy" data-f-attr="src:img;alt:alt"><p class="dw-head"><b data-f="title"></b> <span class="dw-meta"><span data-f="status_label"></span> · <span data-f="meta"></span></span></p></li></template>
 
 <template id="tpl-habit"><li data-f="text" data-f-attr="title:title"></li></template>
 
