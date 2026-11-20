@@ -206,3 +206,28 @@ def test_unknown_top_level_moves_field_is_a_warning(tmp_path, caplog):
     with caplog.at_level("WARNING", logger="cat.config"):
         load_config(d)
     assert "moves.yaml: unknown top-level field 'extras'" in caplog.text
+
+
+# ---------- the big default verb list ----------
+def test_the_default_menu_is_capped_but_always_keeps_moving_and_sleeping():
+    from cat.config import load_config
+    cfg = load_config(None)
+    assert len(cfg.moves["verbs"]) >= 90
+    here = [{"id": "o1", "name": "a toy", "tags": ["toy", "movable", "soft", "warm", "shiny", "climbable"], "state": {}}]
+    a = M.offered(cfg, area_id="fountain", here=here, inventory=[], projects=[], can_sleep=True, seed="x")
+    assert len(a) <= cfg.settings["moves"]["max_offered"]
+    keys_ = [m.key for m in a]
+    assert "sleep" in keys_ and any(k.startswith("go:") for k in keys_)
+    assert [m.id for m in a] == [f"m{i}" for i in range(1, len(a) + 1)]
+
+
+def test_the_cut_is_deterministic_and_varies_with_the_seed_not_with_needs():
+    from cat.config import load_config
+    cfg = load_config(None)
+    kw = dict(area_id="fountain", here=[], inventory=[], projects=[], can_sleep=False)
+    one = [m.key for m in M.offered(cfg, seed="a", **kw)]
+    assert one == [m.key for m in M.offered(cfg, seed="a", **kw)]
+    seen = set()
+    for i in range(30):
+        seen |= {m.key for m in M.offered(cfg, seed=f"s{i}", **kw)}
+    assert len(seen) > len(one)             # over time, more of the verbs get their turn

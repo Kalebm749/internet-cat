@@ -117,6 +117,839 @@ verbs:
     effects: {curiosity: "+", wonder: "+"}
     does: work_on
     outcome: "You worked on {target}."
+  # ---- more verbs (generated table, edit freely). Gains are small on purpose: needs are fed by variety, not one verb. ----
+  stretch:
+    label: "stretch out slowly"
+    target: none
+    effort: low
+    minutes: [3, 8]
+    effects: {peace: +}
+    does: none
+    outcome: "You stretched until everything felt looser."
+  yawn:
+    label: "yawn and settle your shoulders"
+    target: none
+    effort: low
+    minutes: [2, 4]
+    effects: {peace: +}
+    does: none
+    outcome: "You yawned and let your shoulders drop."
+  hum:
+    label: "hum a tune to yourself"
+    target: none
+    effort: low
+    minutes: [5, 15]
+    effects: {joy: +}
+    does: none
+    outcome: "You hummed a tune to yourself."
+  whistle:
+    label: "whistle something you half remember"
+    target: none
+    effort: low
+    minutes: [5, 15]
+    effects: {joy: +}
+    does: none
+    outcome: "You whistled something half remembered."
+  sing:
+    label: "sing out loud"
+    target: none
+    effort: medium
+    minutes: [10, 20]
+    effects: {joy: ++}
+    does: none
+    outcome: "You sang out loud, and it felt good."
+  dance:
+    label: "dance a few clumsy steps"
+    target: none
+    effort: medium
+    minutes: [5, 15]
+    effects: {joy: ++}
+    does: none
+    outcome: "You danced a few clumsy steps."
+  listen:
+    label: "stand still and listen"
+    target: none
+    effort: low
+    minutes: [5, 20]
+    effects: {curiosity: +, peace: +}
+    does: none
+    outcome: "You stood still and listened."
+  watch_people:
+    label: "watch the world go by"
+    target: none
+    effort: low
+    minutes: [10, 30]
+    effects: {curiosity: +, peace: +}
+    does: none
+    outcome: "You watched the world go by."
+  watch_light:
+    label: "watch how the light moves"
+    target: none
+    effort: low
+    minutes: [10, 30]
+    effects: {peace: +, wonder: +}
+    does: none
+    outcome: "You watched the light move across things."
+  look_up:
+    label: "look up at the sky"
+    target: none
+    effort: low
+    minutes: [5, 20]
+    effects: {wonder: +}
+    does: none
+    outcome: "You looked up at the sky for a while."
+  watch_clouds:
+    label: "watch the clouds change shape"
+    target: none
+    effort: low
+    minutes: [10, 30]
+    effects: {wonder: +}
+    does: none
+    outcome: "You watched the clouds change shape."
+  breathe:
+    label: "take a few slow breaths"
+    target: none
+    effort: low
+    minutes: [3, 8]
+    effects: {peace: +}
+    does: none
+    outcome: "You took a few slow breaths."
+  daydream:
+    label: "let your mind wander"
+    target: none
+    effort: low
+    minutes: [10, 30]
+    effects: {peace: +, wonder: +}
+    does: none
+    outcome: "You let your mind wander."
+  remember:
+    label: "try to remember something from long ago"
+    target: none
+    effort: low
+    minutes: [5, 15]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You tried to remember something from long ago."
+  ponder:
+    label: "think hard about a question"
+    target: none
+    effort: medium
+    minutes: [10, 30]
+    effects: {curiosity: ++}
+    does: none
+    outcome: "You thought hard about a question."
+  pace:
+    label: "pace up and down"
+    target: none
+    effort: low
+    minutes: [5, 15]
+    effects: {}
+    does: none
+    outcome: "You paced up and down."
+  sulk:
+    label: "sulk for a while"
+    target: none
+    effort: low
+    minutes: [5, 15]
+    effects: {}
+    does: none
+    outcome: "You sulked for a while."
+  fidget:
+    label: "fidget with your hands"
+    target: none
+    effort: low
+    minutes: [3, 10]
+    effects: {}
+    does: none
+    outcome: "You fidgeted with your hands."
+  tidy_self:
+    label: "tidy yourself up"
+    target: none
+    effort: low
+    minutes: [3, 10]
+    effects: {peace: +}
+    does: none
+    outcome: "You tidied yourself up."
+  shake_off:
+    label: "shake yourself off"
+    target: none
+    effort: low
+    minutes: [2, 5]
+    effects: {}
+    does: none
+    outcome: "You shook yourself off."
+  search_around:
+    label: "search around for anything interesting"
+    target: none
+    effort: medium
+    minutes: [10, 25]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You searched around for anything interesting."
+  follow_sound:
+    label: "follow a faint sound"
+    target: none
+    effort: medium
+    minutes: [5, 20]
+    effects: {curiosity: +, wonder: +}
+    does: none
+    outcome: "You followed a faint sound."
+  doodle_dust:
+    label: "draw patterns in the dust"
+    target: none
+    effort: low
+    minutes: [5, 20]
+    effects: {curiosity: +, joy: +}
+    does: none
+    outcome: "You drew patterns in the dust."
+  count_steps:
+    label: "count your steps in a circle"
+    target: none
+    effort: low
+    minutes: [5, 10]
+    effects: {peace: +}
+    does: none
+    outcome: "You counted your steps in a circle."
+  practise_trick:
+    label: "practise a small trick"
+    target: none
+    effort: medium
+    minutes: [10, 25]
+    effects: {joy: +}
+    does: none
+    outcome: "You practised a small trick until it nearly worked."
+  shout:
+    label: "shout as loud as you can"
+    target: none
+    effort: medium
+    minutes: [2, 5]
+    effects: {joy: +}
+    does: none
+    outcome: "You shouted as loud as you could."
+  wave:
+    label: "wave at no one in particular"
+    target: none
+    effort: low
+    minutes: [2, 4]
+    effects: {joy: +}
+    does: none
+    outcome: "You waved at no one in particular."
+  rub_eyes:
+    label: "rub your eyes and blink"
+    target: none
+    effort: low
+    minutes: [2, 4]
+    effects: {}
+    does: none
+    outcome: "You rubbed your eyes and blinked."
+  wander_edge:
+    label: "wander along the edge of the place"
+    target: none
+    effort: low
+    minutes: [10, 25]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You wandered along the edge of the place."
+  make_up_game:
+    label: "make up a game with yourself"
+    target: none
+    effort: medium
+    minutes: [10, 25]
+    effects: {joy: ++}
+    does: none
+    outcome: "You made up a game and played it alone."
+  recite:
+    label: "recite something you know by heart"
+    target: none
+    effort: low
+    minutes: [5, 15]
+    effects: {peace: +}
+    does: none
+    outcome: "You recited something you know by heart."
+  inspect:
+    label: "inspect {target} carefully"
+    target: object
+    reach: here
+    effort: low
+    minutes: [5, 20]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You inspected {target} carefully."
+  poke:
+    label: "poke at {target}"
+    target: object
+    reach: here
+    effort: low
+    minutes: [2, 8]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You poked at {target}."
+  circle:
+    label: "walk all the way around {target}"
+    target: object
+    reach: here
+    effort: low
+    minutes: [5, 12]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You walked all the way around {target}."
+  sit_beside:
+    label: "sit down beside {target}"
+    target: object
+    reach: here
+    effort: low
+    minutes: [10, 30]
+    effects: {peace: +}
+    does: none
+    outcome: "You sat beside {target} for a while."
+  lean_on:
+    label: "lean against {target}"
+    target: object
+    reach: here
+    effort: low
+    minutes: [5, 20]
+    effects: {peace: +}
+    does: none
+    outcome: "You leaned against {target}."
+  stare_at:
+    label: "stare at {target} until it stops making sense"
+    target: object
+    reach: here
+    effort: low
+    minutes: [5, 15]
+    effects: {wonder: +}
+    does: none
+    outcome: "You stared at {target} for a long time."
+  talk_to:
+    label: "talk quietly to {target}"
+    target: object
+    reach: here
+    effort: low
+    minutes: [5, 15]
+    effects: {joy: +, peace: +}
+    does: none
+    outcome: "You talked quietly to {target}."
+  describe:
+    label: "describe {target} to yourself in detail"
+    target: object
+    reach: here
+    effort: low
+    minutes: [5, 15]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You described {target} to yourself in detail."
+  tap:
+    label: "tap on {target} and listen"
+    target: object
+    reach: here
+    effort: low
+    minutes: [3, 8]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You tapped on {target} and listened."
+  wonder_about:
+    label: "wonder where {target} came from"
+    target: object
+    reach: here
+    effort: low
+    minutes: [5, 15]
+    effects: {curiosity: +, wonder: +}
+    does: none
+    outcome: "You wondered where {target} came from."
+  curl_up:
+    label: "curl up on {target}"
+    target: object
+    reach: here
+    any_tags: [soft, warm]
+    effort: low
+    minutes: [20, 50]
+    effects: {peace: ++}
+    does: none
+    outcome: "You curled up on {target}."
+  stretch_out:
+    label: "stretch out on {target}"
+    target: object
+    reach: here
+    any_tags: [soft, warm]
+    effort: low
+    minutes: [15, 40]
+    effects: {peace: +}
+    does: none
+    outcome: "You stretched out on {target}."
+  doze_on:
+    label: "doze lightly on {target}"
+    target: object
+    reach: here
+    any_tags: [soft, warm]
+    effort: low
+    minutes: [15, 40]
+    effects: {peace: +}
+    does: none
+    outcome: "You dozed lightly on {target}."
+  warm_up:
+    label: "warm yourself against {target}"
+    target: object
+    reach: here
+    any_tags: [warm]
+    effort: low
+    minutes: [10, 30]
+    effects: {peace: +}
+    does: none
+    outcome: "You warmed yourself against {target}."
+  sink_into:
+    label: "sink down into {target}"
+    target: object
+    reach: here
+    any_tags: [soft]
+    effort: low
+    minutes: [10, 30]
+    effects: {peace: +}
+    does: none
+    outcome: "You sank into {target}."
+  burrow:
+    label: "burrow into {target}"
+    target: object
+    reach: here
+    any_tags: [soft]
+    effort: low
+    minutes: [10, 25]
+    effects: {joy: +, peace: +}
+    does: none
+    outcome: "You burrowed into {target}."
+  bat:
+    label: "bat {target} back and forth"
+    target: object
+    reach: any
+    any_tags: [toy]
+    effort: medium
+    minutes: [5, 20]
+    effects: {joy: +}
+    does: none
+    outcome: "You batted {target} back and forth."
+  toss:
+    label: "toss {target} up and catch it"
+    target: object
+    reach: any
+    any_tags: [toy]
+    effort: medium
+    minutes: [5, 20]
+    effects: {joy: +}
+    does: none
+    outcome: "You tossed {target} up and caught it."
+  chase:
+    label: "chase {target} across the ground"
+    target: object
+    reach: any
+    any_tags: [toy]
+    effort: high
+    minutes: [5, 20]
+    effects: {joy: ++}
+    does: none
+    outcome: "You chased {target} across the ground."
+  roll:
+    label: "roll {target} along"
+    target: object
+    reach: any
+    any_tags: [toy]
+    effort: medium
+    minutes: [5, 15]
+    effects: {joy: +}
+    does: none
+    outcome: "You rolled {target} along."
+  pounce_on:
+    label: "pounce on {target}"
+    target: object
+    reach: any
+    any_tags: [toy]
+    effort: high
+    minutes: [3, 10]
+    effects: {joy: ++}
+    does: none
+    outcome: "You pounced on {target}."
+  tinker:
+    label: "tinker with {target}"
+    target: object
+    reach: any
+    any_tags: [toy]
+    effort: medium
+    minutes: [10, 30]
+    effects: {curiosity: +, joy: +}
+    does: none
+    outcome: "You tinkered with {target}."
+  juggle:
+    label: "try to juggle {target}"
+    target: object
+    reach: any
+    any_tags: [toy]
+    effort: medium
+    minutes: [5, 15]
+    effects: {joy: +}
+    does: none
+    outcome: "You tried to juggle {target} and mostly failed."
+  invent_game:
+    label: "invent a game with {target}"
+    target: object
+    reach: any
+    any_tags: [toy]
+    effort: medium
+    minutes: [10, 30]
+    effects: {joy: ++}
+    does: none
+    outcome: "You invented a game with {target}."
+  hold_up:
+    label: "hold {target} up to the light"
+    target: object
+    reach: any
+    any_tags: [movable]
+    effort: low
+    minutes: [3, 10]
+    effects: {wonder: +}
+    does: none
+    outcome: "You held {target} up to the light."
+  weigh:
+    label: "weigh {target} in your hands"
+    target: object
+    reach: any
+    any_tags: [movable]
+    effort: low
+    minutes: [3, 8]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You weighed {target} in your hands."
+  turn_over:
+    label: "turn {target} over and over"
+    target: object
+    reach: any
+    any_tags: [movable]
+    effort: low
+    minutes: [3, 10]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You turned {target} over and over."
+  nudge:
+    label: "nudge {target} along with your foot"
+    target: object
+    reach: here
+    any_tags: [movable]
+    effort: low
+    minutes: [3, 8]
+    effects: {joy: +}
+    does: none
+    outcome: "You nudged {target} along."
+  clutch:
+    label: "hold {target} close for a moment"
+    target: object
+    reach: any
+    any_tags: [movable]
+    effort: low
+    minutes: [3, 10]
+    effects: {peace: +}
+    does: none
+    outcome: "You held {target} close for a moment."
+  compare:
+    label: "compare {target} with what you remember"
+    target: object
+    reach: any
+    any_tags: [movable]
+    effort: low
+    minutes: [5, 15]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You compared {target} with what you remember."
+  arrange:
+    label: "arrange things neatly around {target}"
+    target: object
+    reach: here
+    any_tags: [movable]
+    effort: low
+    minutes: [5, 15]
+    effects: {peace: +}
+    does: none
+    outcome: "You arranged things neatly around {target}."
+  gaze:
+    label: "gaze at the glint of {target}"
+    target: object
+    reach: here
+    any_tags: [shiny]
+    effort: low
+    minutes: [5, 20]
+    effects: {wonder: ++}
+    does: none
+    outcome: "You gazed at the glint of {target}."
+  polish:
+    label: "rub {target} on your sleeve until it shines"
+    target: object
+    reach: any
+    any_tags: [shiny]
+    effort: low
+    minutes: [5, 15]
+    effects: {peace: +, wonder: +}
+    does: none
+    outcome: "You rubbed {target} until it shone."
+  angle:
+    label: "tilt {target} to catch the light"
+    target: object
+    reach: any
+    any_tags: [shiny]
+    effort: low
+    minutes: [3, 10]
+    effects: {wonder: +}
+    does: none
+    outcome: "You tilted {target} to catch the light."
+  make_wish_on:
+    label: "hold {target} and wish for something"
+    target: object
+    reach: any
+    any_tags: [shiny]
+    effort: low
+    minutes: [3, 10]
+    effects: {peace: +, wonder: +}
+    does: none
+    outcome: "You held {target} and wished for something."
+  handle_gently:
+    label: "handle {target} very gently"
+    target: object
+    reach: here
+    any_tags: [fragile]
+    effort: low
+    minutes: [3, 10]
+    effects: {peace: +, wonder: +}
+    does: none
+    outcome: "You handled {target} very gently."
+  admire:
+    label: "admire how delicate {target} is"
+    target: object
+    reach: here
+    any_tags: [fragile]
+    effort: low
+    minutes: [5, 15]
+    effects: {wonder: +}
+    does: none
+    outcome: "You admired how delicate {target} is."
+  trace:
+    label: "trace the edges of {target} with a finger"
+    target: object
+    reach: here
+    any_tags: [fragile]
+    effort: low
+    minutes: [3, 10]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You traced the edges of {target} with a finger."
+  scramble:
+    label: "scramble up {target}"
+    target: object
+    reach: here
+    any_tags: [climbable]
+    effort: high
+    minutes: [5, 20]
+    effects: {joy: +, wonder: +}
+    does: none
+    outcome: "You scrambled up {target}."
+  perch:
+    label: "perch on {target} and take stock"
+    target: object
+    reach: here
+    any_tags: [climbable]
+    effort: medium
+    minutes: [10, 30]
+    effects: {peace: +, wonder: +}
+    does: none
+    outcome: "You perched on {target} and took stock."
+  balance:
+    label: "balance along {target}"
+    target: object
+    reach: here
+    any_tags: [climbable]
+    effort: high
+    minutes: [5, 15]
+    effects: {joy: +}
+    does: none
+    outcome: "You balanced along {target}."
+  survey:
+    label: "survey everything from {target}"
+    target: object
+    reach: here
+    any_tags: [climbable]
+    effort: medium
+    minutes: [10, 25]
+    effects: {curiosity: +, wonder: +}
+    does: none
+    outcome: "You surveyed everything from {target}."
+  jump_off:
+    label: "jump down from {target}"
+    target: object
+    reach: here
+    any_tags: [climbable]
+    effort: medium
+    minutes: [2, 5]
+    effects: {joy: +}
+    does: none
+    outcome: "You jumped down from {target}."
+  hide_in:
+    label: "hide in {target}"
+    target: object
+    reach: here
+    any_tags: [hideable]
+    effort: low
+    minutes: [10, 30]
+    effects: {joy: +, peace: +}
+    does: none
+    outcome: "You hid in {target}."
+  peek_out:
+    label: "peek out from {target}"
+    target: object
+    reach: here
+    any_tags: [hideable]
+    effort: low
+    minutes: [5, 15]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You peeked out from {target}."
+  check_under:
+    label: "check behind and under {target}"
+    target: object
+    reach: here
+    any_tags: [hideable]
+    effort: medium
+    minutes: [5, 15]
+    effects: {curiosity: ++}
+    does: none
+    outcome: "You checked behind and under {target}."
+  look_inside:
+    label: "look inside {target}"
+    target: object
+    reach: here
+    any_tags: [container]
+    effort: low
+    minutes: [3, 10]
+    effects: {curiosity: ++}
+    does: none
+    outcome: "You looked inside {target}."
+  peer_into:
+    label: "peer into {target} and wait"
+    target: object
+    reach: here
+    any_tags: [container]
+    effort: low
+    minutes: [5, 15]
+    effects: {curiosity: +, wonder: +}
+    does: none
+    outcome: "You peered into {target} and waited."
+  rattle:
+    label: "rattle {target} to hear what is in it"
+    target: object
+    reach: here
+    any_tags: [container]
+    effort: low
+    minutes: [2, 6]
+    effects: {curiosity: +}
+    does: none
+    outcome: "You rattled {target}."
+  splash:
+    label: "splash about in {target}"
+    target: object
+    reach: here
+    any_tags: [wet]
+    effort: medium
+    minutes: [5, 15]
+    effects: {joy: ++}
+    does: none
+    outcome: "You splashed about in {target}."
+  trail_hand:
+    label: "trail your hand through {target}"
+    target: object
+    reach: here
+    any_tags: [wet]
+    effort: low
+    minutes: [5, 15]
+    effects: {peace: +, wonder: +}
+    does: none
+    outcome: "You trailed your hand through {target}."
+  watch_ripples:
+    label: "watch the ripples in {target}"
+    target: object
+    reach: here
+    any_tags: [wet]
+    effort: low
+    minutes: [10, 25]
+    effects: {peace: +, wonder: ++}
+    does: none
+    outcome: "You watched the ripples in {target}."
+  listen_to_water:
+    label: "listen to {target}"
+    target: object
+    reach: here
+    any_tags: [wet]
+    effort: low
+    minutes: [5, 20]
+    effects: {peace: +, wonder: +}
+    does: none
+    outcome: "You listened to {target}."
+  look_into:
+    label: "look into {target} and see your own face"
+    target: object
+    reach: here
+    any_tags: [wet]
+    effort: low
+    minutes: [3, 10]
+    effects: {curiosity: +, wonder: +}
+    does: none
+    outcome: "You looked into {target} and saw your own face."
+  nibble:
+    label: "nibble at {target}"
+    target: object
+    reach: any
+    any_tags: [edible]
+    effort: low
+    minutes: [3, 8]
+    effects: {sustenance: +}
+    does: consume
+    outcome: "You nibbled at {target}."
+  savour:
+    label: "savour {target} slowly"
+    target: object
+    reach: any
+    any_tags: [edible]
+    effort: low
+    minutes: [10, 20]
+    effects: {peace: +, sustenance: ++}
+    does: consume
+    outcome: "You savoured {target} slowly."
+  gobble:
+    label: "gobble down {target}"
+    target: object
+    reach: any
+    any_tags: [edible]
+    effort: low
+    minutes: [2, 6]
+    effects: {sustenance: ++}
+    does: consume
+    outcome: "You gobbled down {target}."
+  wander_to:
+    label: "wander over to {target}"
+    target: area
+    effort: low
+    minutes: [5, 15]
+    effects: {}
+    does: move_self
+    outcome: "You wandered over to {target}."
+  hurry_to:
+    label: "hurry to {target}"
+    target: area
+    effort: medium
+    minutes: [3, 8]
+    effects: {}
+    does: move_self
+    outcome: "You hurried to {target}."
+  stroll_to:
+    label: "stroll to {target} the long way"
+    target: area
+    effort: low
+    minutes: [10, 25]
+    effects: {peace: +}
+    does: move_self
+    outcome: "You strolled to {target} the long way."
   sleep:
     label: "go to sleep"
     target: none

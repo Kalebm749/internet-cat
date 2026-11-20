@@ -195,7 +195,8 @@ class Engine:
                      or clock.is_night(dt, s["phases"]))
         return MV.offered(cfg, area_id=st["area"], here=self.world.here(st["area"]), inventory=inv,
                           projects=PJ.active(self.conn), can_sleep=can_sleep,
-                          inventory_full=len(inv) >= s["inventory_max"])
+                          inventory_full=len(inv) >= s["inventory_max"],
+                          seed=f"{st['sim_time']}|{st['area']}")
 
     def _is_new_area(self, area_id: str, now: str) -> bool:
         """Somewhere not visited for `moves.novelty_hours` sim hours (or never) counts as new."""
