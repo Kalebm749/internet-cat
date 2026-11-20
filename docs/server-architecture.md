@@ -125,7 +125,7 @@ sleep_log(id, sim_date, summary, tick_id,   -- tick_id: where the sleep began
 Four YAML files in `config/` (`settings.yaml`, `character.yaml`, `world.yaml`, `prompts.yaml`), mounted read-only into the containers. Every field is described in `config-reference.md`. **All tuning numbers live in `settings.yaml`, never in code.** Key points:
 
 - `ollama_host` defaults to `http://ollama:11434` (the Compose service name).
-- `character.yaml` and `world.yaml` currently hold a placeholder character (Gregorovitch, with no species or appearance) and a tiny house; the engine works with any content that follows the schema.
+- `character.yaml` and `world.yaml` currently hold a placeholder character (Nit, with no species or appearance) and a tiny house; the engine works with any content that follows the schema.
 - `settings.yaml` and `prompts.yaml` are read when a service starts; the dev dashboard's reload applies both live. `prompts.yaml` holds every fixed prompt text (brain, narrator, sleep) with `{placeholders}`, so the prompts can be tuned without code changes.
 - A need in `character.yaml` has `start`, `decay_per_hour`, a `meaning` and `expressions` for the bands `full`, `okay` (may be null), `low` and `empty`; `settings.yaml` has the `need_bands` thresholds, `max_pressing_needs`, `stale_after_ticks`, `sustenance_need`, `energy_start`, the `dislike_drain` and the `mood` band mapping. There are no per-need flags and no affinity tables: the code never picks, suggests or ranks actions by need.
 

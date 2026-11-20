@@ -139,6 +139,21 @@ def system_prompt(cfg: Config) -> str:
     return "\n\n".join(parts)
 
 
+def speech_register(cfg: Config, ctx: "BrainContext") -> str | None:
+    """Which line says how its words come right now: tense when anxious, slow when tired, flat when low,
+    easy when bright; nothing otherwise. Plain thresholds on state; it never suggests a move."""
+    anx = character.anxiety_word(float(ctx.mood.get("anxiety", 0.0)), cfg)
+    if anx in ("on edge", "frantic"):
+        return "speech_tense"
+    if character.energy_word(ctx.energy, cfg) in ("exhausted", "tired"):
+        return "speech_tired"
+    if ctx.mood.get("word") == "low":
+        return "speech_low"
+    if ctx.mood.get("word") == "content":
+        return "speech_bright"
+    return None
+
+
 def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     dt = clock.parse(ctx.sim_time)
     area = cfg.world["areas"][ctx.area_id]
@@ -171,6 +186,9 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     key = "brain.situation.anxiety_" + aw.replace(" ", "_") if aw else ""
     if aw and P.lookup(cfg.prompts, key):          # a band word with no impression line says nothing
         L.append(P.render(cfg, key))
+    sp = speech_register(cfg, ctx)                 # how its words come follows its state, not a fixed style
+    if sp:
+        L.append(R(sp))
 
     L.append("\n" + "\n".join(pulling_section(cfg, ctx.needs, ctx.stale_here)))
 
