@@ -340,3 +340,22 @@ web_ui:
 
 # --- backup (deploy/backup.sh reads these via env, kept here for reference) ---
 backup_keep: 14                # deploy/backup.sh reads this line
+
+# --- the rewrite (docs/rewrite-contracts.md), read by cat/tuning.py; the old engine ignores this block ---
+nit:
+  db_path: data/nit.db
+  content_dir: content
+  time_scale: 24                 # sim minutes per real minute: one real hour is one sim day (§3.4)
+  body:                          # mood -1..1, energy 0..1, hunger 0..1 (§2.2); rates are per SIM hour
+    start: {mood: 0.1, energy: 0.8, hunger: 0.2}
+    step_minutes: 10             # time passes in steps of at most this many sim minutes (hunger and drag interact)
+    mood_baseline: 0.1           # mood drifts toward this ...
+    mood_drift_per_hour: 0.05    # ... by this much per hour, never overshooting
+    hunger_per_hour: 0.035       # awake: about 0.56 over a 16-hour day, so two offerings a day keep it low
+    hunger_sleep_factor: 0.4     # asleep, hunger rises at this fraction of the awake rate
+    hunger_per_effort: 0.5       # hunger added per unit of energy spent on effort
+    hunger_mood_threshold: 0.6   # above this hunger, mood is dragged down ...
+    hunger_mood_drag: 0.15       # ... by drag x (hunger - threshold) per hour
+    awake_energy_per_hour: 0.03  # being awake costs this much energy per hour (effort comes on top)
+    sleep_energy_per_hour: 0.12  # an 8-hour night restores about 0.96 ...
+    hungry_sleep_penalty: 0.5    # ... less by penalty x hunger (fully hungry: half as much)

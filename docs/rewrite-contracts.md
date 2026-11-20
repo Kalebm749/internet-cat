@@ -123,6 +123,14 @@ Rules:
 | `energy` | 0.0 .. 1.0 | Sleep, resting actions, food (a little) | Effort per sim minute of activity, being awake | — |
 | `hunger` | 0.0 .. 1.0 | Time (`hunger_per_hour`), effort | Eating actions | — |
 
+Tuning lives in `config/settings.yaml` under `nit: body:` (`cat/tuning.py` validates it): start values,
+`mood_baseline`, `mood_drift_per_hour`, `hunger_per_hour`, `hunger_sleep_factor` (slower asleep),
+`hunger_per_effort` (effort makes hungry), `hunger_mood_threshold`, `hunger_mood_drag`,
+`awake_energy_per_hour`, `sleep_energy_per_hour`, `hungry_sleep_penalty`, and `step_minutes` (time passes in
+steps so hunger and its mood drag interact correctly). A test guards that a plain day (half of it in
+low-effort activities, two meals, eight hours of sleep) stays out of the worst hunger band and that energy
+runs low by bedtime and recovers by morning.
+
 Each variable is a plain number in the state row. Every change is written to the trace with its cause
 (the action, decay, or a preference), so the dashboard can explain any value.
 

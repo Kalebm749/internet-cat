@@ -24,6 +24,29 @@ MIGRATIONS: list[list[str]] = [
             seq     INTEGER NOT NULL DEFAULT 0
         )""",
     ],
+    [  # 2: the creature's state, its body's changes, and its character versions
+        # state: one row; data is JSON (sim_time, location, asleep, mood, energy, hunger, ...)
+        "CREATE TABLE state (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL, updated_at TEXT NOT NULL)",
+        # every change to mood/energy/hunger with its cause (§2.2)
+        """CREATE TABLE body_changes (
+            id       INTEGER PRIMARY KEY,
+            sim_time TEXT NOT NULL,
+            var      TEXT NOT NULL,
+            delta    REAL NOT NULL,
+            value    REAL NOT NULL,
+            cause    TEXT NOT NULL
+        )""",
+        "CREATE INDEX idx_body_changes_time ON body_changes(sim_time)",
+        # one row per version of the character sheet (§2.1, §5.6); version 1 is the spawn sheet
+        """CREATE TABLE character_versions (
+            version    INTEGER PRIMARY KEY,
+            sheet      TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            reason     TEXT NOT NULL,
+            change     TEXT,
+            evidence   TEXT NOT NULL DEFAULT '[]'
+        )""",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

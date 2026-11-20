@@ -22,6 +22,11 @@ database (`data/nit.db`, the old `cat.db` kept as a backup), and world content l
   `cat/ops.py` (world ops, all-or-nothing), `cat/templating.py` (`{inputs.x}`, `{now}`, `{fact:loc.fact}` ...),
   `cat/worldstate.py` (facts, touched flags, regrowth, sync with content), `cat/store.py` (`nit.db` schema +
   numbered migrations). Tests: `tests/test_content.py`, `test_conditions.py`, `test_ops.py`, `test_worldstate.py`.
+- Done (step 2): `cat/tuning.py` (the `nit:` block of `config/settings.yaml`; every new number lives there),
+  `cat/body.py` (mood/energy/hunger: time passing, effects, body words, derived conditions; every change has a
+  cause), `cat/identity.py` (character sheet versions; name/pronoun/core follow the file, the rest only changes
+  through `commit_change`), `cat/life.py` (spawn or load the life in one transaction). Tests: `test_body_vars.py`,
+  `test_identity.py`, `test_life.py`.
 - When adding to the content schema or the condition/op sets, update the spec, the validator and its tests together.
 
 ## Docs (in `docs/`)
