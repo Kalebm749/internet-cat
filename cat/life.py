@@ -12,7 +12,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass, field
 
-from cat import identity, store
+from cat import identity, knowledge, store
 from cat.body import Body, BodyState, Change
 from cat.content import Content
 from cat.worldstate import SyncReport as WorldSync
@@ -78,6 +78,8 @@ def open_life(conn: sqlite3.Connection, content: Content, tuning: dict) -> Life:
             ver_rep = identity.ensure(conn, content, sim_time)
             life = Life(content, body, Body.start(tuning["body"]), world, identity.current(conn), sim_time,
                         content.character["start_location"], spawned=True)
+            knowledge.ensure_innate(conn, content, sim_time)
+            knowledge.arrive(conn, content, life.location, sim_time)
             life.notes.append(f"spawned at {life.location}, {sim_time}, character version {ver_rep.version}")
         else:
             data = json.loads(row["data"])
@@ -96,6 +98,10 @@ def open_life(conn: sqlite3.Connection, content: Content, tuning: dict) -> Life:
                 life.notes.append(f"location '{life.location}' no longer exists: moved to "
                                   f"{content.character['start_location']}")
                 life.location = content.character["start_location"]
+                knowledge.arrive(conn, content, life.location, life.sim_time)
+            new = knowledge.ensure_innate(conn, content, life.sim_time)
+            if new:
+                life.notes.append("newly innate: " + ", ".join(new))
         _save_state(conn, life)
     for n in life.notes:
         log.info(n)

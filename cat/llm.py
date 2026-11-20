@@ -267,7 +267,7 @@ class MockBackend(LLMBackend):
         try:
             self._check()
             self.calls.append((task, model))
-            out = self.handlers[task](messages, schema) if task in self.handlers else self._default(task, messages)
+            out = self.handlers[task](messages, schema) if task in self.handlers else self._default(task, messages, schema)
             info["raw_response"] = json.dumps(out)
             info["valid_json"] = 1
             # rough token counts (4 chars/token) so the dashboard has something to chart
@@ -286,8 +286,22 @@ class MockBackend(LLMBackend):
         self.calls.append(("embed", model))
         return [hash_embed(t) for t in texts]
 
-    def _default(self, task: str, messages: list[dict]) -> dict[str, Any]:
+    def _default(self, task: str, messages: list[dict], schema: dict | None = None) -> dict[str, Any]:
         r = self.rng
+        if task == "decide":       # the rewrite's waking decision (cat/decision.py): pick from the schema
+            props = (schema or {}).get("properties", {})
+            ids = props.get("action", {}).get("enum") or ["idle"]
+            action = "continue" if "continue" in ids and r.random() < 0.7 else r.choice(ids)
+            inputs = {}
+            for name, spec in props.get("inputs", {}).get("properties", {}).items():
+                if "enum" in spec:
+                    inputs[name] = r.choice(spec["enum"])
+                elif spec.get("type") == "integer":
+                    inputs[name] = spec.get("minimum", 0)
+                else:
+                    inputs[name] = "something small and true"
+            return {"thought": "The water keeps moving, even with no wind.", "reasoning": "I want to see what happens.",
+                    "action": action, "inputs": inputs, "preserve": False, "letter": None}
         if task == "brain":
             text = messages[-1]["content"] if messages else ""
             ids = re.findall(r"^- \[(m\d+)\] (.+)$", text, re.M)

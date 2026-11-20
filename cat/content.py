@@ -40,7 +40,8 @@ ACTION_KEYS = {"id", "name", "description", "family", "discovery", "inspect_hint
                "revisit_key", "effort", "builtin"}
 EFFECT_KEYS = {"world", "creature", "discover", "remember", "reflection"}
 OUTCOME_KEYS = EFFECT_KEYS | {"when", "text"}
-WORLD_KEYS = {"name", "sim_start", "senses", "facts", "events", "effort", "body_words", "derived_conditions"}
+WORLD_KEYS = {"name", "sim_start", "senses", "facts", "events", "effort", "body_words", "derived_conditions",
+              "mailbox"}
 CHARACTER_KEYS = {"name", "pronoun", "core", "traits", "tendencies", "background", "likes", "dislikes",
                   "innate_knowledge", "start_location"}
 CORE_KEYS = {"nature", "senses", "abilities", "boundaries", "prohibited_actions"}
@@ -513,6 +514,9 @@ def load(content_dir: Path | str = CONTENT_DIR) -> Content:
 
     # ---- second pass: references
     _check_character(content, chpath, probs)
+    mb = world.get("mailbox")
+    if mb is not None and (not isinstance(mb, str) or facts.get(mb) is None or facts[mb].type != "list"):
+        probs.add(wpath, line_of(world, "mailbox"), f"world: mailbox must name a list fact, got {mb!r}")
     for lid, loc in locations.items():
         path, line = where[f"location:{lid}"]
         for x in loc.exits:

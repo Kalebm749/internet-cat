@@ -259,6 +259,10 @@ Usually there are 4–10 options.
   creature continues the current activity, or idles if there is none (`idle` is an internal no-op that
   is never offered). The failure is traced.
 
+Implemented in step 3: `cat/scheduler.py` (decision points), `cat/mind.py` (the Mind), `cat/decision.py`
+(schema, validation, retries) with its fixed text in `config/prompts/decision.yaml`. Choice inputs resolve to
+concrete values: `{exits}`, or `{fact:<loc>.<fact>[.<status>].labels}` for list facts (unread first).
+
 ### 3.4 Time scale and timing budget (GTX 1060 6 GB)
 
 `time_scale: 24` in `config/settings.yaml`: **one real hour is one sim day.** All durations in content
@@ -464,7 +468,7 @@ Templates in strings may use `{inputs.x}`, `{now}`, `{location.name}`, `{fact:lo
   # Repeated inspect with nothing to find is penalised by repetition (§6), not blocked.
 
 - id: sleep
-  requires: [{energy_lte: 0.35}, {hours: [20, 9]}]   # either condition true; configurable
+  requires: [{any_of: [{energy_lte: 0.35}, {hours: [21, 6]}]}]   # either is enough; content, so configurable
   # ends waking; starts the sleep cycle (§5)
 ```
 
@@ -605,6 +609,8 @@ actions:
     show what visitors asked and what Nit did about it.
 - New mail is a `mail` trigger (§3.2) only when Nit can perceive the mailbox. Nit is never forced to read
   or reply.
+- `content/world.yaml` `mailbox: market.mailbox` names the list fact that holds letters (validated), so no code
+  knows where the mailbox is.
 - Code needed: condition `fact_count_where`, effect op `move_where` (§4.4), capability `read_message`.
   Everything else is content.
 

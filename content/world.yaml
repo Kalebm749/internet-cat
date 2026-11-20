@@ -5,6 +5,9 @@ sim_start: "2026-11-21T07:00"            # the sim clock at the creature's first
 # Every sense an event can use. The creature perceives only those in character.yaml core.senses.
 senses: [sight, sound, smell, touch, taste]
 
+# The list fact that holds visitor letters (§4.8). Read, unanswered letters stay on the creature's mind.
+mailbox: market.mailbox
+
 facts:                                   # global facts, addressed as world.<name>
   weather: {type: text, default: clear, choices: [clear, cloudy, rain], visible: full}
 

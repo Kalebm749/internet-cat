@@ -29,6 +29,6 @@
   requires:
     - any_of:
         - {energy_lte: 0.35}
-        - {hours: [20, 9]}
+        - {hours: [21, 6]}
   duration: {minutes: [2, 5]}
   effort: none

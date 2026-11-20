@@ -34,11 +34,47 @@ BODY = {
     "hungry_sleep_penalty": (0, 1),
 }
 START = {"mood": (-1, 1), "energy": (0, 1), "hunger": (0, 1)}
-TOP = {"db_path", "content_dir", "time_scale", "body"}
+# numeric sections: key -> (low, high)
+SECTIONS = {
+    "decisions": {
+        "interval_seconds": (1, 3600),
+        "check_in_minutes": (1, 24 * 60),
+        "event_salience_min": (0, 1),
+        "retries": (0, 5),
+        "thought_max_chars": (40, 4000),
+        "reasoning_max_chars": (40, 4000),
+        "recent_activities": (0, 50),
+        "prompt_tokens": (300, 32000),
+    },
+    "mail": {
+        "on_mind": (0, 20),
+        "on_mind_chars": (40, 4000),
+        "on_mind_days": (0, 365),
+    },
+}
+INTEGER_KEYS = {"retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
+                "on_mind", "on_mind_chars"}
+MODEL_KEYS = ("decision_model", "sleep_model", "embed_model")
+TOP = {"db_path", "content_dir", "time_scale", "body", "models"} | set(SECTIONS)
 
 
 def _num(x: Any) -> bool:
     return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _check_numbers(name: str, sec: Any, spec: dict, probs: list[str]) -> None:
+    if not isinstance(sec, dict):
+        probs.append(f"{name} must be a mapping")
+        return
+    for k in sorted(set(spec) - set(sec)):
+        probs.append(f"{name}: missing '{k}'")
+    for k in sorted(set(sec) - set(spec)):
+        probs.append(f"{name}: unknown key '{k}'")
+    for k, (lo, hi) in spec.items():
+        v = sec.get(k)
+        if k in sec and not (_num(v) and lo <= v <= hi and (k not in INTEGER_KEYS or isinstance(v, int))):
+            kind = "a whole number" if k in INTEGER_KEYS else "a number"
+            probs.append(f"{name}.{k} must be {kind} between {lo} and {hi}")
 
 
 def validate(nit: Any) -> list[str]:
@@ -54,6 +90,14 @@ def validate(nit: Any) -> list[str]:
     for k in ("db_path", "content_dir"):
         if k in nit and not isinstance(nit[k], str):
             probs.append(f"{k} must be a path")
+    models = nit.get("models")
+    if "models" in nit:
+        if not isinstance(models, dict) or set(models) != set(MODEL_KEYS) \
+                or not all(isinstance(v, str) and v for v in models.values()):
+            probs.append(f"models must name {', '.join(MODEL_KEYS)}")
+    for name, spec in SECTIONS.items():
+        if name in nit:
+            _check_numbers(name, nit[name], spec, probs)
     body = nit.get("body")
     if not isinstance(body, dict):
         return probs + (["body must be a mapping"] if "body" in nit else [])

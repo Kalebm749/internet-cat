@@ -47,6 +47,21 @@ MIGRATIONS: list[list[str]] = [
             evidence   TEXT NOT NULL DEFAULT '[]'
         )""",
     ],
+    [  # 3: what the creature knows it can do (§5.4)
+        # discovered_by: innate | arrival | inspect | effect. provisional = 1 until sleep confirms it and writes
+        # own_words. location: where it was learned ('' for universal actions).
+        """CREATE TABLE knowledge (
+            action_id     TEXT PRIMARY KEY,
+            location      TEXT NOT NULL,
+            discovered_at TEXT NOT NULL,
+            discovered_by TEXT NOT NULL,
+            provisional   INTEGER NOT NULL DEFAULT 1,
+            own_words     TEXT,
+            times_done    INTEGER NOT NULL DEFAULT 0,
+            last_done_at  TEXT,
+            last_outcome  TEXT
+        )""",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

@@ -27,6 +27,15 @@ database (`data/nit.db`, the old `cat.db` kept as a backup), and world content l
   cause), `cat/identity.py` (character sheet versions; name/pronoun/core follow the file, the rest only changes
   through `commit_change`), `cat/life.py` (spawn or load the life in one transaction). Tests: `test_body_vars.py`,
   `test_identity.py`, `test_life.py`.
+- Done (step 3): `cat/knowledge.py` (what it knows it can do; innate at spawn, `known_on_arrival` on arrival),
+  `cat/mind.py` (the Mind: options = known ∩ possible here, inputs resolved to choices, shuffled with a seed, letters
+  on its mind), `cat/decision.py` + `config/prompts/decision.yaml` (schema with the option ids as an enum and thought
+  before action; validation; retries told the problems; fallback continue/idle; BackendError goes up = doze),
+  `cat/scheduler.py` (when to decide: interval while idle, check-ins during activities, merged triggers, never
+  interrupts a decision). The mock answers `decide` from the schema. Tests: `test_scheduler.py`, `test_mind.py`,
+  `test_decision.py`.
+- See the Mind and one decision: `.venv/bin/python scripts/nit_mind.py [--know make_wish] [--event "..."]
+  [--ollama-host http://127.0.0.1:11434]` (a fresh life in memory unless `--db`).
 - When adding to the content schema or the condition/op sets, update the spec, the validator and its tests together.
 
 ## Docs (in `docs/`)
