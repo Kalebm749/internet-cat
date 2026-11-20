@@ -85,6 +85,24 @@ class WorldState:
         self._dirty.pop(oid, None)
         self._deleted.add(oid)
 
+    def expire(self, now: str) -> list[dict]:
+        """Things the world brought (an event's loaf of bread, a director's found feather) do not last for ever:
+        after settings `object_lifetime_hours[created_by]` sim hours they are gone, unless carried. Objects the
+        world started with never expire. Without this the areas fill up to `max_objects_per_area` and every
+        later spawn is silently skipped. Returns one change record per removed object (for the tick's audit)."""
+        life = self.cfg.settings.get("object_lifetime_hours") or {}
+        out = []
+        t_now = clock.parse(now)
+        for o in list(self.objects.values()):
+            hours = float(life.get(o["created_by"], 0) or 0)
+            if hours <= 0 or o["area"] == "inventory" or not o.get("created_at"):
+                continue
+            if (t_now - clock.parse(o["created_at"])).total_seconds() / 3600 >= hours:
+                self.remove_object(o["id"])
+                out.append({"op": "despawn", "source": "world", "object_id": o["id"], "area": o["area"],
+                            "label": o["name"], "age_hours": round(hours, 1)})
+        return out
+
     def touch(self, oid: str) -> None:
         if oid in self.objects:
             self._dirty[oid] = None

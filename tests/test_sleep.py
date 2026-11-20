@@ -18,7 +18,7 @@ def make(cfg, seed=1):
 
 def quiet_brain(b, wants_sleep=False, action="sit"):
     b.handlers["brain"] = lambda m, s: pick(m, "go to sleep" if wants_sleep else None, feeling="neutral")
-    b.handlers["narrator"] = lambda m, s: {"outcome": "ok" if action == "sit" else action}     # shows in the day log
+    b.handlers["narrator"] = lambda m, s: {"outcome": "ok" if action == "sit" else action}     # diary prose only: never in the day log
 
 
 def set_time(e, t, energy=None, **needs):
@@ -271,20 +271,38 @@ def test_second_night_only_sees_the_new_day(cfg):
     seen = []
     b.handlers["consolidate"] = lambda m, s: (seen.append(m[-1]["content"]), {
         "summary": "x", "memories": []})[1]
-    set_time(e, "2026-11-18T12:00", energy=50)
-    quiet_brain(b, action="first-day-thing")
+    set_time(e, "2026-11-18T12:00", energy=50)                 # day one's move is at 12:00 pm
+    quiet_brain(b)
     e.tick()
     b.handlers["brain"] = lambda m, s: pick(m, "go to sleep", feeling="neutral")
     set_time(e, "2026-11-18T22:00", energy=50)
     e.tick()                                                   # wants_sleep at night -> cycle 1
-    assert "first-day-thing" in seen[0]
+    assert "12:00 pm" in seen[0]
     # wake, second day
     run_until(e, lambda i: i["outcome"].startswith("wakes"))
-    quiet_brain(b, action="second-day-thing")
+    quiet_brain(b)
+    set_time(e, "2026-11-19T15:20")                            # day two's move is at 3:20 pm
     e.tick()
     set_time(e, "2026-11-19T23:00", energy=-45)
     e.tick()
-    assert "second-day-thing" in seen[1] and "first-day-thing" not in seen[1]
+    assert "3:20 pm" in seen[1] and "12:00 pm" not in seen[1]
+
+
+def test_the_day_log_is_what_happened_not_the_narrators_prose(cfg):
+    """Lasting memories are written from the day log, so it carries code's plain account of each move and
+    never the narrator's prose (which can invent details)."""
+    e, b = make(cfg)
+    seen = []
+    b.handlers["consolidate"] = lambda m, s: (seen.append(m[-1]["content"]), {"summary": "x", "memories": []})[1]
+    set_time(e, "2026-11-18T12:00", energy=50)
+    quiet_brain(b, action="an invented golden key glitters")
+    e.tick()
+    plain = e.conn.execute("SELECT result FROM ticks WHERE kind='tick'").fetchone()["result"]
+    assert plain and "golden key" not in plain
+    b.handlers["brain"] = lambda m, s: pick(m, "go to sleep", feeling="neutral")
+    set_time(e, "2026-11-18T22:00", energy=50)
+    e.tick()
+    assert plain in seen[0] and "golden key" not in seen[0]
 
 
 def test_preference_forgetting_and_cap(cfg, conn):

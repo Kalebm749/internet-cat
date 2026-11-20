@@ -23,7 +23,7 @@ start_area: garden
 needs:
   sustenance:
     start: 70
-    decay_per_hour: 5
+    decay_per_hour: 3
     meaning: "Being nourished: having taken in what is needed to keep going."
     expressions:
       full: "You are thoroughly sustained, with nothing lacking."
@@ -32,7 +32,7 @@ needs:
       empty: "The hollow has stopped complaining and started demanding."
   wonder:
     start: 60
-    decay_per_hour: 4
+    decay_per_hour: 3.5
     meaning: "Awe and delight at the world: being moved by what is beautiful, strange or vast."
     expressions:
       full: "The world is astonishing; even small things shimmer."
@@ -41,7 +41,7 @@ needs:
       empty: "The world has gone flat. Even the strange things are boring."
   joy:
     start: 60
-    decay_per_hour: 6
+    decay_per_hour: 3.5
     meaning: "Lightness and play: enjoyment for its own sake."
     expressions:
       full: "You are bubbling with lightness and the urge to play."
@@ -50,7 +50,7 @@ needs:
       empty: "Everything is heavy and nothing is amusing."
   peace:
     start: 70
-    decay_per_hour: 4
+    decay_per_hour: 6
     meaning: "Inner calm and stillness: freedom from restlessness, noise and worry."
     expressions:
       full: "A deep stillness has settled in you."
@@ -59,7 +59,7 @@ needs:
       empty: "No quiet anywhere, not even a small one."
   curiosity:
     start: 50
-    decay_per_hour: 5
+    decay_per_hour: 5.5
     meaning: "The pull to find out, explore and understand what is not yet known."
     expressions:
       full: "Questions are buzzing in you; you want to know more."

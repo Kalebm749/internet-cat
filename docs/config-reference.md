@@ -38,7 +38,7 @@ A level becomes a band by `settings.yaml` `need_bands`: below `empty_below` is `
 | `areas` ✔ | `{id: {name, description, exits: [area ids]}}`. Exits must be mirrored. |
 | `objects` ✔ | List of `{id, name, area, tags, state}`. `area` may be `inventory`. Tags are free strings; `movable` and `edible` have rules (server-architecture §9). |
 | `weather` | List of weather names; the first is the starting weather. Default `[clear]`. |
-| `events` | List of `{text, chance (0..1 per tick), area?, hours? [from, to), only_weather?, set_weather?, drains? ({need id: points} the world takes from needs when it fires), mood? (float nudge to mood -1..1, decays), spawn?: {name, tags, area}}`. An event with `area` only fires while the creature is in that area (it must perceive it); `spawn.area` is where the object appears. Spawns are skipped when the area holds `max_objects_per_area` objects. |
+| `events` | List of `{text, chance (0..1 per tick), area?, hours? [from, to), only_weather?, set_weather?, drains? ({need id: points} the world takes from needs when it fires), mood? (float nudge to mood -1..1, decays), spawn?: {name, tags, area}}`. An event with `area` only fires while the creature is in that area (it must perceive it); `spawn.area` is where the object appears. Spawns are skipped when the area holds `max_objects_per_area` objects, and expire after `object_lifetime_hours` (settings). |
 
 ## settings.yaml
 Every tuning number. Groups:
@@ -69,11 +69,12 @@ The changes a chosen move makes (code, not the narrator) are checked **in order*
 - Objects are referenced by `object_id`; a unique exact name is accepted as a fallback.
 - `create`: tags not in `allowed_tags` are stripped (recorded as `dropped_tags`); at most `create_limit_per_tick` per tick; area must be the current one.
 - Caps: `max_changes_per_tick`, `inventory_max`, `max_objects_per_area`, `name_max_length`, `state_value_max_length`.
+- `object_lifetime_hours`: `{event | director | creature: sim hours}` before an object that maker brought is gone (missing or 0 = it stays). Carried objects and the world's starting objects never expire; each expiry is a `despawn` in the tick's `changes`.
 - `consume` of an edible is the only thing that lets the sustenance need (`sustenance_need`) rise; `consume_min_gain` is the minimum bucket granted for a `consume` move. The sustenance need is never repetition-penalised, and only the needs in `repetition_penalty.needs` are.
 - Objects spawned by world events are recorded in the tick's `changes` as `{"op": "create", "source": "event"}`, so every object appearance or disappearance is auditable.
 
 ## Memory (`cat/memory.py`)
-- A tick is *notable* if a need moved by >= `notable.need_change`, the brain's `feeling` is in `strong_feelings`, a `create` happened, or changes were rejected. Notable ticks become short-term memories (text + embedding; importance = `importance_base` + `importance_per_trigger` x triggers).
+- A tick is *notable* if a need moved by >= `notable.need_change`, the brain's `feeling` is in `strong_feelings`, a `create` happened, changes were rejected, an impulse took the decision over (`notable.impulse`, default true), or anxiety climbed into a higher `anxiety.words` band (`notable.anxiety_rise`, default true). Notable ticks become short-term memories (text + embedding; importance = `importance_base` + `importance_per_trigger` x triggers).
 - Recall: `w_recency*recency + w_importance*importance + w_relevance*cosine(query, memory)`, recency = 0.5^(sim hours since created/last recalled / `recency_half_life_sim_hours`). Recalled memories get `last_recalled` updated.
 - If the embedding call fails, memories are still stored (no index) and recall falls back to recency + importance.
 - After changing `embed_model`, run `scripts/reembed.py`.

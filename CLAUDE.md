@@ -17,6 +17,7 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 - `config-reference.md` — every config field (`settings.yaml`, `character.yaml`, `world.yaml`, `prompts.yaml`)
 - `cognitive-architecture-plan.md` — the plan for emotion, beliefs, expectation, fast/slow decisions, reflection (phase 1 first) and the parked backlog
 - `phase-2-docker-and-devdash.md` — the plan for the Docker Compose deployment (part A, done) and the dev dashboard (part B, done)
+- `analysis-2026-11.md` — independent review of vision vs. implementation: gaps, risks, refined vision, phased roadmap, success experiments
 
 Decided (revised): **closed moves**. The brain picks from a menu built by code (`config/moves.yaml`, `cat/moves.py`);
 code resolves the effects; the narrator only writes prose. The menu is never ranked or marked by need
@@ -35,6 +36,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/pytest                                   # all tests (use MockBackend, no network)
 .venv/bin/python -m cat.main --mock --ticks 100    # run the engine with the mock brain
 .venv/bin/python scripts/simulate_balance.py       # no LLM: time each need spends in each band (tuning aid)
+.venv/bin/python scripts/measure_run.py --db data/cat.db   # read-only numbers on a real run (errors, list bias, needs, anxiety)
 ```
 Real brain outside Docker (needs Ollama reachable):
 ```
@@ -74,6 +76,7 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 - Python 3.11+ (image: 3.12-slim); keep dependencies light and pure-Python.
 - All tuning numbers live in `config/settings.yaml`, never hard-coded.
 - Only `cat/effects.py` changes the world (on behalf of the chosen move); rejected changes are logged. The narrator proposes nothing.
+- The narrator's prose is for the diary only: the brain's "what just happened", short-term memories and the sleep day log use code's plain account (`ticks.result`), never `ticks.outcome`.
 - Each tick's apply+record step is one DB transaction (`db.transaction`); LLM calls happen outside it.
 - The engine is the only writer of game state; `cat/web` is read-only and never calls the LLM.
 - Everything must run and be tested with `MockBackend`; never require Ollama in tests.

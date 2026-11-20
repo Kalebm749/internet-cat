@@ -107,6 +107,15 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
     # ---- settings ----
     req(settings, REQUIRED_SETTINGS, "settings.yaml")
     st = settings
+    life = st.get("object_lifetime_hours", {})
+    if not isinstance(life, dict):
+        errs.append("settings.yaml: object_lifetime_hours must be a mapping of who made it -> sim hours")
+    else:
+        for who, h in life.items():
+            if who not in ("event", "director", "creature"):
+                errs.append(f"settings.yaml: object_lifetime_hours: unknown maker '{who}' (event, director or creature)")
+            elif not _num(h) or h < 0:
+                errs.append(f"settings.yaml: object_lifetime_hours.{who} must be a number of sim hours >= 0")
     if st.get("downtime_policy", "pause") not in ("pause", "catch_up"):
         errs.append(f"settings.yaml: downtime_policy must be 'pause' or 'catch_up', "
                     f"got {st['downtime_policy']!r}")

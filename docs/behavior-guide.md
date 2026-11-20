@@ -105,7 +105,7 @@ Otherwise it fires with probability `chance`. A fired event can:
 - add its text to what the entity "just perceived" (it appears in the next prompt),
 - add a **mood nudge** (`mood`, −1..1; see §6),
 - change the **weather**,
-- **spawn an object** (skipped if the area already holds `max_objects_per_area` objects),
+- **spawn an object** (skipped if the area already holds `max_objects_per_area` objects). What the world brings does not last for ever: after `object_lifetime_hours` sim hours (by who made it: `event` 18, `director` 30) it is gone at the start of a tick, recorded in that tick's changes as a `despawn` (the diary shows "− a fresh loaf of bread (gone)" when it was in the creature's place). Carried things and the objects the world started with never expire. Without this the areas fill up and later spawns are silently skipped,
 - **drain needs** (`drains: {need: points}`): subtracted from those needs in step 5.
 
 Events roll on *every* tick type, including sleeping and dozing, so a loud noise can drain peace while the entity sleeps.
@@ -131,6 +131,8 @@ A cheap check against Ollama (`/api/tags`, `health_timeout_seconds`), cached for
 2. **The menu**: code builds the list of moves that are possible right now from config/moves.yaml (go to each area, eat/play with/rest on/climb/examine/take each fitting object, drop a carried thing, look out, wait, work on each active project, and **sleep only when sleep is allowed**). The order is fixed by the file; it is **never ranked, filtered or marked by need**. At most `moves.max_offered` are shown.
 3. **Prompt** (§10): self-image, tendencies, habits ("you tend to…"), likes/dislikes, time and place, mood and energy words, **"What's pulling at you right now"**, objects around, what just happened, recent actions, memories, active projects, and the menu.
 4. The brain returns JSON: `reaction, thought, move (a menu id such as m3), why, feeling (negative|neutral|positive), entry`. A `move` that is not on the menu is invalid and counts as a failed call. **`entry`** is the creature's own first-person journal entry for the moment (what it is doing and why, drawing on how it feels, what it remembers, how it tends to be and its projects); the website shows it as the main text of the diary entry, with the narrator's world note above it. (Older entries without one show "because: …" and the quote.) Short-term memories are built from the world's plain account of the move plus the creature's own entry, never from the narrator's prose.
+
+**What the creature perceives and remembers is what happened, not what was narrated.** Each tick stores code's plain account of the move (`ticks.result`, the verb's `outcome` text) beside the narrator's prose (`ticks.outcome`). The prose is for the diary only: the next prompt's "What just happened" is the plain account, and so is the sleep cycle's day log, from which lasting memories are written. The narrator can invent a detail (a glint, a smell); it never reaches the creature's perception or memory. In the consolidation prompt, words after "You wrote" are marked as what it said at the time, not what happened.
 
 ### Step 4b: resolve the move (code) and narrate it (LLM)
 **Code decides what the move does** (`cat/moves.py`): the need gains (`effects` and `by_tag` buckets, `novelty` for a place not visited for `moves.novelty_hours`), the effort, a duration drawn from the verb's `minutes`, and the world change (go, take, drop, consume), validated by `cat/effects.py`. A project move reports validated progress. The **narrator only describes the world** in one or two plain sentences (where it is, what is there, what changed: "You are in the garden. The grass is warm."). It never describes the creature's body, senses or feelings (only the creature's own mind knows those), is not shown object tags, and can change no number. With `moves.narrate: false`, or if the call fails, the verb's `outcome` text is used. When a project milestone or the finish is reached, a separate call asks the brain, in its own voice, for the piece it made.
@@ -167,7 +169,7 @@ Five needs in the placeholder character, each 0..100: **sustenance, wonder, joy,
 ### What changes a need
 | Cause | Direction | Details |
 |---|---|---|
-| **Decay** | down | `decay_per_hour` × sim hours. The baseline: needs always fall. Slower while asleep (`sleep.decay_multiplier` 0.5). |
+| **Decay** | down | `decay_per_hour` × sim hours. The baseline: needs always fall. Slower while asleep (`sleep.decay_multiplier` 0.3). |
 | **Move gains** | up | The move's configured buckets, `+` (7), `++` (14) or `meal` (28), scaled by how long the move takes, decided by code from moves.yaml. They only add. |
 | **Event drains** | down | `drains` on a world event, applied when it fires. |
 | **Dislike drains** | down | While something it dislikes is present (§8). |
@@ -215,7 +217,7 @@ At ~13 sim hours per real hour, an entity that never eats and never has a good m
 A rested entity by day, even if it asks to sleep, is ignored.
 
 ### Being asleep
-Each asleep tick is 60 sim minutes, skips the brain and narrator, restores `sleep.restore_per_sim_hour` (12) energy per hour, decays needs at half speed, and still rolls events (which can still drain needs).
+Each asleep tick is 60 sim minutes, skips the brain and narrator, restores `sleep.restore_per_sim_hour` (12) energy per hour, decays needs at `sleep.decay_multiplier` (0.3) of the awake speed, and still rolls events (which can still drain needs).
 
 ### Waking
 It wakes when **energy ≥ `wake_energy_at_least` (40)** *and* it is past `wake_not_before_hour` (6) *and* it is not night, or after `sleep.max_hours` (12 sim hours) regardless. Starting from −25 at 12 energy/hour, reaching 40 takes about 5½ hours, so the 06:00 floor usually decides the wake time for a normal night.
@@ -247,7 +249,7 @@ If the brain cannot be reached the tick is a **doze**: 20 sim minutes, no LLM ca
 - **Needs under pressure:** needs already low or empty decay up to `decay_pressure` (25%) faster at full anxiety; feeding them releases it (so there is no endless spiral).
 - **The prompt** adds a short *impression* above the calm band (for example "Your thoughts keep circling, braced for something."), chosen by the band word in `anxiety.words`, wording in prompts.yaml. It never says "you feel…" and never names an emotion: states are conveyed as what they are like from inside, the same way need expressions are. The mood line works the same way ("Things are even and quiet in you.").
 - **Sleep** restores up to `sleep_restore_penalty` (40%) less energy at full anxiety.
-- **Impulses:** above `impulse_above` (40) each decision may be taken over, with a chance rising to `impulse_max_chance` (50%) at 100. Seeded code picks an impulse (`anxiety.impulses`: restless or freeze, each with a weight and the verbs it acts through) and one matching move from the *current menu*, never by what would feed a need. The diary then carries a first-person line (`impulse.*` in prompts.yaml) and the dashboard shows what took over. This is the relaxed rule from the cognitive plan.
+- **Impulses:** above `impulse_above` (40) each decision may be taken over, with a chance rising to `impulse_max_chance` (50%) at 100. Seeded code picks an impulse (`anxiety.impulses`: restless or freeze, each with a weight and the verbs it acts through) and one matching move from the *current menu*, never by what would feed a need. The roll comes **before** the brain: when an impulse fires there is no brain call at all (the fast path), so no thought, reaction or feeling is recorded for a move it did not choose. The diary then carries a first-person line (`impulse.*` in prompts.yaml), the dashboard shows what took over, the moment is notable (`notable.impulse`), and the sleep cycle's day log marks it "on an impulse". This is the relaxed rule from the cognitive plan.
 The website shows it as a bar between mood and energy. Turn it all off with `anxiety.enabled: false`.
 
 Mood is **one number**, a simple slider from **−50 (negative) to 50 (positive)**. It is never set directly. It is recomputed every tick as the sum of:
@@ -299,7 +301,7 @@ The event nudge is the sum of the `mood` values of events that fired, decayed by
 | **Short-term** | "notable" ticks, today | during a tick | until the next sleep, which consolidates and clears them |
 | **Long-term** | consolidated memories ("keepsakes") | the sleep cycle | kept up to `long_term_cap` (500); beyond that the least valuable (importance × recency) are dropped |
 
-**A tick is notable** (and becomes a short-term memory) if any of these hold: a need moved at least `notable.need_change` (20) points in that tick; the brain's feeling is in `strong_feelings` (negative or positive); something new was created; a world change was rejected ("odd outcome"). Its importance is `importance_base` (0.3) + `importance_per_trigger` (0.2) × the number of triggers, capped at 1. The brain sees the most recent `short_term_shown` (8) short-term memories as "Earlier today".
+**A tick is notable** (and becomes a short-term memory) if any of these hold: a need moved at least `notable.need_change` (20) points in that tick; the brain's feeling is in `strong_feelings` (negative or positive); something new was created; a world change was rejected ("odd outcome"); an impulse took the decision over (`notable.impulse`); anxiety climbed into a higher band (`notable.anxiety_rise`: calm → uneasy → on edge → frantic, the bands of `anxiety.words`). Its importance is `importance_base` (0.3) + `importance_per_trigger` (0.2) × the number of triggers, capped at 1. The brain sees the most recent `short_term_shown` (8) short-term memories as "Earlier today".
 
 **Recall** scores *every* long-term memory:
 
@@ -680,7 +682,8 @@ The **dev dashboard** (`http://127.0.0.1:8090`, see the README) explains every n
 | What is it working on, and what has it made? | **Projects** (progress numbers, idle nights, every artifact); a tick page's **Project work** section |
 | How many decisions vs carried-on ticks, tokens per call and per day? | **Overview** (model decisions vs carried on, tokens) |
 | Which habits does it have and what would the next sleep see? | **Projects** page, Habits section |
-| Are the needs balanced? | run `scripts/simulate_balance.py` (no LLM; random / first / cycle policies, time in each band) |
+| Are the needs balanced? | run `scripts/simulate_balance.py` (no LLM; random / first / cycle / needy policies, time in each band, anxiety). `tests/test_simulate_balance.py` fails if the `needy` yardstick leaves some need empty 15% of the time or more, or is above the impulse threshold 15% of the time or more |
+| How did a real run actually go? | `scripts/measure_run.py --db data/cat.db` (read-only): brain errors and off-menu replies, latency, prompt size against `llm_num_ctx`, where on the menu its picks sit (list-order bias), how varied its choices are, impulses, time in each need band, anxiety, and what it has built up |
 | Why did something just happen in the room? | tick detail → **World director** (why it ran, the proposal, what code kept or ignored) |
 | What did last night do? | **Sleep** (each step's input, proposal and what code applied; tendency history) |
 | What does it remember? | **Memory** (short/long-term, recall stats, embedding map, search) |

@@ -161,7 +161,7 @@ def test_nothing_appears_or_vanishes_without_an_effect(cfg):
             if c["op"] == "create":
                 assert c["object_id"] not in ids
                 ids.add(c["object_id"])
-            elif c["op"] == "consume":
+            elif c["op"] in ("consume", "despawn"):      # eaten, or something the world brought has had its time
                 ids.remove(c["object_id"])
         rejected_total += len(json.loads(r["rejected_changes"]))
     assert ids == {r[0] for r in e.conn.execute("SELECT id FROM objects")}
