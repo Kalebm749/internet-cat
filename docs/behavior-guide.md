@@ -226,7 +226,7 @@ When sleep begins, the sleeping mind makes **up to six LLM calls**. **Nothing is
 | Step | What the LLM says | What code does with it |
 |---|---|---|
 | 1. Consolidate | a one-or-two sentence summary and up to `max_new_memories` (5) lasting memories with an importance bucket | saved as long-term memories (importance low/medium/high → 0.25/0.55/0.85), embedded; short-term memories cleared; long-term pruned to `long_term_cap` (500) |
-| 2. Tendencies | a nudge from −1 to 1 per tendency | scaled by `tendency_max_step` (0.05) and clamped to 0..1: a trait moves at most 0.05 a night. Core traits never change. |
+| 2. Tendencies | open-ended: the ways it tends to be, **in its own words** (a short phrase each), each with a nudge from −1 to 1; it may add at most `max_new_tendencies_per_night` (1) new one | nothing is predefined. A new one starts at `tendency_start` (0.3), then every nudge is scaled by `tendency_max_step` (0.05) and clamped to 0..1. At most `max_tendencies` (8) are kept; one that fades below `tendency_forget_below` (0.05) is forgotten. Core traits never change. |
 | 3. Preferences | up to `max_preferences_per_night` (3) things liked or disliked, with a strength | blended with any existing opinion (`preference_blend` 0.5). A new opinion starts weak and strengthens only if the experience repeats; opinions weaker than `preference_min_abs` (0.1) are forgotten; at most `max_preferences_total` (40) kept |
 | 4. Self-image | at most one first-person line with a confidence, optionally naming an existing line to revise or contradict | see §8 |
 | 5. Projects | at most one change: start a long-term project from an enjoyed activity it keeps returning to, or pause, resume or drop one | see §8 |
@@ -310,7 +310,7 @@ Everything here changes only during sleep, a little at a time.
 
 **Core traits** (`character.yaml`) never change. They are always in the prompt.
 
-**Tendencies** (e.g. boldness, sociability, tidiness; each 0..1) drift ≤ 0.05 per night. They enter the prompt as labels ("bold", "neither timid nor bold") using `tendency_labels` and `tendency_words` (below 0.35 / above 0.65).
+**Tendencies** are not defined in the config: the creature learns what it tends to be, in its own words (for example "drawn to quiet corners"), during sleep. A new one starts weak and strengthens or fades with what it does (each 0..1, drifting ≤ 0.05 per night). They enter the prompt as their own phrase with a strength word ("a little …", plain, "very …", from `tendency_words` below 0.35 / above 0.65 and the `tendency_*` lines in `prompts.yaml`). You may still seed some by hand in `character.yaml` (`tendencies:`); the engine never drops a learned one when the config changes.
 
 **Preferences** are learned likes and dislikes ("the old tree", "rain"). The brain sees up to `preferences_shown` (5) of each. Dislikes also have a **mechanical effect**: while a disliked thing is present, the world drains needs (`dislike_drain`). A dislike matches when its subject text appears (case-insensitive) in the current area's name, the name of an object here, the weather, or the entity's own action text. Up to `max_matches` (2) of the strongest dislikes count; each drains `points_per_hour × hours × |valence|` from every need in `dislike_drain.needs` (default peace and joy). So a strongly disliked "rain" costs about 4 peace and 4 joy per sim hour of rain; "the kitchen" disliked costs that whenever it is in the kitchen.
 
@@ -499,6 +499,7 @@ Reading the numbers: a need that decays 5/hour needs about +15 every 3 sim hours
 | `recall.k`, `w_recency`, `w_importance`, `w_relevance`, `recency_half_life_sim_hours` | what is remembered when; raise `w_relevance` to remember on association, raise the half-life to remember longer |
 | `long_term_cap` | how many keepsakes are kept |
 | `sleep.tendency_max_step` | how fast personality can drift (0 freezes it) |
+| `sleep.tendency_start`, `max_tendencies`, `max_new_tendencies_per_night`, `tendency_forget_below`, `tendency_name_max_length` | how readily it notices new things about itself, how many it keeps, when a faded one is forgotten |
 | `sleep.preference_blend`, `max_preferences_per_night`, `preference_min_abs`, `max_preferences_total` | how fast tastes form and fade |
 | `sleep.max_self_image_lines`, `self_image_min_confidence`, `max_self_image_length` | how much self-image it can hold and how sure it must be |
 | `recent_actions_shown`, `preferences_shown`, `short_term_shown` | how much context the brain gets (more = longer prompts; mind `llm_num_ctx`) |
@@ -639,7 +640,7 @@ Use these to wipe one aspect while keeping the rest. Stop the engine first and t
 | Forget likes and dislikes | `DELETE FROM preferences;` | no preferences; dislike drains stop |
 | Reset all needs to their starting values | `UPDATE state SET needs = json_object('sustenance',70,'wonder',60,'joy',60,'peace',70,'curiosity',50);` (use your own ids and `start` values) | the needs only; energy and mood are recomputed on the next tick |
 | Reset energy | `UPDATE state SET energy = 30;` | back to `energy_start` |
-| Reset tendencies to config | `UPDATE state SET tendencies = json_object('boldness',0.5,'sociability',0.5,'tidiness',0.5);` | |
+| Forget everything it has learned about how it tends to be | `UPDATE state SET tendencies = json_object();` | no tendency lines in the prompt until the next sleep notices one |
 | Send it home | `UPDATE state SET area = 'living_room';` | |
 | Forget its habits | `DELETE FROM habits;` | no "you tend to…" line until the next sleep finds one |
 | Forget all projects and what they made | `DELETE FROM projects;` and `DELETE FROM artifacts;` | no projects or pieces; the sleeping mind may form new ones |

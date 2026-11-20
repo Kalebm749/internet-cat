@@ -13,8 +13,8 @@ Every fixed piece of prompt text the LLMs see: the brain's system prompt and the
 | `backstory`, `voice` | | Optional prompt text for the brain. |
 | `self_image` | | `{seed: ""}`. Optional text hint for the entity's self-image; empty by default (the entity starts with none). Text only. Learned self-image lines are stored in the database, not here. |
 | `core_traits` | ✔ | List of strings. Never change. |
-| `tendencies` | ✔ | `{name: 0..1}`. Drift ≤ `sleep.tendency_max_step` per night. |
-| `tendency_labels` | | `{tendency: [low_label, high_label]}` for the web sliders. |
+| `tendencies` | ✔ | `{}` by default: tendencies are **learned** during sleep, in the creature's own words (drift ≤ `sleep.tendency_max_step` per night; `sleep.tendency_start`, `max_tendencies`, `max_new_tendencies_per_night`, `tendency_forget_below`, `tendency_name_max_length`). You may seed some `{phrase: 0..1}`. |
+| `tendency_labels` | | Optional `{tendency: [low_label, high_label]}` for seeded tendencies on the web sliders; learned ones use their own name. |
 | `start_area` | ✔ | Area id the creature starts in. |
 | `needs` | ✔ | `{id: {...}}`, see below. Order is display order. |
 

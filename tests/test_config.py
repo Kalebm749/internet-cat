@@ -64,12 +64,12 @@ def test_default_character_has_no_form():
 
 def test_tendency_labels_must_match_tendencies(tmp_path):
     msg = _problems(tmp_path, "character.yaml",
-                    lambda c: c["tendency_labels"].update(luck=["unlucky", "lucky"]))
+                    lambda c: c.setdefault("tendency_labels", {}).update(luck=["unlucky", "lucky"]))
     assert "tendency_labels: unknown tendency 'luck'" in msg
 
 
 def test_tendency_labels_must_be_a_pair(tmp_path):
-    msg = _problems(tmp_path, "character.yaml", lambda c: c["tendency_labels"].update(boldness=["timid"]))
+    msg = _problems(tmp_path, "character.yaml", lambda c: c.setdefault("tendency_labels", {}).update(boldness=["timid"]))
     assert "[low_label, high_label]" in msg
 
 
@@ -244,7 +244,7 @@ def test_energy_start_range(tmp_path):
 def test_every_problem_is_reported_at_once(tmp_path):
     def bad(c):
         c.update(start_area="moon")
-        c["tendency_labels"].update(luck=["a", "b"])
+        c.setdefault("tendency_labels", {}).update(luck=["a", "b"])
         c["needs"]["joy"]["start"] = -5
     msg = _problems(tmp_path, "character.yaml", bad)
     assert msg.startswith("3 config problems") and msg.count("\n  - ") == 3

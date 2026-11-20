@@ -297,10 +297,11 @@ def _sleep_entry(cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
     d = clock.parse(r["sim_date"] + "T00:00")
     tc = []
     for tid, ch in json.loads(r["tendency_changes"] or "{}").items():
-        lo, hi = labels.get(tid, ["low", "high"])
+        hi = labels[tid][1] if tid in labels else tid
         up = ch["to"] > ch["from"]
-        tc.append({"id": tid, "dir": "up" if up else "down", "symbol": ARROWS["up" if up else "down"],
-                   "text": f"a little more {hi}" if up else f"a little less {hi}"})
+        text = (f"noticed it is {tid}" if ch.get("new") else f"stopped being {tid}" if ch.get("dropped")
+                else f"a little more {hi}" if up else f"a little less {hi}")
+        tc.append({"id": tid, "dir": "up" if up else "down", "symbol": ARROWS["up" if up else "down"], "text": text})
     prefs = []
     for p in json.loads(r["new_preferences"] or "[]"):
         prefs.append({**p, "text": ("likes " if p["valence"] > 0 else "dislikes ") + p["subject"]})

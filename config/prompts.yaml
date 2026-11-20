@@ -33,7 +33,10 @@ brain:
     heading_who: "## Who you are right now"
     self_image: "What you currently think you are (your self-image): {self_image}"   # {self_image}
     self_image_empty: "Your self-image is empty: you have no picture yet of what you are or whether you have a form."
-    tendencies: "Your tendencies lately: {tendencies}."       # {tendencies}
+    tendencies: "How you have found yourself tending to be: {tendencies}."       # {tendencies}
+    tendency_low: "a little {name}"                          # {name}: a faint tendency
+    tendency_mid: "{name}"                                   # {name}
+    tendency_high: "very {name}"                             # {name}: a strong tendency
     habits: "Things you have found yourself doing again and again: {habits}"   # {habits}
     likes: "You like: {items}."                               # {items}
     dislikes: "You dislike: {items}."                         # {items}
@@ -124,6 +127,7 @@ sleep:
     projects: "You notice what the entity keeps coming back to, and whether it deserves a long-term project."
     habits: "You put into a few plain words what the entity keeps doing."
   none_shorts: "(none)"
+  none_tendencies: "(nothing noticed yet)"
   none_log: "(nothing)"
   none_existing_preferences: "(none yet)"
   none_existing_self_image: "(nothing yet)"
@@ -138,13 +142,13 @@ sleep:
     {log}
 
     Write: a one or two sentence summary of the day (what {name} might dream about), and 1 to {n} lasting memories worth keeping, each one short plain sentence in the first person. Merge trivial moments; drop the rest. importance: low (small thing), medium (meaningful) or high (life-changing).
-  tendencies: |-                                              # {summary} {tendencies}
+  tendencies: |-                                              # {summary} {tendencies} {max_new}
     Summary of the day: {summary}
 
-    Current tendencies (0 to 1):
+    What you have noticed about how you tend to be so far (0 to 1):
     {tendencies}
 
-    For each tendency give a number from -1 to 1: how much today nudged it (-1 = clearly lower, 0 = no change, 1 = clearly higher). Most should be near 0. Core traits never change.
+    Name, in your own plain words, the ways you tend to be that today showed: a short phrase each (for example "restless when it is quiet" or "drawn to shiny things"). For each, give a number from -1 to 1: how much today pushed it (-1 = clearly less, 0 = no change, 1 = clearly more). You may add at most {max_new} new tendency, only if today really showed it. Return only what today actually touched, and keep most numbers small. Core traits never change.
   preferences: |-                                             # {summary} {log} {existing} {n}
     Summary of the day: {summary}
 

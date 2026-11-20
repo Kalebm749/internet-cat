@@ -89,7 +89,8 @@ class Engine:
     def _reconcile_config(self) -> None:
         """The YAML can be edited while a database already exists (it is mounted, not baked in).
         Bring the saved state in line with it so a changed config never makes every tick fail:
-        new needs/tendencies start at their configured value, removed ones are dropped, and a
+        new needs/tendencies start at their configured value, removed needs are dropped (learned tendencies
+        are never dropped), and a
         creature standing in an area that no longer exists goes back to the start area.
         (World objects are seeded once, on first start; a reset is needed to re-seed them.)"""
         st = db.get_state(self.conn)
@@ -100,12 +101,11 @@ class Engine:
                 needs[k] = float(spec["start"])
                 notes.append(f"new need '{k}' starts at {spec['start']}")
         notes += [f"dropped need '{k}'" for k in st["needs"] if k not in needs]
-        tend = {k: v for k, v in st["tendencies"].items() if k in cfg.character["tendencies"]}
-        for k, v in cfg.character["tendencies"].items():
+        tend = dict(st["tendencies"])                        # learned tendencies are the creature's own: kept
+        for k, v in cfg.character["tendencies"].items():     # ones seeded in the config are added if missing
             if k not in tend:
                 tend[k] = float(v)
                 notes.append(f"new tendency '{k}' starts at {v}")
-        notes += [f"dropped tendency '{k}'" for k in st["tendencies"] if k not in tend]
         energy = float(st["energy"])
         if db.get_meta(self.conn, "energy_scale") != "v2":    # older databases kept energy as 0..100
             energy = character.clamp_energy(energy - 50)

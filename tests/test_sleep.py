@@ -36,12 +36,13 @@ def test_tendency_clamped_to_max_step_and_range(cfg):
     cur = {"boldness": 0.5, "sociability": 0.99, "tidiness": 0.01}
     new, ch = sleep.clamp_tendencies(cfg, cur, {"boldness": 100, "sociability": 1, "tidiness": -1})
     assert new["boldness"] == pytest.approx(0.5 + step)
-    assert new["sociability"] == 1.0 and new["tidiness"] == 0.0
+    assert new["sociability"] == 1.0
+    assert "tidiness" not in new and ch["tidiness"]["dropped"] is True      # faded to nothing: forgotten
     assert ch["boldness"] == {"from": 0.5, "to": 0.55}
 
 
 @pytest.mark.parametrize("bad", [None, [], "x", {"boldness": "up"}, {"boldness": float("nan")},
-                                 {"boldness": True}, {"unknown": 1}])
+                                 {"boldness": True}])
 def test_tendency_garbage_ignored(cfg, bad):
     cur = {"boldness": 0.5, "sociability": 0.4, "tidiness": 0.6}
     new, ch = sleep.clamp_tendencies(cfg, cur, bad)
@@ -223,7 +224,7 @@ def test_core_traits_never_change(cfg):
     b.handlers["tendencies"] = lambda m, s: {"changes": {"curious": 1, "core_traits": 1, "boldness": 1}}
     set_time(e, "2026-11-18T23:00", energy=-45)
     e.tick()
-    assert set(e.state["tendencies"]) == set(cfg.character["tendencies"])
+    assert set(e.state["tendencies"]) == set(cfg.character["tendencies"]) | {"curious"}   # one new a night
     assert cfg.character["core_traits"] == traits
 
 
@@ -437,3 +438,40 @@ def test_sleep_settings_for_self_image_are_required(tmp_path):
     from tests.test_config import _problems
     msg = _problems(tmp_path, "settings.yaml", lambda s: s["sleep"].pop("max_self_image_lines"))
     assert "sleep: missing required field 'max_self_image_lines'" in msg
+
+
+# ---------- open-ended, learned tendencies ----------
+def test_a_new_tendency_can_be_learned_and_starts_weak(cfg):
+    new, ch = sleep.clamp_tendencies(cfg, {}, {"drawn to quiet corners": 1, "another one": 1})
+    sl = cfg.settings["sleep"]
+    assert list(new) == ["drawn to quiet corners"]            # at most max_new_tendencies_per_night a night
+    assert abs(new["drawn to quiet corners"] - (sl["tendency_start"] + sl["tendency_max_step"])) < 1e-9
+    assert ch["drawn to quiet corners"]["new"] is True
+
+
+def test_a_negative_nudge_cannot_invent_a_tendency_and_names_are_cleaned(cfg):
+    new, ch = sleep.clamp_tendencies(cfg, {}, {"avoids crowds": -1, "   ": 1, "x" * 200: 1, "ok": "high"})
+    assert len(new) == 1 and len(next(iter(new))) == cfg.settings["sleep"]["tendency_name_max_length"]
+
+
+def test_a_new_name_matches_an_existing_one_ignoring_case(cfg):
+    new, ch = sleep.clamp_tendencies(cfg, {"Restless": 0.5}, {"restless": 1})
+    assert new == {"Restless": 0.55} and "new" not in ch["Restless"]
+
+
+def test_the_number_of_tendencies_is_capped_and_faded_ones_are_forgotten(cfg):
+    cfg.settings["sleep"]["max_tendencies"] = 2
+    new, _ = sleep.clamp_tendencies(cfg, {"a": 0.5, "b": 0.5}, {"c": 1})
+    assert set(new) == {"a", "b"}
+    cfg.settings["sleep"]["tendency_forget_below"] = 0.1
+    new, ch = sleep.clamp_tendencies(cfg, {"a": 0.12}, {"a": -1})
+    assert new == {} and ch["a"]["dropped"] is True
+
+
+def test_the_default_character_predefines_no_tendencies_and_a_learned_one_reaches_the_prompt():
+    from cat.config import load_config
+    from cat import brain
+    c = load_config(None)
+    assert c.character["tendencies"] == {}
+    assert brain.tendency_phrase(c, "drawn to quiet corners", 0.9) == "very drawn to quiet corners"
+    assert brain.tendency_phrase(c, "drawn to quiet corners", 0.1) == "a little drawn to quiet corners"

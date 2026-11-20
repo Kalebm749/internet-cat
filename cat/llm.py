@@ -309,7 +309,13 @@ class MockBackend(LLMBackend):
                     "summary": "A day like any other."}
         if task == "tendencies":
             # deliberately over-eager (+-1) so the engine's clamp is exercised
-            return {"changes": {t: r.choice([-1, 0, 1, 5]) for t in self.tendency_names}}
+            out = {t: r.choice([-1, 0, 1, 5]) for t in self.tendency_names}
+            # the creature also names new ways it tends to be (own stream: the seeded tick sequence is untouched)
+            r2 = random.Random(len(messages[-1]["content"]) if messages else 0)
+            if r2.random() < 0.5:
+                out[r2.choice(["drawn to quiet corners", "restless when nothing happens", "curious about small things",
+                               "wary of loud noises"])] = 1
+            return {"changes": out}
         if task == "preferences":
             if r.random() < 0.5:
                 return {"preferences": []}

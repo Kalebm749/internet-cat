@@ -16,8 +16,7 @@ def cfg(tmp_path):
     # tests use a fixed world (the old house), so they do not depend on the default content of config/world.yaml
     shutil.copy(FIXTURES / "world_house.yaml", d / "world.yaml")
     shutil.copy(FIXTURES / "moves_core.yaml", d / "moves.yaml")     # the 12 original verbs; the default file has about 100
-    ch = (d / "character.yaml").read_text().replace("start_area: garden", "start_area: living_room")
-    (d / "character.yaml").write_text(ch)
+    shutil.copy(FIXTURES / "character_house.yaml", d / "character.yaml")   # with the three predefined tendencies
     c = load_config(d)
     c.settings["db_path"] = str(tmp_path / "cat.db")
     c.settings["activity"]["enabled"] = False       # most tests want one decision per tick; test_activity turns it on
