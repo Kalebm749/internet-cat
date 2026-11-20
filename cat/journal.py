@@ -18,7 +18,9 @@ from cat.llm import BackendError, LLMBackend, call_json
 
 log = logging.getLogger("cat.journal")
 
-SCHEMA = {"type": "object", "properties": {"entry": {"type": "string"}}, "required": ["entry"]}
+SCHEMA = {"type": "object", "properties": {"entry": {"type": "string"}, "title": {"type": "string"}},
+          "required": ["entry"]}
+TITLE_MAX = 60
 
 
 def system_prompt(cfg: Config) -> str:
@@ -59,7 +61,7 @@ def user_prompt(cfg: Config, *, sim_time: str, area_id: str, weather: str, actio
                 impulse: bool, result: str, events: list[str], before: dict[str, float],
                 after: dict[str, float], mood: dict, energy: float, self_image: list[str],
                 tendencies: dict[str, float], preferences: list[dict], projects: list[dict],
-                memories: list[str]) -> str:
+                memories: list[str], finishing: str | None = None) -> str:
     S = lambda key, **kw: P.render(cfg, "brain.situation." + key, **kw)
     J = lambda key, **kw: P.render(cfg, "journal." + key, **kw)
     dt = clock.parse(sim_time)
@@ -89,6 +91,8 @@ def user_prompt(cfg: Config, *, sim_time: str, area_id: str, weather: str, actio
     L.append(J("result", result=result))
     if events:
         L.append(J("events", events=" ".join(events)))
+    if finishing:
+        L.append(J("finishing", name=finishing))
 
     L.append("\n" + J("heading_now"))
     L.extend(need_changes(cfg, before, after))
@@ -111,13 +115,22 @@ def parse(cfg: Config, raw: dict) -> str:
 
 def write(backend: LLMBackend, cfg: Config, **facts: Any) -> str | None:
     """The entry, or None if journaling is off or the call failed (a missing entry is honest; a guessed one is not)."""
+    return write_full(backend, cfg, **facts)["entry"]
+
+
+def write_full(backend: LLMBackend, cfg: Config, **facts: Any) -> dict:
+    """{"entry": str | None, "title": str | None}. A title is kept only when it has just finished a drawing
+    (`finishing`): its own name for the thing it made."""
     if not cfg.settings["journal"]["enabled"]:
-        return None
+        return {"entry": None, "title": None}
     msgs = [{"role": "system", "content": system_prompt(cfg)},
             {"role": "user", "content": user_prompt(cfg, **facts)}]
     try:
-        return call_json(backend, "journal", cfg.settings["brain_model"], msgs, SCHEMA,
-                         lambda r: parse(cfg, r), cfg.settings["llm_retries"])
+        raw = call_json(backend, "journal", cfg.settings["brain_model"], msgs, SCHEMA,
+                        lambda r: (parse(cfg, r), r), cfg.settings["llm_retries"])
     except BackendError as e:
         log.warning("journal entry unavailable (%s): the moment has no entry", e)
-        return None
+        return {"entry": None, "title": None}
+    entry, r = raw
+    title = " ".join(str(r.get("title") or "").split())[:TITLE_MAX].strip().strip('"') if facts.get("finishing") else ""
+    return {"entry": entry, "title": title or None}

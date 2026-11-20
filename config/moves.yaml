@@ -15,6 +15,10 @@
 #   does       none | move_self | take | drop | consume | work_on | sleep
 #   only_when  always | can_sleep               `can_sleep`: only when it is allowed to go to sleep
 #   reveals    (object) true: the result also says what is true of the target, from world.yaml tag_facts
+#   needs_here [tags]                           only offered when an object here has one of these tags (e.g. paper)
+#   when_state {key: [values]}                  (object) only for targets whose state[key] is one of these
+#   target: subject                             something from its own history to draw (see settings drawing)
+#   does: draw_new | draw_more | finish_drawing | pin | discard     the drawing moves (cat/drawings.py)
 #   outcome    plain-words result, used when no narration is available; {target} as above
 # Only a `consume` verb may feed the sustenance need.
 
@@ -938,6 +942,58 @@ verbs:
     effects: {peace: +}
     does: move_self
     outcome: "You took the long way to {target}."
+  # ---- making things: drawing at a `paper` object (cat/drawings.py). Each sitting adds to a real drawing; code
+  #      draws it from what it chose to draw and how it was at each sitting. ----
+  start_drawing:
+    label: "start a drawing of {target}"
+    target: subject              # something it has known: a place it has been, a thing it has handled, a happening
+    needs_here: [paper]
+    effort: low
+    minutes: [20, 60]
+    effects: {wonder: "+", joy: "+"}
+    does: draw_new
+    outcome: "You started a drawing of {target}."
+  draw_more:
+    label: "add to {target}"
+    target: object
+    any_tags: [drawing]
+    when_state: {status: [in progress]}
+    effort: low
+    minutes: [20, 60]
+    effects: {joy: "+", peace: "+"}
+    does: draw_more
+    outcome: "You added to {target}."
+  finish_drawing:
+    label: "call {target} finished"
+    target: object
+    any_tags: [drawing]
+    when_state: {status: [in progress]}
+    effort: none
+    minutes: [2, 5]
+    effects: {joy: "+"}
+    does: finish_drawing
+    outcome: "You decided {target} is finished."
+  pin_drawing:
+    label: "pin {target} on the board"
+    target: object
+    any_tags: [drawing]
+    when_state: {status: [finished]}
+    needs_here: [board]
+    effort: low
+    minutes: [2, 5]
+    effects: {joy: "+"}
+    does: pin
+    outcome: "You pinned {target} on the board."
+  discard_drawing:
+    label: "throw away {target}"
+    target: object
+    any_tags: [drawing]
+    when_state: {status: [in progress, finished]}
+    effort: none
+    minutes: [1, 3]
+    effects: {}
+    does: discard
+    outcome: "You threw away {target}."
   sleep:
     label: "go to sleep"
     target: none

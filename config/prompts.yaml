@@ -100,10 +100,30 @@ journal:                                                     # the entity's own 
   impulse: "It happened before you had thought it through."
   result: "What happened (the world decided this, and it is all that happened): {result}"   # {result}: code's plain account
   events: "Around you: {events}"                              # {events}
+  finishing: "You have just called {name} finished. If you want to, give it a title in your own words: add \"title\" to your reply."   # {name}
   need_eased: "Something that had been lacking in you eased."  # a need left the low or empty band and its new band has no wording
   heading_now: "## How you are now"
   heading_memories: "## What came to mind"
   closing: "Write your journal entry for this moment."
+
+sketch:                                                      # the drawing tool: one call per sitting at a drawing (cat/drawings.py)
+  system: |-                                                  # {shapes}; sent after the brain's identity lines
+    You are sitting at a sheet of paper, drawing. You do not describe a drawing: you make it, mark by mark, and the marks you choose are the drawing. Draw only the subject you are given and what you know of it. Do not add things you have never come across.
+    Each mark has: shape (one of: {shapes}), x and y (0 to 100: where on the sheet; 0,0 is the top left), size (1 to 100), angle (0 to 360), weight (light, medium or heavy), colour (only one you have now), layer (back, middle or front: how far away it sits), about (a few words: which part of the subject the mark is).
+    For a line, curve or outline you may give points instead: up to 10 [x, y] pairs the stroke passes through, to follow the real shape of something. hatch and crosshatch shade an area (shadow, weight, depth); stipple is fine dots; wash and blot are broad areas of colour or rubbed-in charcoal.
+    Build depth the way the eye sees it: broad back washes, then the middle forms, then front contours, shading and the small bright details. Let how you are right now show in how you draw. Keep going from what is already on the sheet; you do not have to finish today.
+    Reply with JSON only: {{"marks": [<marks>], "going_for": "<a few words, in your own voice, on what you were trying to catch>"}}
+  subject: "You are drawing {subject}."                       # {subject}
+  facts: "What you know of it: {facts}"                       # {facts}: what code holds as true of it
+  budget: "This sitting you have time for up to {n} marks."   # {n}
+  colours: "You have to draw with: {colours}."                # {colours}
+  heading_sheet: "## The sheet so far"
+  blank: "The sheet is blank."
+  sitting: "Sitting {n}: {marks} marks ({shapes}; {colours}). You were going for: {going_for}"   # {n} {marks} {shapes} {colours} {going_for}
+  heading_past: "## Your earlier drawings"
+  past: "{name}: {status}; you drew with {colours}, mostly {shapes}."   # {name} {status} {colours} {shapes}
+  heading_now: "## How you are now"
+  closing: "Make this sitting's marks."
 
 director:
   system: |-                                                  # {allowed_tags} {need_ids} {max_drain_points} {text_max_length}
@@ -217,4 +237,4 @@ sleep:
     Its projects so far (open ones; the number in brackets is the id):
     {existing}
 
-    Does the day show it returning again and again to one activity it seems to enjoy (for example researching, drawing, writing, making music, building)? If so, you may start ONE new long-term project from that activity: give a short title, the activity, and why it likes it. A project must be a concrete thing it could keep working on and add to over many sittings, such as a collection, a piece of writing, a drawing, a tune, a structure or something it is trying to learn: never a place, a mood, a general habit or "exploring" or "resting". Only start one if the log really shows a repeated, enjoyed activity that fits, and you have fewer than {max_active} active project(s). You may instead pause, resume or drop ONE existing project by id (drop one it has clearly lost interest in). At most ONE change in all. Return an empty list if nothing stands out.
+    Does the day show it returning again and again to one activity it seems to enjoy (for example researching, drawing, writing, making music, building)? If so, you may start ONE new long-term project from that activity: give a short title, the activity, and why it likes it. A project must be a concrete thing it could keep working on and add to over many sittings, such as a collection, a piece of writing, a drawing, a tune, a structure or something it is trying to learn: never a place, a mood, a general habit or "exploring" or "resting". Only start one if the log really shows a repeated, enjoyed activity that fits, and you have fewer than {max_active} active project(s). If the activity is drawing (it has been drawing at the paper), set medium to "drawing": then each sitting at a drawing is the project's work, and the drawings themselves are what it makes. You may instead pause, resume or drop ONE existing project by id (drop one it has clearly lost interest in). At most ONE change in all. Return an empty list if nothing stands out.

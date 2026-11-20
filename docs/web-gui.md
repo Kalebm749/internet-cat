@@ -154,6 +154,13 @@ A card listing the lines the sleeping mind wrote for patterns code found (`state
 - **Made so far:** the latest `projects.artifacts_shown` (6) artifacts, newest first, as small cards: title, kind, project and day, then the text. A made piece also adds a tag to its diary entry ("made “Roots”").
 - Empty states: "no projects yet." and "nothing made yet."
 
+### 4.7c Art (right column tab "Art")
+- **On the board:** the drawings it pinned (newest first, at most `web_ui.drawing.pinned_shown`), each as its picture with its title and "N sittings · Day D".
+- **On the table:** unfinished and finished-but-not-pinned drawings, with their status ("unfinished", "finished").
+- Pictures are `<img src="/drawings/<id>.svg">`, drawn by code from the drawing's history (`cat/art.py`), never by an LLM. The biography lists every drawing, including the ones it threw away. A drawing project's pieces in **Made so far** show the drawing itself.
+- Diary tags: "+ a drawing of … (begun)", "finished …", "pinned … on the board", "− … (thrown away)".
+- Empty state: "nothing drawn yet."
+
 ### 4.7 Keepsakes (long-term memories)
 - Small index cards, newest first, 6 shown, then "more keepsakes" to see the rest.
 - Each card: memory text (Lora 15px), date (sim day), importance as 1–3 honey dots.

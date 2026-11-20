@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime
 from typing import Any
 
-from cat import character, clock, db, projects
+from cat import art, character, clock, db, drawings, projects
 from cat.config import Config
 
 ARROWS = {"up": "▲", "down": "▼", "flat": "—"}
@@ -177,13 +177,48 @@ def projects_view(conn, cfg: Config) -> dict:
                       "stage": stage, "status": r["status"], "status_label": STATUS_LABEL[r["status"]],
                       "cls": r["status"], "title_attr": r["why"] or r["title"]})
     arts = _safe(conn, lambda c: [dict(r) for r in c.execute(
-        "SELECT a.id, a.kind, a.title, a.text, a.created_sim_time, p.title AS project FROM artifacts a "
+        "SELECT a.id, a.kind, a.title, a.text, a.created_sim_time, a.drawing_id, p.title AS project FROM artifacts a "
         "LEFT JOIN projects p ON p.id = a.project_id ORDER BY a.id DESC LIMIT ?", (pc["artifacts_shown"],))], [])
     artifacts = [{"id": a["id"], "kind": a["kind"] or "piece", "title": a["title"], "text": a["text"],
-                  "project": a["project"] or "",
+                  "project": a["project"] or "", "img": f"/drawings/{a['drawing_id']}.svg" if a["drawing_id"] else "",
                   "day_text": f"Day {clock.day_number(first, clock.parse(a['created_sim_time']))}"} for a in arts]
     return {"rows": items, "empty": not items, "artifacts": artifacts, "artifacts_empty": not artifacts,
             "empty_text": "no projects yet.", "artifacts_empty_text": "nothing made yet."}
+
+
+DRAWING_STATUS = {"in progress": "unfinished", "finished": "finished", "pinned": "on the board",
+                  "discarded": "thrown away"}
+
+
+def _drawing_item(cfg: Config, first, d: dict) -> dict:
+    n = len(d["sittings"])
+    when = d["pinned_sim_time"] or d["finished_sim_time"] or d["started_sim_time"]
+    title = drawings.describe(d)
+    return {"id": d["id"], "img": f"/drawings/{d['id']}.svg", "title": title,
+            "subject": d["subject_name"] or "", "status": d["status"],
+            "status_label": DRAWING_STATUS.get(d["status"], d["status"]),
+            "meta": f"{n} sitting{'s' if n != 1 else ''} · Day {clock.day_number(first, clock.parse(when))}",
+            "alt": f"{title}, drawn by {cfg.character['name']} in {n} sitting{'s' if n != 1 else ''}"}
+
+
+def drawings_view(conn, cfg: Config) -> dict:
+    """What it has drawn: the drawings it pinned on the board, and the ones still on the table (unfinished or
+    finished but not pinned). Thrown-away drawings are only on the biography page."""
+    if conn is None:
+        return {"pinned": [], "table": [], "empty": True, "empty_text": "nothing drawn yet."}
+    first = first_dt(conn, cfg)
+    shown = cfg.settings["web_ui"]["drawing"]["pinned_shown"]
+    pinned = [_drawing_item(cfg, first, d) for d in drawings.all_rows(conn, ("pinned",))[:shown]]
+    table = [_drawing_item(cfg, first, d) for d in drawings.all_rows(conn, ("in progress", "finished"))]
+    return {"pinned": pinned, "table": table, "empty": not pinned and not table,
+            "pinned_empty": not pinned, "table_empty": not table, "empty_text": "nothing drawn yet."}
+
+
+def drawing_svg(conn, cfg: Config, did: int) -> str | None:
+    if conn is None:
+        return None
+    d = next((x for x in drawings.all_rows(conn) if x["id"] == did), None)
+    return art.render_svg(cfg, d) if d else None
 
 
 def habits_view(conn, cfg: Config) -> dict:
@@ -217,12 +252,19 @@ def keepsakes_view(conn, cfg: Config, offset: int = 0, limit: int | None = None)
 def _world_change_text(cfg: Config, c: dict) -> str | None:
     label = c.get("label") or c.get("name") or c.get("object_id") or "something"
     op = c.get("op")
+    if op == "create" and "drawing" in (c.get("tags") or []):
+        return f"+ {label} (begun)"
     if op == "create":
         return f"+ {label} ({'appeared' if c.get('source') in ('event', 'director') else 'created'})"
     if op == "consume":
         return f"− {label} (eaten)"
     if op == "despawn":
         return f"− {label} (gone)"
+    if op == "discard":
+        return f"− {label} (thrown away)"
+    if op == "set_state" and c.get("key") == "status" and c.get("value") in ("finished", "pinned"):
+        return f"finished {label}" if c["value"] == "finished" else f"pinned {label} on the board"
+
     if op == "take":
         return f"picked up {label}"
     if op == "drop":
@@ -387,6 +429,7 @@ def biography_view(conn, cfg: Config) -> dict:
         "tendencies": [{"text": brain_tendency_text(cfg, t["id"], t["value"])} for t in tendencies_view(conn, cfg, st)],
         "likes": [p for p in prefs if p["valence"] > 0], "dislikes": [p for p in prefs if p["valence"] < 0],
         "projects": projs["rows"], "made": projs["artifacts"],
+        "drawings": [_drawing_item(cfg, first, d) for d in _safe(conn, lambda c: drawings.all_rows(c), [])],
         "habits": habits_view(conn, cfg)["rows"], "memories": keeps, "nights": nights,
     }
 
@@ -455,6 +498,7 @@ def build_state(conn: sqlite3.Connection | None, cfg: Config) -> dict:
         "tendencies": tendencies_view(conn, cfg, st),
         "preferences": preferences_view(conn, cfg),
         "projects": projects_view(conn, cfg),
+        "art": drawings_view(conn, cfg),
         "habits": habits_view(conn, cfg),
         "self_image": self_image_view(conn, cfg, first),
         "latest_tick_id": latest,

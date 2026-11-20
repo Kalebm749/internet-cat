@@ -201,6 +201,8 @@ def inner_section(conn) -> dict:
             "projects": dict(conn.execute("SELECT status, COUNT(*) FROM projects GROUP BY status").fetchall())
             if one("SELECT COUNT(*) FROM projects", None) is not None else {},
             "artifacts": one("SELECT COUNT(*) FROM artifacts"),
+            "drawings": dict(conn.execute("SELECT status, COUNT(*) FROM drawings GROUP BY status").fetchall())
+            if one("SELECT COUNT(*) FROM drawings", None) is not None else {},
             "nights": one("SELECT COUNT(*) FROM sleep_log")}
 
 
@@ -246,7 +248,8 @@ def report(m: dict) -> str:
           f"  memories: {i['long_memories']} long, {i['short_memories']} short; likes {i['likes']}, dislikes "
           f"{i['dislikes']}; self-image lines {i['self_image_lines']}; habits {i['habits']}; nights {i['nights']}",
           f"  tendencies: {i['tendencies'] or 'none yet'}",
-          f"  projects: {i['projects'] or 'none'}; pieces made {i['artifacts']}"]
+          f"  projects: {i['projects'] or 'none'}; pieces made {i['artifacts']}",
+          f"  drawings: {i['drawings'] or 'none yet'}"]
     return "\n".join(L)
 
 

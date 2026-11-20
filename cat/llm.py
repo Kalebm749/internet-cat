@@ -298,6 +298,16 @@ class MockBackend(LLMBackend):
                     r.choice(others or [i for i, _ in ids])) if ids else "m1"
             return {"reaction": "hm, ok.", "thought": "what next?", "move": pick,
                     "why": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"])}
+        if task == "sketch":
+            r2 = random.Random(len(messages[-1]["content"]) if messages else 0)   # own stream: ticks untouched
+            text = messages[-1]["content"] if messages else ""
+            m = re.search(r"You have to draw with: (.+)\.", text)
+            cols = [c.strip() for c in m.group(1).split(",")] if m else ["black"]
+            shapes = ["line", "curve", "circle", "scribble", "spiral", "wave", "dots", "blot", "wash", "rect"]
+            return {"marks": [{"shape": r2.choice(shapes), "x": r2.uniform(10, 90), "y": r2.uniform(10, 90),
+                               "size": r2.uniform(5, 40), "angle": r2.uniform(0, 360),
+                               "weight": r2.choice(["light", "medium", "heavy"]), "colour": r2.choice(cols),
+                               "about": "part of it"} for _ in range(6)], "going_for": "how it sits there"}
         if task == "journal":
             text = messages[-1]["content"] if messages else ""
             m = re.search(r"^You chose to (.+)\.$", text, re.M)

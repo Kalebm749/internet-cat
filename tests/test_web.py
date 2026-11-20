@@ -130,8 +130,10 @@ def test_sleep_card_sits_right_above_its_tick(cfg, seeded):
 
 
 def test_pagination_complete_and_no_overlap(cfg, seeded):
+    cfg.settings["web_ui"]["max_page_size"] = 1000          # one request for the whole diary, to compare against
     c = client(cfg)
     everything = c.get("/api/diary?limit=1000").json()["entries"]
+    cfg.settings["web_ui"]["max_page_size"] = 100
     seen, before, pages = [], None, 0
     while True:
         url = "/api/diary?limit=20" + (f"&before={before}" if before else "")
@@ -381,7 +383,7 @@ def test_presence_dims_asleep_and_desaturates_dozing(cfg):
 def test_page_has_presence_and_nits_viewer_side_portrait(cfg, seeded):
     html = client(cfg).get("/").text
     assert 'id="presence"' in html and 'class="frame"' in html and 'class="zzz"' in html
-    assert html.count("<img") == 2 and "/static/img/nit/nit.svg" in html and ".glb" not in html   # Nit's two portraits, viewer-side
+    assert html.split("<template")[0].count("<img") == 2 and "/static/img/nit/nit.svg" in html and ".glb" not in html   # Nit's two portraits, viewer-side
     assert "--pv-h:" in html and "dozing… (brain offline)" in html
 
 

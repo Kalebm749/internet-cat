@@ -15,7 +15,7 @@ from cat.world import WorldState
 
 log = logging.getLogger("cat.effects")
 
-OPS = ("move_self", "move_object", "take", "drop", "consume", "set_state", "create")
+OPS = ("move_self", "move_object", "take", "drop", "consume", "set_state", "create", "discard")
 
 
 @dataclass
@@ -164,12 +164,26 @@ def apply_changes(changes: list[dict], world: WorldState, area: str, cfg: Config
                 if not isinstance(tags_in, list):
                     raise Rejected("invalid 'tags'")
                 tags = [t for t in dict.fromkeys(tags_in) if t in s["allowed_tags"]]
-                o = world.add_object(name, tags, res.area, "creature", now)
+                st_in = raw.get("state") or {}
+                if not isinstance(st_in, dict) or not all(
+                        isinstance(k, str) and isinstance(v, str) and len(k) <= s["name_max_length"]
+                        and len(v) <= s["state_value_max_length"] for k, v in st_in.items()):
+                    raise Rejected("invalid 'state'")
+                o = world.add_object(name, tags, res.area, "creature", now, st_in)
                 creates += 1
                 rec.update(object_id=o["id"], area=res.area, name=name, label=name, tags=tags)
                 dropped = [t for t in tags_in if t not in s["allowed_tags"]]
                 if dropped:
                     rec["dropped_tags"] = dropped
+
+            elif op == "discard":
+                o = _find(world, _str(raw, "object_id"))
+                if not _in_reach(world, o, res.area):
+                    raise Rejected(f"'{o['id']}' is not within reach")
+                if o.get("created_by") != "creature":
+                    raise Rejected(f"'{o['id']}' was not made by the creature: it can only throw away its own things")
+                world.remove_object(o["id"])
+                rec.update(object_id=o["id"], area=o["area"], label=o["name"])
 
             res.applied.append(rec)
             res.log.append({"op": op, "args": raw, "accepted": 1, "reason": None})
