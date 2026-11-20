@@ -173,6 +173,9 @@ director:                      # the world proposes occasional small happenings 
   avoid_repeat: 10             # recent happenings shown to it, and rejected if repeated
   recent_actions_shown: 3      # the entity's latest actions it can see
 max_objects_per_area: 12       # event spawns are skipped when the area is this full
+object_lifetime_hours: {event: 18, director: 30}   # sim hours before something the world brought is gone (by who made
+                               # it: event | director | creature; missing or 0 = it stays). Carried things and the
+                               # objects the world started with never expire.
 allowed_tags: [edible, climbable, warm, movable, fragile, soft, container, toy, hideable, shiny, wet]
 state_value_max_length: 40
 
@@ -203,7 +206,7 @@ sleep:
   wake_not_before_hour: 6          # ... and it is past this hour and not night
   max_hours: 12                    # safety cap on one sleep (sim hours)
   restore_per_sim_hour: 12         # energy points restored per sim hour asleep
-  decay_multiplier: 0.5            # needs decay this much slower while asleep
+  decay_multiplier: 0.3            # needs decay this much slower while asleep (a night is 8-12 sim hours)
   sim_minutes_per_tick: 60
   tendency_max_step: 0.05          # max drift per tendency per night; LLM gives -1..1, scaled by this
   tendency_start: 0.3              # a newly noticed tendency starts here (then drifts like the rest)
@@ -232,6 +235,8 @@ notable:                       # a tick is notable if any of these hold
   strong_feelings: [negative, positive]
   new_object: true
   rejected_changes: true
+  impulse: true                # an impulse taking a decision over is worth remembering
+  anxiety_rise: true           # so is anxiety climbing into a higher band (anxiety.words) this tick
   importance_base: 0.3         # short-term memory importance = base + per_trigger * triggers (max 1)
   importance_per_trigger: 0.2
 long_term_cap: 500

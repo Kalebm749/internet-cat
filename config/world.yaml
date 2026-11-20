@@ -76,3 +76,5 @@ events:
   - {text: "A stallholder calls out a price, and someone laughs.", chance: 0.04, area: market, hours: [8, 17]}
   - {text: "Someone sets out a fresh loaf of bread.", chance: 0.08, area: market,
      spawn: {name: a fresh loaf of bread, tags: [edible, movable], area: market}}
+  - {text: "An apple drops from the old tree into the grass.", chance: 0.06, area: garden,
+     spawn: {name: a fallen apple, tags: [edible, movable], area: garden}}

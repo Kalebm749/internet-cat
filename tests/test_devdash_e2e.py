@@ -151,10 +151,13 @@ def test_tick_detail_explains_every_diary_entry_the_public_site_shows(world):
         # world changes tags come from the effects that were accepted (plus event spawns)
         accepted = [x for x in d["effects"] if x["accepted"]]
         site_ops = {w["op"] for w in e["world_changes"]}
-        assert site_ops <= {x["op"] for x in accepted} | {"create"}
+        assert site_ops <= {x["op"] for x in accepted} | {"create", "despawn"}   # spawns and expiries are the world's, not effects
         # the brain's and narrator's exact words are recorded
         kinds = {c["kind"] for c in d["llm"] if c["status"] == "ok"}
-        assert {"brain", "narrator"} <= kinds
+        if (t["intent"] or "").startswith("an impulse"):       # the fast path: no brain call at all
+            assert "brain" not in kinds and "narrator" in kinds
+        else:
+            assert {"brain", "narrator"} <= kinds
         assert d["stages"] and d["trace"]["status"] == "ok"
     state = web.get("/api/state").json()                                   # and the live panel numbers for the latest tick
     latest = data.tick_detail(cfg, state["latest_tick_id"])

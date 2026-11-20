@@ -227,6 +227,20 @@ model, temperature or `num_ctx`, and **Run**. Tick 2-3 models to compare them si
 Replays are **never applied to the world**; they are saved in `devdash.db` (Playground → all runs). Ollama serves one request at a time, so
 the engine's own calls wait while a replay runs.
 
+**Measuring a run.** Before judging the diary by feel, get the numbers. The script only reads the database, so it is safe while the engine runs:
+```bash
+docker compose exec engine python scripts/measure_run.py      # or, on the host: .venv/bin/python scripts/measure_run.py --db data/cat.db
+```
+It reports:
+- brain errors and off-menu replies, retries and latency;
+- prompt size against `llm_num_ctx` (Ollama silently cuts prompts that are too long);
+- **where on the menu the picked move sat**: a mean near 0.5 is good, and a large "first tenth" share means list order is steering the brain;
+- how varied the choices are, and the impulse rate;
+- time in each need band, and anxiety;
+- what the creature has built up (memories, preferences, self-image, habits, projects).
+
+Add `--json` for machine-readable output.
+
 **Without Docker** (develop the dashboard on fake data):
 ```bash
 .venv/bin/python scripts/seed_db.py --db data/seed.db --force   # 120 mock ticks, a doze, sleep nights, a forced sleep, commands, logs

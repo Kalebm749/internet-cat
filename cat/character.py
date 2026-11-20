@@ -76,6 +76,19 @@ def anxiety_word(level: float, cfg: Config) -> str:
     return _word_from(cfg.settings["anxiety"]["words"], level) if cfg.settings["anxiety"]["enabled"] else ""
 
 
+def anxiety_rose(before: float, after: float, cfg: Config) -> str:
+    """The band word anxiety has just risen INTO (e.g. "on edge"), or "" if it did not climb a band this tick.
+    Bands are settings anxiety.words in order; the calm band ("") never counts as a rise."""
+    if not cfg.settings["anxiety"]["enabled"]:
+        return ""
+    bounds = sorted(float(k) for k in cfg.settings["anxiety"]["words"])
+
+    def band(v: float) -> int:
+        return next((i for i, b in enumerate(bounds) if v < b), len(bounds) - 1)
+    b0, b1 = band(before), band(after)
+    return anxiety_word(after, cfg) if b1 > b0 else ""
+
+
 def event_drains(fired: list[dict]) -> dict[str, float]:
     """Total points each need loses from the events that fired this tick (the world drains; the
     narrator never does)."""

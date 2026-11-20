@@ -161,6 +161,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     _add_column(conn, "need_math", "event_drain", "REAL")   # points an event drained from this need
     _add_column(conn, "ticks", "energy_after", "REAL")  # energy is a separate resource, -50..50
     _add_column(conn, "memories", "tick_id", "INT")      # which tick wrote this memory (for tracing)
+    _add_column(conn, "ticks", "result", "TEXT")         # code's plain account of what the move did (never narrator prose)
     if get_meta(conn, "schema_version") is None:
         set_meta(conn, "schema_version", SCHEMA_VERSION)
 

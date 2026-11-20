@@ -96,3 +96,45 @@ def test_the_menu_is_identical_under_different_hash_seeds(tmp_path):
     outs = {subprocess.run([sys.executable, str(script)], capture_output=True, text=True, cwd=os.getcwd(),
                            env={**os.environ, "PYTHONHASHSEED": str(s)}).stdout for s in (1, 2, 3, 4)}
     assert len(outs) == 1 and "go:fountain" in outs.pop()
+
+
+def test_things_the_world_brought_expire_but_not_its_own_or_carried_ones(cfg):
+    """An event's loaf of bread goes after `object_lifetime_hours.event`; seeded objects and carried ones stay."""
+    import random as _r
+    from cat.engine import Engine
+    from cat.llm import MockBackend
+    from tests.helpers import pick
+    cfg.settings["object_lifetime_hours"] = {"event": 2, "director": 2}
+    b = MockBackend(seed=1)
+    b.need_ids = list(cfg.character["needs"])
+    b.handlers["brain"] = lambda m, s: pick(m)
+    e = Engine(cfg, b, rng=_r.Random(1))
+    area = e.state["area"]
+    seeded = {o["id"] for o in cfg.world["objects"]}
+    loaf = e.world.add_object("a fresh loaf", ["edible", "movable"], area, "event", e.state["sim_time"])
+    held = e.world.add_object("a pebble", ["movable"], "inventory", "event", e.state["sim_time"])
+    for _ in range(12):                                   # well past two sim hours
+        e.tick()
+    assert loaf["id"] not in e.world.objects and held["id"] in e.world.objects
+    assert seeded <= set(e.world.objects)                 # every object it started with is still there
+    gone = [c for r in e.conn.execute("SELECT changes FROM ticks") for c in __import__("json").loads(r["changes"])
+            if c.get("op") == "despawn"]
+    assert loaf["id"] in [c["object_id"] for c in gone] and not {c["object_id"] for c in gone} & seeded
+    assert not e.conn.execute("SELECT 1 FROM objects WHERE id=?", (loaf["id"],)).fetchone()
+
+
+def test_object_lifetime_is_validated(tmp_path):
+    import shutil
+    import yaml
+    from cat.config import CONFIG_DIR, ConfigError, load_config
+    d = tmp_path / "c"
+    shutil.copytree(CONFIG_DIR, d)
+    s = yaml.safe_load((d / "settings.yaml").read_text())
+    s["object_lifetime_hours"] = {"wizard": 3, "event": -1}
+    (d / "settings.yaml").write_text(yaml.safe_dump(s))
+    try:
+        load_config(d)
+    except ConfigError as e:
+        assert "unknown maker 'wizard'" in str(e) and "object_lifetime_hours.event" in str(e)
+    else:
+        raise AssertionError("expected a config error")

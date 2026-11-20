@@ -20,7 +20,7 @@ brain:
       - move: the id of ONE move from "What you can do right now", exactly as written (for example "m3")
       - why: why you chose it, in your own words
       - feeling: negative, neutral or positive: your overall feeling right now
-      - entry: your journal entry for this moment, in your own voice: one or two sentences in the first person saying what you are doing and why, drawing on how you feel, what you remember, how you tend to be and any project you have. Let how you write follow how you are right now (your energy, mood, needs, what you remember and what you are working on), not a fixed style. Let how you write follow how you are right now (your energy, mood, needs, what you remember and what you are working on), not a fixed style. Use only what your situation above gives you; do not invent a body, senses, or details that were not given.
+      - entry: your journal entry for this moment, in your own voice: one or two sentences in the first person saying what you are doing and why, drawing on how you feel, what you remember, how you tend to be and any project you have. Let how you write follow how you are right now (your energy, mood, needs, what you remember and what you are working on), not a fixed style. Use only what your situation above gives you; do not invent a body, senses, or details that were not given.
       Do not describe results or consequences of your move, and do not invent how needs or objects change: the world decides what happens. Refer to yourself as {pronoun} only if you need to; speak as yourself.
   create: |-                                                  # {title} {why} {stage} {note} {milestone}; sent after the brain's system prompt, in its own voice
     You have been working on a project of your own: {title}{why}. It is {stage}.{note}
@@ -158,7 +158,7 @@ sleep:
     Today's log:
     {log}
 
-    Write: a one or two sentence summary of the day (what {name} might dream about), and 1 to {n} lasting memories worth keeping, each one short plain sentence in the first person. Merge trivial moments; drop the rest. importance: low (small thing), medium (meaningful) or high (life-changing).
+    Write: a one or two sentence summary of the day (what {name} might dream about), and 1 to {n} lasting memories worth keeping, each one short plain sentence in the first person. Merge trivial moments; drop the rest. Words in quotes after "You wrote" are what you said to yourself at the time, not what happened: keep to what the moments and the log show actually happened. importance: low (small thing), medium (meaningful) or high (life-changing).
   tendencies: |-                                              # {summary} {tendencies} {max_new}
     Summary of the day: {summary}
 

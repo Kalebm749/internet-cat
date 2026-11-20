@@ -129,9 +129,11 @@ class Engine:
         self.state["is_asleep"] = bool(self.state["is_asleep"])
         self.world = WorldState.load(self.conn, self.cfg, self.state["weather"])
         self.first_dt = clock.parse(db.get_meta(self.conn, "first_sim_time"))
+        # what the brain is told happened last: code's plain account (`result`), never the narrator's prose;
+        # older databases have no `result` yet, so their last line falls back to the outcome once
         row = self.conn.execute(
-            "SELECT outcome FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT 1").fetchone()
-        self.last_outcome = row["outcome"] if row else None
+            "SELECT COALESCE(result, outcome) AS o FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT 1").fetchone()
+        self.last_outcome = row["o"] if row else None
         # what the previous non-sleep tick was: 'doze' => the first prompt notes the doze
         k = self.conn.execute(
             "SELECT kind FROM ticks ORDER BY id DESC LIMIT 1").fetchone()
@@ -298,6 +300,8 @@ class Engine:
         now = st["sim_time"]
         dt = clock.parse(now)
 
+        # 0. things the world brought that have had their time are gone (recorded with this tick's changes)
+        self._expired = self.world.expire(now)
         # 1. world events (perceived at the start of the tick)
         rolls: list[dict] = []
         with self.tracer.stage("world"):
@@ -338,19 +342,22 @@ class Engine:
         online = self._online()
         if online:
             try:
-                with self.tracer.stage("recall"):
-                    recalled = self._recall(fired)
-                with self.tracer.stage("brain"):
-                    ctx = self._brain_context(fired, recalled)
-                    self.tracer.set_pressing({
-                        **brain.select_needs(cfg, ctx.needs), "stale_here": ctx.stale_here,
-                        "ticks_in_area": self._ticks_in_area(), "stale_after_ticks": s["stale_after_ticks"],
-                        "stale_text": cfg.character.get("stale_here") if ctx.stale_here else None})
-                    b = brain.think(self.backend, cfg, ctx)
-                impulse = impulses.take_over(cfg, anx_prev, ctx.menu, f"{now}|{st['area']}")
+                # an impulse is the fast path: rolled BEFORE the brain, so when it fires there is no brain call
+                # and nothing it would have thought or felt is recorded against a move it did not choose
+                impulse = impulses.take_over(cfg, anx_prev, self._menu(), f"{now}|{st['area']}")
                 if impulse:                  # anxiety took the decision over: the world still only offers this menu
-                    b = {**b, "move": impulse["move"], "entry": impulse["entry"],
-                         "why": f"an impulse ({impulse['impulse']})"}
+                    b = {"move": impulse["move"], "entry": impulse["entry"], "reaction": "", "thought": "",
+                         "why": f"an impulse ({impulse['impulse']})", "feeling": None}
+                else:
+                    with self.tracer.stage("recall"):
+                        recalled = self._recall(fired)
+                    with self.tracer.stage("brain"):
+                        ctx = self._brain_context(fired, recalled)
+                        self.tracer.set_pressing({
+                            **brain.select_needs(cfg, ctx.needs), "stale_here": ctx.stale_here,
+                            "ticks_in_area": self._ticks_in_area(), "stale_after_ticks": s["stale_after_ticks"],
+                            "stale_text": cfg.character.get("stale_here") if ctx.stale_here else None})
+                        b = brain.think(self.backend, cfg, ctx)
                 mv = b["move"]
                 res = self._resolve_move(mv, b["why"], now)
                 with self.tracer.stage("narrator"):
@@ -407,6 +414,7 @@ class Engine:
             new_area = fx.area
             row = {"kind": "tick", "entry": b["entry"], "reaction": b["reaction"], "thought": b["thought"],
                    "action": b["move"].label, "intent": b["why"], "move_key": b["move"].key, "outcome": n["outcome"],
+                   "result": n["template"],
                    "gains": n["gains"], "effort": n["effort"], "duration": minutes,
                    "changes": fx.applied, "rejected": fx.rejected,
                    "activity_minutes": total if sliced else None}
@@ -461,6 +469,11 @@ class Engine:
                     why.append(f"a milestone in a project: {adv['title']}")
                 if adv["artifact"]:
                     why.append("made something")
+            if impulse and cfg.settings["notable"].get("impulse", True):
+                why.append(f"acted on an impulse ({impulse['impulse']})")
+            up = character.anxiety_rose(anx_prev, anx, cfg)
+            if up and cfg.settings["notable"].get("anxiety_rise", True):
+                why.append(f"anxiety rose to {up}")
             if why:
                 t = clock.time_label(dt)
                 # what is remembered is what the world did (code's plain account) and what the creature itself
@@ -475,7 +488,7 @@ class Engine:
         info = self._commit(row, fired, now, st["area"], new_state, short_mem, recalled,
                             online, sleep_start=falls_asleep, project_adv=adv)
         if result:
-            self.last_outcome = row["outcome"]
+            self.last_outcome = row["result"]          # the plain account; the narrator's prose is for the diary only
         if falls_asleep:
             self._try_sleep_cycle()
         return info
@@ -611,6 +624,8 @@ class Engine:
         for e in fired:  # event-spawned objects are world changes too (audit trail)
             if e["spawned"]:   # recorded from spawn time: the narrator may consume it this tick
                 row["changes"] = [e["spawn_info"]] + row["changes"]
+        expired, self._expired = getattr(self, "_expired", []), []
+        row["changes"] = expired + row["changes"]          # objects that expired at the start of this tick
         needs, mood = new_state["needs"], new_state["mood"]
         real = _now_real()
         t_rec = time.perf_counter()
@@ -618,12 +633,12 @@ class Engine:
             cur = self.conn.execute(
                 "INSERT INTO ticks(kind,sim_time,real_time,area,reaction,thought,action,intent,"
                 "outcome,gains,effort,duration,changes,rejected_changes,needs_after,mood_after,"
-                "energy_after,move_key,activity_minutes,entry) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "energy_after,move_key,activity_minutes,entry,result) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (row["kind"], now, real, area, row["reaction"], row["thought"],
                  row["action"], row["intent"], row["outcome"], dumps(row["gains"]), row["effort"],
                  row["duration"], dumps(row["changes"]), dumps(row["rejected"]), dumps(needs),
                  dumps(mood), new_state["energy"], row.get("move_key"), row.get("activity_minutes"),
-                 row.get("entry")))
+                 row.get("entry"), row.get("result")))
             tick_id = cur.lastrowid
             for e in fired:
                 self.conn.execute("INSERT INTO events(tick_id,sim_time,area,text) VALUES(?,?,?,?)",

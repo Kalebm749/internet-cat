@@ -221,6 +221,8 @@ def _world_change_text(cfg: Config, c: dict) -> str | None:
         return f"+ {label} ({'appeared' if c.get('source') in ('event', 'director') else 'created'})"
     if op == "consume":
         return f"− {label} (eaten)"
+    if op == "despawn":
+        return f"− {label} (gone)"
     if op == "take":
         return f"picked up {label}"
     if op == "drop":
@@ -246,6 +248,8 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
                           "symbol": ARROWS[direction]})
     wc = []
     for c in json.loads(r["changes"] or "[]"):
+        if c.get("op") == "despawn" and c.get("area") != r["area"]:
+            continue                       # something gone somewhere else is not part of this moment
         text = _world_change_text(cfg, c)
         if text:
             wc.append({"op": c["op"], "label": c.get("label") or c.get("name") or "", "text": text})

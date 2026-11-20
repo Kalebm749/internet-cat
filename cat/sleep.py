@@ -213,15 +213,22 @@ def _last_sleep_tick_id(conn: Connection) -> int:
 
 
 def day_log(conn: Connection, cfg: Config) -> tuple[list[str], int]:
-    """The day's tick log since the last completed sleep, newest `day_log_max_ticks`."""
+    """The day's tick log since the last completed sleep, newest `day_log_max_ticks`. Each line is what it did
+    and code's plain account of what happened (`ticks.result`), never the narrator's prose, which can invent
+    details: what the sleeping mind turns into lasting memories must be what really happened. A move an
+    impulse took over says so. Rows from before `result` existed show the action only."""
     since = _last_sleep_tick_id(conn)
     rows = conn.execute(
-        "SELECT id, sim_time, action, outcome FROM ticks WHERE kind='tick' AND id>? "
+        "SELECT id, sim_time, action, result, intent FROM ticks WHERE kind='tick' AND id>? "
         "ORDER BY id DESC LIMIT ?", (since, cfg.settings["sleep"]["day_log_max_ticks"])).fetchall()
     top = conn.execute("SELECT COALESCE(MAX(id),0) FROM ticks").fetchone()[0]
-    lines = [f"{clock.time_label(clock.parse(r['sim_time']))}: {r['action']} -> {r['outcome']}"
-             for r in rows][::-1]
-    return lines, top
+
+    def line(r) -> str:
+        t = f"{clock.time_label(clock.parse(r['sim_time']))}: {r['action']}"
+        if (r["intent"] or "").startswith("an impulse"):
+            t += " (on an impulse, without thinking)"
+        return f"{t} -> {r['result']}" if r["result"] else t
+    return [line(r) for r in rows][::-1], top
 
 
 # ---------- prompts ----------
