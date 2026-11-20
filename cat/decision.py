@@ -29,7 +29,8 @@ KINDS = ("full", "interrupt", "check_in")
 CONTINUE, STOP, IDLE = "continue", "stop", "idle"
 PROMPTS_PATH = CONFIG_DIR / "prompts" / "decision.yaml"
 PROMPT_FIELDS = {
-    "system": {"name", "nature", "senses", "abilities", "traits", "tendencies", "background", "boundaries"},
+    "system": {"name", "nature", "senses", "abilities", "traits", "tendencies", "background", "boundaries", "core"},
+    "core": {"lines"}, "note_liked": set(), "note_disliked": set(),
     "time": {"part_of_day", "clock", "weather"},
     "place": {"location", "description"},
     "visible": {"lines"}, "perception": {"lines"}, "body": {"lines"}, "recent": {"lines"},
@@ -127,7 +128,9 @@ def system_prompt(mind: Mind, p: dict) -> str:
         name=i["name"], nature=i["nature"], senses=", ".join(i["senses"]) or "nothing",
         abilities=", ".join(i["abilities"]) or "little", traits=", ".join(i["traits"]) or "yourself",
         tendencies=(" You tend to: " + "; ".join(i["tendencies"]) + ".") if i["tendencies"] else "",
-        background=i["background"], boundaries=_lines(i["boundaries"])).strip()
+        background=i["background"], boundaries=_lines(i["boundaries"]),
+        core=p["core"].format(lines="\n".join(f"  - {c}" for c in i.get("core_memories") or []))
+        if i.get("core_memories") else "").strip()
 
 
 def _ask(mind: Mind, kind: str, p: dict) -> str:

@@ -21,7 +21,7 @@ import sqlite3
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from cat import clock, conditions, knowledge, life as lifemod, templating
+from cat import clock, conditions, knowledge, life as lifemod, memories, templating
 from cat.capabilities import CapabilityResult, CapContext, Registry
 from cat.content import ActionSpec
 from cat.decision import CONTINUE, IDLE, STOP, Decision, load_prompt_file
@@ -71,12 +71,16 @@ def _dump(v: Any) -> str:
 
 class Executor:
     def __init__(self, conn: sqlite3.Connection, life: lifemod.Life, tuning: dict, texts: dict[str, str],
-                 registry: Registry, scheduler: Scheduler, rng: random.Random, backend: Any = None):
+                 registry: Registry, scheduler: Scheduler, rng: random.Random, backend: Any = None,
+                 wake_gate: Any = None):
         self.conn, self.life, self.t, self.texts = conn, life, tuning, texts
         self.registry, self.scheduler, self.rng, self.backend = registry, scheduler, rng, backend
         self.perception: list[str] = []
+        self.wake_gate = wake_gate or (lambda: True)        # False while the sleep cycle has not finished
+        self.held = False                                    # True when the clock waited for the sleep cycle
         self.emitted: list[tuple[str, str]] = []          # (due sim time, event id), from emit_event ops
         self.running: Running | None = self._load_running()
+        self.mood_base = 0.0                                # the last applied mood effect before preferences
         self._bands = self._band_indexes()
 
     # ---------------------------------------------------------------- helpers
@@ -241,7 +245,11 @@ class Executor:
         ending the running activity at its moment."""
         step = int(self.t["body"]["step_minutes"])
         left = int(minutes)
+        self.held = False
         while True:
+            if self.running and self.running.action.builtin == "sleep" and self._ends_now() and not self.wake_gate():
+                self.held = True                             # it would wake, but the night is not processed yet:
+                break                                        # the clock waits (§3.4)
             if self.running and self._ends_now():
                 self._complete()
             if left <= 0:
@@ -331,7 +339,10 @@ class Executor:
 
     def _apply_block(self, a: ActionSpec, block: dict, r: Running, factor: float = 1.0,
                      world: bool = True) -> tuple[list, list[str], dict]:
-        """World ops, creature effects (times factor), discoveries. Returns (body changes, discovered ids, vars)."""
+        """World ops, creature effects (times factor), discoveries. Returns (body changes, discovered ids, vars).
+        Mood effects are multiplied by the learned preferences for the action, its family and the place (§2.4);
+        the mood effect before that is kept in `self.mood_base` so preferences are learned from it, not from
+        themselves."""
         vars = self._vars(a, r.inputs, r.cap)
         if world and block.get("world"):
             try:
@@ -343,6 +354,10 @@ class Executor:
         cap = r.cap or {}
         for k, v in (cap.get("creature") or {}).items():
             effects[k] = effects.get(k, 0.0) + v
+        self.mood_base = effects.get("mood", 0.0)
+        if "mood" in effects:
+            prefs = memories.preferences(self.conn)
+            effects["mood"] *= memories.mood_factor(prefs, a, self.life.location, self.t["sleep"]["pref_weight"])
         changes = self.life.body.apply(self.life.bodystate, effects, a.id)
         self._body(changes)
         found = []
@@ -355,13 +370,17 @@ class Executor:
     def _close(self, status: str, text: str, changes: list, data: dict, importance: float = 0.0,
                remember: bool = False, remember_text: str | None = None, note: bool = True) -> dict:
         r = self.running
+        if not changes:
+            self.mood_base = 0.0
         self.conn.execute("UPDATE activities SET status = ?, ended_at = ?, text = ?, changes = ? WHERE id = ?",
                           (status, self.life.sim_time, text, _dump([asdict(c) for c in changes]), r.id))
         if status == "finished":
             knowledge.done(self.conn, r.action.id, self.life.sim_time, text)
+        external = self.registry.is_external(r.action.capability)
         self._experience("activity", remember_text or text, action_id=r.action.id, activity_id=r.id,
                          data={"status": status, "inputs": r.inputs, "minutes": round(r.elapsed(self.life.sim_time), 1),
-                               "changes": [asdict(c) for c in changes], **data},
+                               "changes": [asdict(c) for c in changes], "mood_base": round(self.mood_base, 5),
+                               **({"external": True} if external else {}), **data},
                          thought=r.thought or None, importance=importance, remember=remember)
         self.running = None
         if note:

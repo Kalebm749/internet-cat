@@ -710,6 +710,22 @@ Rejected proposals are kept, so the dashboard shows what Nit *almost* became.
 
 ---
 
+### 5.7 As built (step 5)
+
+- The sleep cycle runs beside the loop on its own read-only connection (`nit.sleep.threaded`); the loop commits
+  the plan in one transaction and the creature wakes only after that. If the cycle crashes, a failed run is
+  recorded and it wakes anyway.
+- The sleep model cites experiences as `[e<id>]`; code drops every citation that is not a real experience of the
+  night, and a memory with no real source.
+- Preferences learn from each activity's `mood_base`: its mood effect before preferences multiplied it, so a
+  liking cannot feed on itself. Builtin actions (move, inspect, sleep) are means, never liked or disliked;
+  places are judged. Content can make an action feel different by context with `outcomes`, e.g. eating is
+  better when hungry.
+- Capabilities whose result is someone else's words (`external`, e.g. `read_message`) mark their experiences;
+  those never count as evidence for character development.
+- Memories in the Mind: recalled long-term memories, then today's notable moments, without duplicates; core
+  memories are part of the system prompt.
+
 ## 6. Repetition and behavioural quality
 
 ### 6.1 Behaviour history

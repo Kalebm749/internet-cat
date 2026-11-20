@@ -13,6 +13,7 @@ SUMMARY_CHARS = 120
 
 class ReadMessage:
     name = "read_message"
+    external = True           # a visitor's words: never evidence of who the creature is (§4.8, §5.6)
 
     def run(self, ctx: CapContext, inputs: dict) -> CapabilityResult:
         key = ctx.content.world.get("mailbox")

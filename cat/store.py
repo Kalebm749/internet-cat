@@ -119,6 +119,50 @@ MIGRATIONS: list[list[str]] = [
         "CREATE TABLE capability_usage (capability TEXT NOT NULL, day TEXT NOT NULL, uses INTEGER NOT NULL, "
         "PRIMARY KEY (capability, day))",
     ],
+    [  # 5: memory and the sleep cycle (§5)
+        # kind long | core. sources: experience ids it was made from. embedding: float32 blob (a search index).
+        """CREATE TABLE memories (
+            id            INTEGER PRIMARY KEY,
+            kind          TEXT NOT NULL,
+            text          TEXT NOT NULL,
+            importance    REAL NOT NULL,
+            embedding     BLOB,
+            created_at    TEXT NOT NULL,
+            sources       TEXT NOT NULL DEFAULT '[]',
+            recall_count  INTEGER NOT NULL DEFAULT 0,
+            last_recalled TEXT
+        )""",
+        "CREATE INDEX idx_memories_kind ON memories(kind)",
+        # subject_kind action | family | location; valence -1..1; confidence 0..1
+        """CREATE TABLE preferences (
+            subject_kind TEXT NOT NULL,
+            subject_id   TEXT NOT NULL,
+            valence      REAL NOT NULL,
+            confidence   REAL NOT NULL,
+            words        TEXT,
+            evidence     TEXT NOT NULL DEFAULT '[]',
+            updated_at   TEXT NOT NULL,
+            PRIMARY KEY (subject_kind, subject_id)
+        )""",
+        # every character-development proposal, accepted or not, with the verdict of each check
+        """CREATE TABLE dev_proposals (
+            id        INTEGER PRIMARY KEY,
+            sim_time  TEXT NOT NULL,
+            proposal  TEXT NOT NULL,
+            verdicts  TEXT NOT NULL,
+            accepted  INTEGER NOT NULL,
+            version   INTEGER
+        )""",
+        # one row per night: what each stage saw and produced
+        """CREATE TABLE sleep_runs (
+            id          INTEGER PRIMARY KEY,
+            started_at  TEXT NOT NULL,
+            finished_at TEXT,
+            status      TEXT NOT NULL,
+            stages      TEXT NOT NULL DEFAULT '{}',
+            summary     TEXT
+        )""",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

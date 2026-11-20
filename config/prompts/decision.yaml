@@ -7,7 +7,7 @@ system: |
   You are {traits}.{tendencies}
   {background}
   Always true of you:
-  {boundaries}
+  {boundaries}{core}
 
   You live in this place; it is real to you. Decide what you do next.
   Answer with JSON only. First your thought (what goes through your mind right now, in your own voice),
@@ -31,6 +31,9 @@ option: "- {id}: {name}. {description}{inputs}{notes}"
 input_text: "{name}: your own words, up to {max_chars} characters{prompt}"
 input_choice: "{name}: one of {choices}"
 input_int: "{name}: a number from {min} to {max}{prompt}"
+core: "\n  What you keep, always:\n{lines}"
+note_liked: "you have enjoyed this before"
+note_disliked: "you have not enjoyed this before"
 
 ask_full: "Choose one action by its id."
 ask_interrupt: 'You are in the middle of {activity}. Answer "continue" to carry on, or choose another action by its id.'

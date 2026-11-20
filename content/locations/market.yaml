@@ -29,10 +29,14 @@ actions:
       - {fact_gte: [market.offerings, 1]}
     duration: {minutes: [5, 10]}
     effort: low
-    on_finish:
-      world:
-        - {op: add, fact: market.offerings, value: -1}
-      creature: {hunger: -0.45, energy: 0.05, mood: 0.04}
+    outcomes:                         # food is better when it is needed
+      - when: {hunger_gte: 0.5}
+        world: [{op: add, fact: market.offerings, value: -1}]
+        creature: {hunger: -0.45, energy: 0.05, mood: 0.12}
+        text: "You eat it slowly. When you are this hungry it tastes wonderful."
+      - world: [{op: add, fact: market.offerings, value: -1}]
+        creature: {hunger: -0.45, energy: 0.05, mood: 0.02}
+        text: "You eat it."
 
   - id: read_messages
     name: read messages

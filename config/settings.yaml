@@ -380,8 +380,38 @@ nit:
     step_seconds: 2.5            # REAL seconds between loop steps (1 sim minute at time_scale 24)
     doze_seconds: 30             # REAL seconds without decisions after the brain failed (Ollama down)
     max_step_minutes: 60         # SIM minutes one step may advance (a stalled process catches up in pieces)
-  sleep:                         # §5: sleep as an activity (the sleep cycle's stages come in step 5)
+  sleep:                         # §5: sleep as an activity, and the sleep cycle that runs during it
     min_hours: 6                 # SIM hours asleep before it may wake ...
     wake_energy: 0.9             # ... once energy is back to this, outside the night window ...
-    max_hours: 12                # ... and at the latest after this long
+    max_hours: 12                # ... and at the latest after this long (the clock waits for the sleep cycle)
     night_hours: [21, 6]         # the night: it does not wake on its own in here (unless max_hours)
+    threaded: true               # run the sleep cycle beside the loop (false: inline, as in tests)
+    retries: 1                   # extra attempts per sleep-stage call
+    day_log_max: 60              # most experiences one night looks at (the most important, then the newest)
+    consolidate_max: 12          # stage 1: at most this many things that mattered
+    core_per_night: 1            # stage 2
+    long_term_per_night: 5       # stage 3
+    pref_min_samples: 3          # stage 5: experiences of a subject needed to judge it ...
+    pref_window_days: 3          # ... within this many sim days
+    pref_threshold: 0.02         # |mood signal| needed for a preference
+    pref_step: 0.2               # a preference moves at most this far toward its signal per night
+    pref_decay: 0.05             # and drifts this far toward 0 on a night without evidence
+    pref_weight: 0.5             # mood effects x (1 + weight x valence x confidence) for liked/disliked subjects
+    pref_note_min: 0.15          # |valence x confidence| at which the menu mentions it
+    dev_min_evidence: 5          # stage 6: a change needs this many of its own experiences ...
+    dev_min_days: 3              # ... spread over this many different sim days
+    dev_max_step: 0.05           # a trait or tendency strength moves at most this far per change
+    dev_new_strength: 0.2        # a new trait or tendency starts here
+    dev_cooldown_days: 3         # the same trait or tendency is not changed again for this long
+    dev_forbidden_words: [lie, lying, deceive, deceitful, cruel, harm, hurt, destroy, steal, dishonest]
+  memory:                        # §5.1, §5.3
+    recall_k: 5                  # long-term memories recalled into the Mind
+    notable_k: 5                 # today's notable moments shown in the Mind
+    notable_min_importance: 0.5  # an experience is notable from this importance (or when it asked to be remembered)
+    w_recency: 1.0               # recall score = w_recency x recency + w_importance x importance + w_relevance x similarity
+    w_importance: 1.0
+    w_relevance: 1.5
+    recency_half_life_days: 2    # SIM days
+    recall_boost: 0.2            # retention = importance x recency x (1 + recalls x boost)
+    forget_below: 0.05           # stage 7 forgets long-term memories whose retention falls below this
+    dup_threshold: 0.92          # stage 7 merges memories this similar

@@ -51,13 +51,27 @@ SECTIONS = {
         "doze_seconds": (1, 3600),
         "max_step_minutes": (1, 24 * 60),
     },
+    "memory": {
+        "recall_k": (0, 50), "notable_k": (0, 50), "notable_min_importance": (0, 1), "w_recency": (0, 10),
+        "w_importance": (0, 10), "w_relevance": (0, 10), "recency_half_life_days": (0.01, 365),
+        "recall_boost": (0, 10), "forget_below": (0, 1), "dup_threshold": (0.5, 1),
+    },
     "mail": {
         "on_mind": (0, 20),
         "on_mind_chars": (40, 4000),
         "on_mind_days": (0, 365),
     },
 }
-INTEGER_KEYS = {"retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
+SLEEP_NUMBERS = {
+    "min_hours": (0.5, 24), "wake_energy": (0.05, 1), "max_hours": (0.5, 24), "retries": (0, 5),
+    "day_log_max": (5, 500), "consolidate_max": (1, 100), "core_per_night": (0, 10), "long_term_per_night": (0, 50),
+    "pref_min_samples": (1, 100), "pref_window_days": (1, 60), "pref_threshold": (0, 1), "pref_step": (0, 1),
+    "pref_decay": (0, 1), "pref_weight": (0, 2), "pref_note_min": (0, 1), "dev_min_evidence": (1, 100),
+    "dev_min_days": (1, 60), "dev_max_step": (0, 1), "dev_new_strength": (0, 1), "dev_cooldown_days": (0, 60),
+}
+SLEEP_OTHER = {"night_hours", "threaded", "dev_forbidden_words"}
+INTEGER_KEYS = {"day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
+                "dev_min_evidence", "dev_min_days", "recall_k", "notable_k", "retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
                 "on_mind", "on_mind_chars"}
 MODEL_KEYS = ("decision_model", "sleep_model", "embed_model")
 TOP = {"db_path", "content_dir", "time_scale", "body", "models", "sleep"} | set(SECTIONS)
@@ -105,16 +119,24 @@ def validate(nit: Any) -> list[str]:
             _check_numbers(name, nit[name], spec, probs)
     sl = nit.get("sleep")
     if "sleep" in nit:
-        if not isinstance(sl, dict) or set(sl) != {"min_hours", "wake_energy", "max_hours", "night_hours"}:
-            probs.append("sleep must give min_hours, wake_energy, max_hours and night_hours")
+        if not isinstance(sl, dict):
+            probs.append("sleep must be a mapping")
         else:
-            if not (_num(sl["min_hours"]) and _num(sl["max_hours"]) and 0 < sl["min_hours"] <= sl["max_hours"] <= 24):
-                probs.append("sleep: 0 < min_hours <= max_hours <= 24")
-            if not (_num(sl["wake_energy"]) and 0 < sl["wake_energy"] <= 1):
-                probs.append("sleep.wake_energy must be between 0 and 1")
-            nh = sl["night_hours"]
-            if not (isinstance(nh, list) and len(nh) == 2 and all(_num(h) and 0 <= h <= 24 for h in nh)):
+            _check_numbers("sleep", {k: v for k, v in sl.items() if k not in SLEEP_OTHER},
+                           SLEEP_NUMBERS, probs)
+            for k in sorted(SLEEP_OTHER - set(sl)):
+                probs.append(f"sleep: missing '{k}'")
+            if "min_hours" in sl and "max_hours" in sl and _num(sl["min_hours"]) and _num(sl["max_hours"]) \
+                    and sl["min_hours"] > sl["max_hours"]:
+                probs.append("sleep: min_hours is above max_hours")
+            nh = sl.get("night_hours")
+            if "night_hours" in sl and not (isinstance(nh, list) and len(nh) == 2 and all(_num(h) and 0 <= h <= 24 for h in nh)):
                 probs.append("sleep.night_hours must be [from, to] hours")
+            if "threaded" in sl and not isinstance(sl["threaded"], bool):
+                probs.append("sleep.threaded must be true or false")
+            fw = sl.get("dev_forbidden_words")
+            if "dev_forbidden_words" in sl and not (isinstance(fw, list) and all(isinstance(w, str) for w in fw)):
+                probs.append("sleep.dev_forbidden_words must be a list of words")
     body = nit.get("body")
     if not isinstance(body, dict):
         return probs + (["body must be a mapping"] if "body" in nit else [])

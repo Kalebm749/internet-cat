@@ -288,6 +288,28 @@ class MockBackend(LLMBackend):
 
     def _default(self, task: str, messages: list[dict], schema: dict | None = None) -> dict[str, Any]:
         r = self.rng
+        if task.startswith("sleep_"):      # the rewrite's sleep cycle (cat/sleepcycle.py): cite what the prompt shows
+            text = messages[-1]["content"] if messages else ""
+            ids = [int(i) for i in re.findall(r"\[e(\d+)\]", text)]
+            if task == "sleep_consolidate":
+                return {"summary": "I went about my day and noticed what I could.",
+                        "mattered": [{"id": i, "why": "it stayed with me"} for i in ids[:3]]}
+            if task == "sleep_core":
+                return {"keep": [{"id": i, "text": ""} for i in ids[:1]]}
+            if task == "sleep_long_term":
+                return {"memories": [{"text": f"I remember this moment ({i}).", "importance": 0.6, "sources": [i]}
+                                     for i in ids[:2]]}
+            if task == "sleep_learned":
+                return {"words": [{"action": a, "words": f"I can {a.replace('_', ' ')}."}
+                                  for a in re.findall(r"\[a:([a-z0-9_]+)\]", text)]}
+            if task == "sleep_preferences":
+                return {"verdicts": [{"subject": s, "keep": True, "words": ""}
+                                     for s in re.findall(r"\[p:([a-z_]+:[a-z0-9_]+)\]", text)]}
+            if task == "sleep_develop":
+                return {"change": False, "kind": "background_note", "target": "", "value": "", "rationale": "",
+                        "evidence": []}
+            if task == "sleep_conflict":
+                return {"conflict": False, "why": "it fits"}
         if task == "decide":       # the rewrite's waking decision (cat/decision.py): pick from the schema
             props = (schema or {}).get("properties", {})
             ids = props.get("action", {}).get("enum") or ["idle"]

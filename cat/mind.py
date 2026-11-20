@@ -187,21 +187,21 @@ def _trait_words(traits: dict[str, float]) -> list[str]:
     return out
 
 
-def identity_block(life: Life) -> dict:
+def identity_block(life: Life, core_memories: list[str] | None = None) -> dict:
     s = life.character.sheet
     core = s.get("core") or {}
     return {"name": s.get("name"), "pronoun": s.get("pronoun"), "nature": core.get("nature", ""),
             "senses": core.get("senses") or [], "abilities": core.get("abilities") or [],
             "boundaries": core.get("boundaries") or [], "traits": _trait_words(s.get("traits") or {}),
             "tendencies": [t for t, _ in sorted((s.get("tendencies") or {}).items(), key=lambda kv: -kv[1])],
-            "background": s.get("background", "")}
+            "background": s.get("background", ""), "core_memories": list(core_memories or [])}
 
 
 def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, float] | None = None,
           perception: list[str] | None = None, activity: dict | None = None, recent: list[dict] | None = None,
           memories: list[str] | None = None, repetition: float = 0.0, seed: Any = 0,
           notes: Callable[[ActionSpec], list[str]] | None = None,
-          capability_ok: Callable[[str], bool] | None = None) -> Mind:
+          capability_ok: Callable[[str], bool] | None = None, core_memories: list[str] | None = None) -> Mind:
     rng = random.Random(f"{seed}|{life.sim_time}")
     now = clock.parse(life.sim_time)
     loc = life.content.locations[life.location]
@@ -218,6 +218,6 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
         recent=list(recent or [])[-tuning["decisions"]["recent_activities"]:] if tuning["decisions"]["recent_activities"] else [],
         memories=list(memories or []),
         letters=letters_on_mind(life, tuning),
-        identity=identity_block(life),
+        identity=identity_block(life, core_memories),
         options=build_options(life, known, last_done or {}, rng, notes, capability_ok),
     )

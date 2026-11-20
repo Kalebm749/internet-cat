@@ -45,6 +45,7 @@ class CapabilityResult:
 
 class Capability(Protocol):
     name: str
+    external: bool        # True: its result is someone else's words (a letter), never evidence of who it is
 
     def run(self, ctx: CapContext, inputs: dict) -> CapabilityResult: ...
 
@@ -69,6 +70,9 @@ class Registry:
                 probs.append(f"capabilities.yaml:1: capability '{name}': handler {spec['handler']!r} cannot be loaded ({e})")
         if probs:
             raise ContentError(probs)
+
+    def is_external(self, name: str | None) -> bool:
+        return bool(name) and bool(getattr(self.handlers.get(name), "external", False))
 
     def limit(self, name: str) -> int | None:
         return ((self.content.capabilities.get(name) or {}).get("limits") or {}).get("per_day")

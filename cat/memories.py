@@ -1,0 +1,187 @@
+"""Memory (docs/rewrite-contracts.md §5.1, §5.3): today's notable moments, long-term and core memories, recall,
+and the learned preferences that colour consequences and the menu (§2.4).
+
+    experiences      code's facts of everything that happened (written by cat/execute.py)
+    notable moments  today's experiences that asked to be remembered or are important enough (a query, no table)
+    long-term        written only by the sleep cycle, with links to the experiences they came from
+    core             a few deliberately kept thoughts; never forgotten; always part of who it is
+
+Embeddings are only a search index; text is the memory. Embedding calls happen outside transactions, and
+when the embedding model is unavailable recall falls back to recency and importance.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import sqlite3
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+
+from cat import clock
+from cat.llm import BackendError, LLMBackend
+
+log = logging.getLogger("cat.memories")
+
+
+def to_blob(vec: list[float] | None) -> bytes | None:
+    return None if vec is None else np.asarray(vec, dtype=np.float32).tobytes()
+
+
+def from_blob(b: bytes | None) -> np.ndarray | None:
+    return None if not b else np.frombuffer(b, dtype=np.float32)
+
+
+def cosine(a: np.ndarray | None, b: np.ndarray | None) -> float:
+    if a is None or b is None or len(a) != len(b):
+        return 0.0
+    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+    return 0.0 if na == 0 or nb == 0 else float(np.dot(a, b) / (na * nb))
+
+
+def embed(backend: LLMBackend | None, model: str, texts: list[str]) -> list[list[float] | None]:
+    """Embed texts; on failure every vector is None (recall then ignores relevance)."""
+    if backend is None or not texts:
+        return [None] * len(texts)
+    try:
+        return list(backend.embed(model, texts))
+    except BackendError as e:
+        log.warning("embedding unavailable: %s", e)
+        return [None] * len(texts)
+
+
+@dataclass
+class Memory:
+    id: int
+    kind: str
+    text: str
+    importance: float
+    embedding: np.ndarray | None
+    created_at: str
+    sources: list[int]
+    recall_count: int
+    last_recalled: str | None
+
+
+def _row(r: sqlite3.Row) -> Memory:
+    return Memory(r["id"], r["kind"], r["text"], r["importance"], from_blob(r["embedding"]), r["created_at"],
+                  json.loads(r["sources"]), r["recall_count"], r["last_recalled"])
+
+
+def all_memories(conn: sqlite3.Connection, kind: str | None = None) -> list[Memory]:
+    if kind:
+        return [_row(r) for r in conn.execute("SELECT * FROM memories WHERE kind = ? ORDER BY id", (kind,))]
+    return [_row(r) for r in conn.execute("SELECT * FROM memories ORDER BY id")]
+
+
+def core_texts(conn: sqlite3.Connection) -> list[str]:
+    return [m.text for m in all_memories(conn, "core")]
+
+
+def last_wake(conn: sqlite3.Connection, sleep_ids: list[str]) -> str:
+    """When it last woke up ('' if it never slept). `sleep_ids`: the content's builtin sleep action ids."""
+    if not sleep_ids:
+        return ""
+    marks = ",".join("?" * len(sleep_ids))
+    r = conn.execute(f"SELECT MAX(ended_at) FROM activities WHERE status = 'finished' AND action_id IN ({marks})",
+                     sleep_ids).fetchone()
+    return r[0] or ""
+
+
+def notable_today(conn: sqlite3.Connection, tuning: dict, since: str) -> list[str]:
+    """Today's notable moments (since it last woke), newest last."""
+    m = tuning["memory"]
+    rows = conn.execute(
+        "SELECT text FROM experiences WHERE sim_time >= ? AND (remember = 1 OR importance >= ?) "
+        "ORDER BY id DESC LIMIT ?", (since, m["notable_min_importance"], m["notable_k"])).fetchall()
+    return [r[0] for r in reversed(rows)]
+
+
+def recency(half_life_days: float, then: str, now: str) -> float:
+    age_days = max(0.0, (clock.parse(now) - clock.parse(then)).total_seconds() / 86400)
+    return 0.5 ** (age_days / half_life_days)
+
+
+def score(mem: Memory, query: np.ndarray | None, now: str, m: dict) -> dict:
+    rec = recency(m["recency_half_life_days"], mem.last_recalled or mem.created_at, now)
+    rel = cosine(mem.embedding, query) if query is not None else 0.0
+    total = m["w_recency"] * rec + m["w_importance"] * mem.importance + m["w_relevance"] * rel
+    return {"id": mem.id, "text": mem.text, "recency": rec, "importance": mem.importance, "relevance": rel,
+            "score": total}
+
+
+def recall(conn: sqlite3.Connection, tuning: dict, query_vec: list[float] | None, now: str) -> list[dict]:
+    """The best long-term memories for this moment (scored; core memories are part of identity, not recalled)."""
+    m = tuning["memory"]
+    q = None if query_vec is None else np.asarray(query_vec, dtype=np.float32)
+    scored = [score(x, q, now, m) for x in all_memories(conn, "long")]
+    scored.sort(key=lambda s: -s["score"])
+    return scored[: m["recall_k"]]
+
+
+def mark_recalled(conn: sqlite3.Connection, ids: list[int], now: str) -> None:
+    conn.executemany("UPDATE memories SET recall_count = recall_count + 1, last_recalled = ? WHERE id = ?",
+                     [(now, i) for i in ids])
+
+
+def query_text(location_name: str, activity: dict | None, perception: list[str], letters: list[dict]) -> str:
+    bits = [location_name]
+    if activity:
+        bits.append(activity["name"])
+    bits += perception[-3:]
+    bits += [l["text"] for l in letters[:2]]
+    return " | ".join(b for b in bits if b)
+
+
+def retention(mem: Memory, now: str, m: dict) -> float:
+    rec = recency(m["recency_half_life_days"], mem.last_recalled or mem.created_at, now)
+    return mem.importance * rec * (1 + mem.recall_count * m["recall_boost"])
+
+
+# ---------------------------------------------------------------- preferences (§2.4)
+
+@dataclass
+class Preference:
+    subject_kind: str
+    subject_id: str
+    valence: float
+    confidence: float
+    words: str | None
+    evidence: list[int]
+    updated_at: str
+
+    @property
+    def strength(self) -> float:
+        return self.valence * self.confidence
+
+
+def preferences(conn: sqlite3.Connection) -> dict[tuple[str, str], Preference]:
+    return {(r["subject_kind"], r["subject_id"]): Preference(r["subject_kind"], r["subject_id"], r["valence"],
+                                                           r["confidence"], r["words"], json.loads(r["evidence"]),
+                                                           r["updated_at"])
+            for r in conn.execute("SELECT * FROM preferences")}
+
+
+def subjects_of(action: Any, location: str) -> list[tuple[str, str]]:
+    return [("action", action.id), ("family", action.family), ("location", location)]
+
+
+def mood_factor(prefs: dict, action: Any, location: str, weight: float) -> float:
+    """Mood effects of an action touching liked/disliked subjects are multiplied by this."""
+    f = 1.0
+    for key in subjects_of(action, location):
+        p = prefs.get(key)
+        if p:
+            f *= 1 + weight * p.strength
+    return max(0.0, f)
+
+
+def note_for(prefs: dict, action: Any, min_strength: float) -> int:
+    """+1 liked, -1 disliked, 0 neither: the strongest of the action's own and its family's preference."""
+    best = 0.0
+    for key in (("action", action.id), ("family", action.family)):
+        p = prefs.get(key)
+        if p and abs(p.strength) > abs(best):
+            best = p.strength
+    return 0 if abs(best) < min_strength else (1 if best > 0 else -1)
