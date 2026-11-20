@@ -64,3 +64,14 @@ def test_the_script_only_reads(cfg, tmp_path):
     assert '"position"' in out.stdout
     assert Path(cfg.db_path).read_bytes() == before
     assert "readonly=True" in (ROOT / "scripts" / "measure_run.py").read_text()
+
+
+def test_it_reports_whether_it_ate_when_it_could(cfg):
+    conn = _run(cfg, "random", ticks=80)
+    ea = mr.measure(conn, cfg)["eating"]
+    total = ea["hungry"]["decisions"] + ea["not_hungry"]["decisions"]
+    assert total == conn.execute("SELECT COUNT(*) FROM llm_calls WHERE kind='brain' AND error IS NULL").fetchone()[0]
+    for d in (ea["hungry"], ea["not_hungry"]):
+        assert d["ate"] <= d["food_offered"] <= d["decisions"]
+    assert ea["meals"] >= ea["hungry"]["ate"] + ea["not_hungry"]["ate"] and ea["reflex_meals"] <= ea["meals"]
+    assert "== eating" in mr.report(mr.measure(conn, cfg))

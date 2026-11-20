@@ -28,8 +28,8 @@ needs:
     expressions:
       full: "You are thoroughly sustained, with nothing lacking."
       okay: null
-      low: "Something hollow is filing complaints."
-      empty: "The hollow has stopped complaining and started demanding."
+      low: "Something hollow is filing complaints; it wants something taken in."
+      empty: "The hollow has stopped complaining and started demanding: something has to go in."
   wonder:
     start: 60
     decay_per_hour: 3.5

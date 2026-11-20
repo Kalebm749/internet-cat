@@ -52,6 +52,7 @@ class BrainContext:
     habits: list[str] = field(default_factory=list)              # code-found patterns, worded in sleep
     projects: list[dict] = field(default_factory=list)           # active projects (words only, see projects.brain_view)
     menu: list = field(default_factory=list)                     # the moves on offer (cat.moves.Move)
+    untried: set = field(default_factory=set)                    # verbs on the menu it has never made (from its history)
 
 
 PRESSING_BANDS = ("empty", "low")      # the bands that pull at the entity, most pressing first
@@ -233,7 +234,9 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
 
     if ctx.menu:
         L.append("\n" + R("heading_moves"))
-        L.extend(R("move_line", id=m.id, label=m.label) for m in ctx.menu)
+        L.append(R("moves_note"))
+        L.extend(R("move_line", id=m.id, label=m.label + (R("never_tried") if m.verb in ctx.untried else ""))
+                 for m in ctx.menu)
 
     L.append("\n" + R("closing"))
     return "\n".join(L)

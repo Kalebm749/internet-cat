@@ -20,13 +20,16 @@ There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 - `analysis-2026-11.md` — independent review of vision vs. implementation: gaps, risks, refined vision, phased roadmap, success experiments
 
 Decided (revised): **closed moves**. The brain picks from a menu built by code (`config/moves.yaml`, `cat/moves.py`);
-code resolves the effects and words what happened; the journal (`cat/journal.py`) writes the entity's own entry afterwards, from facts only. The menu is never ranked or marked by need
+code resolves the effects and words what happened; the journal (`cat/journal.py`) writes the entity's own entry afterwards, from facts only. The menu is shown in a seeded shuffled order (`moves.shuffle`; file order steered 40% of real picks to the top tenth) and is never ranked or marked by need; moves whose verb it has never made are marked "(never tried)", a fact of its history
 (server-architecture §9 documents this; the earlier "open actions" design is gone).
 A move longer than `activity.step_minutes` runs as one activity with hidden carry ticks (no LLM calls);
 any event or a newly empty need interrupts it. Habits (`cat/habits.py`) are found by code, worded in sleep,
 and shown as "you tend to...". Need levels shape the brain's prompt
 (band words for the most pressing needs), never its choices: code never picks, suggests or ranks actions
-by need. **Relaxed (decided): emotion and impulse may change what is offered, how it is shown and sometimes the
+by need, with **one decided exception: the innate feeding reflex** (`reflexes.feeding`, `cat/impulses.py`): when
+sustenance is empty and something edible is on the menu, a seeded roll may take the eat move before the brain is
+asked (the first real run never ate once). It is traced and shown in the diary like an impulse; add no other
+need-driven picks without a decision. **Relaxed (decided): emotion and impulse may change what is offered, how it is shown and sometimes the
 final pick** (see the cognitive plan); every override must be traced and visible in the diary. Energy is a **separate resource** (-50..50: effort spends it, sleep restores it), never a need.
 Mood is one number, a slider from -50 (negative) to 50 (positive), computed from need bands.
 

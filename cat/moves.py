@@ -38,8 +38,10 @@ class Move:
 # ---------- the menu ----------
 def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict],
             projects: list[dict], can_sleep: bool, inventory_full: bool = False, seed: str = "") -> list[Move]:
-    """Every move possible right now, in a fixed order. `here` / `inventory` are world objects,
-    `projects` the active projects, `can_sleep` whether going to sleep is allowed."""
+    """Every move possible right now. `here` / `inventory` are world objects, `projects` the active projects,
+    `can_sleep` whether going to sleep is allowed. With `moves.shuffle` the order is a seeded shuffle (same time
+    and place, same order), so where a move sits in the list never steers the pick: the first real run took 40%
+    of its picks from the top tenth of a menu in file order. Never ordered by need."""
     out: list[Move] = []
     areas = cfg.world["areas"]
     for verb, v in cfg.moves["verbs"].items():
@@ -64,6 +66,8 @@ def offered(cfg: Config, *, area_id: str, here: list[dict], inventory: list[dict
             key = verb if tid is None else f"{verb}:{tid}"
             out.append(Move("", key, verb, tid, name, v["label"].format(target=name)))
     out = _cut(cfg, out, seed)
+    if cfg.settings["moves"].get("shuffle", True):
+        random.Random(f"order|{seed}").shuffle(out)
     for i, m in enumerate(out, 1):
         m.id = f"m{i}"
     return out
@@ -236,6 +240,29 @@ def check(moves: Any, cfg_character: dict, settings: dict) -> tuple[list[str], l
             errs.append(f"{w}: does: {does} needs target: {want[does]}")
         if does == "sleep" and v.get("only_when") != "can_sleep":
             errs.append(f"{w}: does: sleep must set only_when: can_sleep (it is only offered when allowed)")
+    fr = ((settings.get("reflexes") or {}).get("feeding")) if isinstance(settings.get("reflexes"), dict) else None
+    if fr is not None:
+        w = "settings.yaml reflexes.feeding"
+        if not isinstance(fr, dict):
+            errs.append(f"{w}: must be a mapping")
+        else:
+            if not isinstance(fr.get("enabled"), bool):
+                errs.append(f"{w}.enabled: must be true or false")
+            c = fr.get("chance")
+            if isinstance(c, bool) or not isinstance(c, (int, float)) or not 0 <= c <= 1:
+                errs.append(f"{w}.chance: must be a number from 0 to 1")
+            bands = fr.get("bands")
+            if not isinstance(bands, list) or not bands or any(b not in ("empty", "low", "okay", "full") for b in bands):
+                errs.append(f"{w}.bands: must be a non-empty list of need bands (empty, low, okay, full)")
+            vs = fr.get("verbs")
+            if not isinstance(vs, list) or not vs:
+                errs.append(f"{w}.verbs: must be a non-empty list of verbs")
+            else:
+                for vb in vs:
+                    if vb not in verbs:
+                        warns.append(f"{w}.verbs: no verb '{vb}' in moves.yaml (skipped)")
+                    elif (verbs[vb] or {}).get("does") != "consume":
+                        errs.append(f"{w}.verbs: '{vb}' is not a consume verb")
     if not any(isinstance(v, dict) and v.get("target") == "none" and v.get("does", "none") == "none" for v in verbs.values()):
         errs.append("moves.yaml: needs at least one verb with target: none and does: none, so there is always something to do")
     return errs, warns

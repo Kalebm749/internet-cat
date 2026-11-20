@@ -11,6 +11,8 @@ Read-only (the database is opened readonly, like the website). Nothing here call
              tenth of the menu gets about 10% of picks; a big first-tenth share means list order steers it
   choices    most picked moves, how varied they are (entropy), same move twice in a row, impulses,
              places it spent its decisions in
+  eating     brain decisions made while hungry (its hunger lines in the prompt), how often food was on the menu
+             then, and how often it ate by choice; meals the feeding reflex took over
   needs      time in each band per need, how often some need is empty, anxiety and mood
   inner      what it has built up: memories, preferences, tendencies, self-image, habits, projects, nights
 
@@ -123,6 +125,36 @@ def choices_section(conn) -> dict:
             "areas_pct": {a: _pct(c, n) for a, c in areas.most_common()}}
 
 
+def eating_section(conn, cfg) -> dict:
+    """Did it eat when it could? A brain decision is "hungry" when its prompt carries the sustenance need's low or
+    empty expression; food is "on the menu" when a consume verb's move was offered. Separates a world with no food
+    from a brain that ignores it (the first real run: food offered 51 times, eaten 0)."""
+    sus = cfg.settings["sustenance_need"]
+    exprs = [e.strip() for b, e in (cfg.character["needs"].get(sus, {}).get("expressions") or {}).items()
+             if b in ("low", "empty") and e]
+    eat_verbs = {v for v, spec in cfg.moves["verbs"].items() if spec.get("does") == "consume"}
+    starts = tuple(cfg.moves["verbs"][v]["label"].split("{target}")[0] for v in eat_verbs)
+    out = {"hungry": {"decisions": 0, "food_offered": 0, "ate": 0},
+           "not_hungry": {"decisions": 0, "food_offered": 0, "ate": 0}}
+    for r in conn.execute("SELECT user_prompt, raw_response FROM llm_calls WHERE kind='brain' AND error IS NULL "
+                          "AND user_prompt IS NOT NULL AND raw_response IS NOT NULL"):
+        items = dict(MENU.findall(r["user_prompt"]))
+        food = [mid for mid, lab in items.items() if starts and lab.startswith(starts)]
+        d = out["hungry" if any(e in r["user_prompt"] for e in exprs) else "not_hungry"]
+        d["decisions"] += 1
+        if food:
+            d["food_offered"] += 1
+            try:
+                d["ate"] += str(json.loads(r["raw_response"]).get("move", "")).strip() in food
+            except (ValueError, AttributeError):
+                pass
+    meals = [r for r in conn.execute("SELECT move_key, intent FROM ticks WHERE kind='tick' AND move_key IS NOT NULL")
+             if r["move_key"].split(":")[0] in eat_verbs]
+    out["meals"] = len(meals)
+    out["reflex_meals"] = sum(1 for r in meals if (r["intent"] or "") == "an impulse (feeding)")
+    return out
+
+
 def needs_section(conn, cfg) -> dict:
     """Time in each band, counted per tick of the creature's life (decisions, carried-on steps and sleep)."""
     rows = conn.execute("SELECT needs_after, mood_after FROM ticks WHERE kind IN ('tick','carry','asleep')").fetchall()
@@ -174,11 +206,12 @@ def inner_section(conn) -> dict:
 
 def measure(conn, cfg) -> dict:
     return {"run": run_section(conn), "brain": brain_section(conn, cfg), "position": position_section(conn),
-            "choices": choices_section(conn), "needs": needs_section(conn, cfg), "inner": inner_section(conn)}
+            "choices": choices_section(conn), "eating": eating_section(conn, cfg), "needs": needs_section(conn, cfg),
+            "inner": inner_section(conn)}
 
 
 def report(m: dict) -> str:
-    r, b, p, c, n, i = m["run"], m["brain"], m["position"], m["choices"], m["needs"], m["inner"]
+    r, b, p, c, n, i, ea = m["run"], m["brain"], m["position"], m["choices"], m["needs"], m["inner"], m["eating"]
     L = ["== run",
          f"  {r['ticks']} ticks over {r['sim_days']} sim days: {r['decisions']} decisions, {r['carried']} carried-on "
          f"steps, {r['dozes']} dozes (brain offline), {r['nights']} nights",
@@ -199,6 +232,11 @@ def report(m: dict) -> str:
          f"impulses {c['impulse_pct']}%",
          "  most picked: " + "; ".join(f"{lab} x{k}" for lab, k in c["top_moves"]),
          "  places: " + ", ".join(f"{a} {v}%" for a, v in c["areas_pct"].items()),
+         "== eating (did it eat when it could?)",
+         f"  hungry: {ea['hungry']['decisions']} brain decisions, food on the menu in {ea['hungry']['food_offered']}, "
+         f"ate by choice {ea['hungry']['ate']}; not hungry: {ea['not_hungry']['decisions']}, food on the menu in "
+         f"{ea['not_hungry']['food_offered']}, ate {ea['not_hungry']['ate']}",
+         f"  meals in all: {ea['meals']}, of which the feeding reflex took over {ea['reflex_meals']}",
          "== needs (share of ticks in each band)"]
     for nid, d in n["bands_pct"].items():
         L.append(f"  {nid:<14}" + ", ".join(f"{bb} {v:3.0f}%" for bb, v in d.items()))

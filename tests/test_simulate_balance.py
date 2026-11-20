@@ -25,8 +25,8 @@ def test_the_default_balance_does_not_leave_the_creature_deprived_or_anxious():
     """The yardstick (`needy`: feeds the lowest need, sleeps when tired) must be able to keep the needs up with
     the default config. If it cannot, the decay/gain numbers are wrong and the brain would live in permanent
     deprivation, with anxiety and its impulses on all the time. (Baseline, docs/analysis-2026-11.md roadmap 1.4.)"""
-    m = sim.merge([sim.run(None, "needy", seed, 400) for seed in (1, 2)])
+    m = sim.merge([sim.run(None, "needy", seed, 400) for seed in (1, 2, 3, 4)])   # two seeds were too noisy
     assert m["any_empty"] < 0.15
     assert m["anxious"] < 0.15
-    r = sim.merge([sim.run(None, "random", seed, 400) for seed in (1, 2)])
+    r = sim.merge([sim.run(None, "random", seed, 400) for seed in (1, 2, 3, 4)])
     assert r["anxious"] < 0.35          # even a mindless brain is not anxious most of the time

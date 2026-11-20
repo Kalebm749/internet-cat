@@ -63,7 +63,12 @@ def test_the_brain_menu_is_in_the_prompt_in_order(cfg, conn):
     from cat import moves as M
     menu = [M.Move("m1", "wait", "wait", None, "", "sit quietly"), M.Move("m2", "go:kitchen", "go", "kitchen", "the kitchen", "go to the kitchen")]
     p = brain.situation_prompt(cfg, ctx(cfg, conn, menu=menu))
-    assert "## What you can do right now\n- [m1] sit quietly\n- [m2] go to the kitchen" in p
+    assert ("## What you can do right now\nEvery move listed here is something you can actually do. What a move does "
+            "to you, you find out by doing it.\n- [m1] sit quietly\n- [m2] go to the kitchen") in p
+    c = ctx(cfg, conn, menu=menu)
+    c.untried = {"go"}                                   # a verb it has never made is marked, nothing else
+    p2 = brain.situation_prompt(cfg, c)
+    assert "- [m2] go to the kitchen (never tried)" in p2 and "- [m1] sit quietly\n" in p2
     assert p.rstrip().endswith("Choose one move and reply with JSON.")
     assert "What you can do right now" not in brain.situation_prompt(cfg, ctx(cfg, conn))
 

@@ -91,6 +91,8 @@ moves:
   min_scale: 0.25              # ... a shorter one gives and costs proportionally less, down to this fraction
   max_scale: 2.0               # ... and a longer one more, up to this multiple
   novelty_hours: 24            # a place not visited for this many sim hours counts as new (go: novelty gains)
+  shuffle: true                # menu order is a seeded shuffle per decision, so list position never steers a pick
+  mark_untried: true           # a move whose verb it has never made shows "(never tried)": a fact of its history
 
 # --- journal: the entity's own entry, written AFTER code has decided what its move did (one call, brain_model) ---
 journal:
@@ -123,6 +125,15 @@ anxiety:
   impulses:                                # what an impulse does: it takes over with one of the listed moves
     restless: {weight: 3, verbs: [go, pace, fidget, search_around, wander_edge, follow_sound]}
     freeze: {weight: 1, verbs: [wait, breathe, listen, hide_in]}
+
+# --- reflexes: innate, and the ONE place code picks a move because of a need. Rolled before the brain; traced
+#     like an impulse and shown in the diary (prompts.yaml impulse.<name>). The first real run never ate at all. ---
+reflexes:
+  feeding:
+    enabled: true
+    bands: [empty]             # sustenance (sustenance_need) in one of these bands ...
+    chance: 0.35               # ... and something edible on the menu: this chance per decision ...
+    verbs: [eat, nibble, savour, gobble]   # ... that it eats with one of these (consume verbs only)
 
 # --- need bands: a level becomes a band; the brain sees words, never numbers ---
 need_bands: {empty_below: 15, low_below: 40, okay_below: 75}   # below empty_below => empty; ... ; else full

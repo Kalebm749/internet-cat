@@ -12,6 +12,30 @@ from cat import prompts as P
 from cat.config import Config
 
 
+def feeding_reflex(cfg: Config, needs: dict[str, float], menu: list, seed: str) -> dict | None:
+    """The one innate reflex (settings `reflexes.feeding`): when the sustenance need is in the configured band
+    (empty by default) and something to eat is on the menu, a seeded roll may take the decision over with one of
+    the reflex's verbs, before the brain is asked. It is the only place code picks a move because of a need; it
+    is traced like an impulse and the diary says so. None when it does not fire."""
+    from cat import character
+    r = (cfg.settings.get("reflexes") or {}).get("feeding")
+    if not r or not r.get("enabled") or not menu:
+        return None
+    sus = cfg.settings["sustenance_need"]
+    if sus not in needs or character.need_band(float(needs[sus]), cfg) not in r["bands"]:
+        return None
+    moves = [m for m in menu if m.verb in r["verbs"]]
+    if not moves:
+        return None
+    rng = random.Random(f"reflex|{seed}")
+    if rng.random() >= r["chance"]:
+        return None
+    key = "impulse.feeding"
+    entry = P.render(cfg, key if P.lookup(cfg.prompts, key) else "impulse.default")
+    return {"impulse": "feeding", "move": rng.choice(moves), "chance": float(r["chance"]), "entry": entry,
+            "reflex": True}
+
+
 def chance(cfg: Config, level: float) -> float:
     a = cfg.settings["anxiety"]
     if not a["enabled"] or level <= a["impulse_above"]:
