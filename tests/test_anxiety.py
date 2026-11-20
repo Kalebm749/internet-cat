@@ -72,9 +72,11 @@ def test_the_prompt_says_how_anxious_it_feels(cfg, conn):
     on(cfg)
     c = ctx(cfg, conn)
     c.mood = {**c.mood, "anxiety": 60.0}
-    assert "You feel on edge." in brain.situation_prompt(cfg, c)
+    p = brain.situation_prompt(cfg, c)
+    assert "Your thoughts keep circling, braced for something." in p
+    assert "on edge" not in p and "You feel" not in p        # an impression, never a named state or "you feel"
     c.mood = {**c.mood, "anxiety": 5.0}
-    assert "You feel" not in brain.situation_prompt(cfg, c).split("## Around you")[0].replace("You feel calm", "")
+    assert "keep circling" not in brain.situation_prompt(cfg, c)
 
 
 def _menu(cfg):

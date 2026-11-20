@@ -35,7 +35,13 @@ brain:
     self_image: "What you currently think you are (your self-image): {self_image}"   # {self_image}
     self_image_empty: "Your self-image is empty: you have no picture yet of what you are or whether you have a form."
     tendencies: "How you have found yourself tending to be: {tendencies}."       # {tendencies}
-    anxiety: "You feel {word}."                            # {word}: only when anxiety is above the calm band
+    # impressions, not announcements: what the state is like from inside, never "you feel X" and never a named emotion
+    mood_content: "Things sit easily with you."
+    mood_calm: "Things are even and quiet in you."
+    mood_low: "A heaviness lies over things."
+    anxiety_uneasy: "Something in you will not quite settle."          # shown when the band word (settings anxiety.words) is "uneasy"
+    anxiety_on_edge: "Your thoughts keep circling, braced for something."   # "on edge"
+    anxiety_frantic: "Everything in you is pulling in different directions at once."   # "frantic"
     tendency_low: "a little {name}"                          # {name}: a faint tendency
     tendency_mid: "{name}"                                   # {name}
     tendency_high: "very {name}"                             # {name}: a strong tendency
@@ -45,7 +51,7 @@ brain:
     heading_now: "## Now"
     time: "It is {time} ({part}). Weather: {weather}."        # {time} {part} {weather}
     place: "You are in {area}. {description}"                 # {area} {description}
-    feeling: "You feel {mood}. Energy: {energy}."             # {mood} {energy}
+    feeling: "{mood} Energy: {energy}."                       # {mood} (an impression line) {energy} (a word)
     heading_pulling: "## What's pulling at you right now"
     none_pulling: "Nothing in particular is pulling at you right now."   # shown when no need is in the low or empty band
     heading_around: "## Around you"
