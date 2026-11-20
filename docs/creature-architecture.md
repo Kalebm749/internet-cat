@@ -4,7 +4,7 @@
 
 A framework for a conscious entity that lives in a simulated world. It thinks with an LLM, while plain code tracks time, needs and rules. Inspired by pinos.world. Pino's internals aren't public, so this is our own design.
 
-**Nothing here assumes a form.** The framework makes no assumption about the entity's species, body or appearance. The current character, Gregorovitch, is one configuration of it. The entity starts with no self-image and may or may not come to think of itself as having any form. Whatever it comes to believe about itself is learned during sleep (§7) and stored as data, never written into the config or the code.
+**Nothing here assumes a form.** The framework makes no assumption about the entity's species, body or appearance. The current character, Nit, is one configuration of it. The entity starts with no self-image and may or may not come to think of itself as having any form. Whatever it comes to believe about itself is learned during sleep (§7) and stored as data, never written into the config or the code.
 
 **Paused:** the original cat character and its 3D model work are paused. They are not part of the design. The old cat image assets and the script that generates them stay in the repository, unused.
 

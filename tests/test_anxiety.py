@@ -134,3 +134,41 @@ def test_anxiety_settings_are_validated(tmp_path):
         tmp_path, "settings.yaml", lambda s: s["anxiety"].update(impulse_max_chance=2))
     assert "anxiety.impulses.restless: needs a weight > 0" in _problems(
         tmp_path / "b", "settings.yaml", lambda s: s["anxiety"]["impulses"]["restless"].update(weight=0))
+
+
+def test_how_its_words_come_follows_its_state(cfg, conn):
+    from cat import brain
+    from tests.test_prompts import ctx
+    on(cfg)
+    c = ctx(cfg, conn)
+    c.energy = 40.0
+    c.mood = {"word": "calm", "description": "x", "anxiety": 0.0}
+    assert brain.speech_register(cfg, c) is None
+    c.mood = {"word": "content", "description": "x", "anxiety": 0.0}
+    assert brain.speech_register(cfg, c) == "speech_bright"
+    c.mood = {"word": "low", "description": "x", "anxiety": 0.0}
+    assert brain.speech_register(cfg, c) == "speech_low"
+    c.energy = -40.0
+    assert brain.speech_register(cfg, c) == "speech_tired"
+    c.mood = {"word": "low", "description": "x", "anxiety": 60.0}
+    assert brain.speech_register(cfg, c) == "speech_tense"          # pressure outranks tiredness
+    assert "Your words come quick and clipped." in brain.situation_prompt(cfg, c)
+
+
+def test_the_default_sheet_has_no_fixed_voice():
+    from cat.config import load_config
+    c = load_config(None).character
+    assert c["name"] == "Nit" and c["pronoun"] == "they" and not c.get("voice")
+    assert c["core_traits"] == ["steadfast", "curious", "cunning"]
+    assert not {"species", "appearance", "portrait"} & set(c)
+
+
+def test_the_site_shows_nits_portrait_and_the_files_exist(cfg):
+    from pathlib import Path
+    from cat.web.app import create_app
+    html = TestClient(create_app(cfg)).get("/").text
+    assert "/static/img/nit/nit.svg" in html and "/static/img/nit/nit-asleep.svg" in html
+    root = Path(__file__).parent.parent / "cat" / "web" / "static" / "img" / "nit"
+    assert (root / "nit.svg").exists() and (root / "nit-asleep.svg").exists()
+    svg = (root / "nit.svg").read_text()
+    assert svg.count("<ellipse") >= 8 and "mouth" not in svg and "nose" not in svg

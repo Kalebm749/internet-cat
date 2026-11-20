@@ -378,10 +378,10 @@ def test_presence_dims_asleep_and_desaturates_dozing(cfg):
     assert dozing["saturation"] < awake["saturation"] and dozing["lightness"] < awake["lightness"]
 
 
-def test_page_has_presence_not_a_portrait_image(cfg, seeded):
+def test_page_has_presence_and_nits_viewer_side_portrait(cfg, seeded):
     html = client(cfg).get("/").text
     assert 'id="presence"' in html and 'class="frame"' in html and 'class="zzz"' in html
-    assert "<img" not in html and "portrait-img" not in html and ".glb" not in html
+    assert html.count("<img") == 2 and "/static/img/nit/nit.svg" in html and ".glb" not in html   # Nit's two portraits, viewer-side
     assert "--pv-h:" in html and "dozing… (brain offline)" in html
 
 

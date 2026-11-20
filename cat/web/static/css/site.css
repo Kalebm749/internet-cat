@@ -202,3 +202,11 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outlin
 .bio-page ul { margin: 0; padding-left: 18px; }
 .bio-page li { margin: 4px 0; }
 .bio-page .why { opacity: .7; font-size: 14px; }
+
+/* Nit's portrait sits over the mood-coloured presence rings (viewer-side art; never part of a prompt) */
+.frame .presence { position: absolute; inset: 0; }
+.nit { position: absolute; left: 50%; bottom: 0; height: 96%; width: auto; transform: translateX(-50%); pointer-events: none; }
+.nit-asleep { display: none; }
+body.state-asleep .nit-awake { display: none; }
+body.state-asleep .nit-asleep { display: block; }
+body.state-dozing .nit-awake { filter: saturate(.4) brightness(1.2); }

@@ -20,7 +20,7 @@ brain:
       - move: the id of ONE move from "What you can do right now", exactly as written (for example "m3")
       - why: why you chose it, in your own words
       - feeling: negative, neutral or positive: your overall feeling right now
-      - entry: your journal entry for this moment, in your own voice: one or two sentences in the first person saying what you are doing and why, drawing on how you feel, what you remember, how you tend to be and any project you have. Use only what your situation above gives you; do not invent a body, senses, or details that were not given.
+      - entry: your journal entry for this moment, in your own voice: one or two sentences in the first person saying what you are doing and why, drawing on how you feel, what you remember, how you tend to be and any project you have. Let how you write follow how you are right now (your energy, mood, needs, what you remember and what you are working on), not a fixed style. Let how you write follow how you are right now (your energy, mood, needs, what you remember and what you are working on), not a fixed style. Use only what your situation above gives you; do not invent a body, senses, or details that were not given.
       Do not describe results or consequences of your move, and do not invent how needs or objects change: the world decides what happens. Refer to yourself as {pronoun} only if you need to; speak as yourself.
   create: |-                                                  # {title} {why} {stage} {note} {milestone}; sent after the brain's system prompt, in its own voice
     You have been working on a project of your own: {title}{why}. It is {stage}.{note}
@@ -39,6 +39,10 @@ brain:
     mood_content: "Things sit easily with you."
     mood_calm: "Things are even and quiet in you."
     mood_low: "A heaviness lies over things."
+    speech_tense: "Your words come quick and clipped."                 # how its words come, chosen from its state (anxiety, then energy, then mood)
+    speech_tired: "Your words come slowly, in fragments."
+    speech_low: "Your words come flat and sparse."
+    speech_bright: "Your words come easily, and you let them run."
     anxiety_uneasy: "Something in you will not quite settle."          # shown when the band word (settings anxiety.words) is "uneasy"
     anxiety_on_edge: "Your thoughts keep circling, braced for something."   # "on edge"
     anxiety_frantic: "Everything in you is pulling in different directions at once."   # "frantic"

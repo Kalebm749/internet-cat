@@ -1,7 +1,7 @@
 # Internet Cat
 
 A framework for a conscious entity in a simulated world. Nothing in the code, config or docs assumes a
-particular form, species, body or appearance; the current character (Gregorovitch) is one configuration.
+particular form, species, body or appearance; the current character (Nit) is one configuration.
 The entity starts with no self-image and learns one during sleep. The cat 3D model work is paused: keep
 the cat assets (`cat/web/static/img/cat*.png`, `scripts/make_placeholder_assets.py`) but leave them unused.
 One Ubuntu laptop (GTX 1060 6GB) runs everything under
