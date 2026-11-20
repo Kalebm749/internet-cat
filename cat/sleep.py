@@ -38,9 +38,9 @@ CONSOLIDATE_SCHEMA = {
 
 
 def tendencies_schema(cfg: Config) -> dict:
+    """Open-ended: any name the creature uses for how it tends to be, with how much today nudged it."""
     return {"type": "object",
-            "properties": {"changes": {"type": "object", "properties": {
-                t: {"type": "number"} for t in cfg.character["tendencies"]}}},
+            "properties": {"changes": {"type": "object", "additionalProperties": {"type": "number"}}},
             "required": ["changes"]}
 
 
@@ -84,21 +84,46 @@ class SleepPlan:
 # ---------- pure helpers (unit-tested) ----------
 def clamp_tendencies(cfg: Config, current: dict[str, float],
                      proposed: Any) -> tuple[dict[str, float], dict[str, dict]]:
-    """Each proposal is -1..1; it is scaled by `tendency_max_step` and clamped to 0..1.
-    Unknown tendencies and non-numbers are ignored. Never moves more than the max step."""
-    step = cfg.settings["sleep"]["tendency_max_step"]
+    """Each proposal is -1..1; it is scaled by `tendency_max_step` and clamped to 0..1. Non-numbers are
+    ignored and nothing moves more than the max step. A name it does not have yet is a NEW tendency (only
+    with a positive nudge, at most `max_new_tendencies_per_night` a night and `max_tendencies` in all): it
+    starts at `tendency_start` and then drifts like the rest. One that fades below `tendency_forget_below`
+    is forgotten (recorded with `dropped: true`)."""
+    sl = cfg.settings["sleep"]
+    step = sl["tendency_max_step"]
     new, changes = dict(current), {}
     if not isinstance(proposed, dict):
         return new, changes
-    for name, old in current.items():
-        v = proposed.get(name)
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+
+    def num(v):
+        return v if not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v) else None
+    known = {k.lower(): k for k in current}
+    added = 0
+    for raw_name, raw_v in proposed.items():
+        v = num(raw_v)
+        name = " ".join(str(raw_name).split())[:sl["tendency_name_max_length"]].strip()
+        if v is None or not name:
             continue
-        delta = max(-1.0, min(1.0, float(v))) * step
-        val = round(max(0.0, min(1.0, old + delta)), 4)
-        if val != round(old, 4):
+        v = max(-1.0, min(1.0, float(v)))
+        key = known.get(name.lower())
+        if key is None:                                   # something it has just noticed about itself
+            if v <= 0 or added >= sl["max_new_tendencies_per_night"] or len(new) >= sl["max_tendencies"]:
+                continue
+            val = round(min(1.0, sl["tendency_start"] + v * step), 4)
             new[name] = val
-            changes[name] = {"from": round(old, 4), "to": val}
+            known[name.lower()] = name
+            changes[name] = {"from": 0.0, "to": val, "new": True}
+            added += 1
+            continue
+        old = current[key]
+        val = round(max(0.0, min(1.0, old + v * step)), 4)
+        if val != round(old, 4):
+            if val < sl["tendency_forget_below"]:
+                new.pop(key, None)
+                changes[key] = {"from": round(old, 4), "to": 0.0, "dropped": True}
+            else:
+                new[key] = val
+                changes[key] = {"from": round(old, 4), "to": val}
     return new, changes
 
 
@@ -241,12 +266,10 @@ def consolidate_messages(cfg: Config, shorts: list[str], log_lines: list[str]) -
 
 
 def tendencies_messages(cfg: Config, summary: str, current: dict[str, float]) -> list[dict]:
-    labels = cfg.character.get("tendency_labels", {})
-    lines = []
-    for k, v in current.items():
-        ends = f" ({labels[k][0]} <-> {labels[k][1]})" if k in labels else ""
-        lines.append(f"- {k}: {v:.2f}{ends}")
-    user = P.render(cfg, "sleep.tendencies", summary=summary, tendencies="\n".join(lines))
+    lines = [f"- {k}: {v:.2f}" for k, v in current.items()]
+    user = P.render(cfg, "sleep.tendencies", summary=summary,
+                    tendencies="\n".join(lines) or P.render(cfg, "sleep.none_tendencies"),
+                    max_new=cfg.settings["sleep"]["max_new_tendencies_per_night"])
     return [{"role": "system", "content": _sys(cfg, "tendencies")},
             {"role": "user", "content": user}]
 
@@ -348,10 +371,11 @@ def plan(cfg: Config, backend: LLMBackend, conn: Connection, memory: Memory,
          "proposed": None, "clamped": None},
         {"step": "tendencies", "input": {"summary": summary, "current": current_tendencies},
          "output": raw_t,
-         "proposed": {k: (raw_t.get(k) if isinstance(raw_t, dict) else None) for k in current_tendencies},
-         "clamped": {k: {"from": current_tendencies[k], "to": new_t[k],
-                         "applied_delta": round(new_t[k] - current_tendencies[k], 4), "max_step": step}
-                     for k in current_tendencies}},
+         "proposed": (raw_t if isinstance(raw_t, dict) else {}),
+         "clamped": {k: {"from": current_tendencies.get(k, 0.0), "to": new_t.get(k, 0.0),
+                         "applied_delta": round(new_t.get(k, 0.0) - current_tendencies.get(k, 0.0), 4),
+                         "max_step": step}
+                     for k in {**current_tendencies, **new_t}}},
         {"step": "preferences", "input": {"summary": summary, "existing": list(existing.values())},
          "output": raw_p, "proposed": raw_p, "clamped": prefs},
         {"step": "self_image", "input": {"summary": summary, "short_memories": shorts,

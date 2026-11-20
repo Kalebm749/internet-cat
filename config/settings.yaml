@@ -184,6 +184,11 @@ sleep:
   decay_multiplier: 0.5            # needs decay this much slower while asleep
   sim_minutes_per_tick: 60
   tendency_max_step: 0.05          # max drift per tendency per night; LLM gives -1..1, scaled by this
+  tendency_start: 0.3              # a newly noticed tendency starts here (then drifts like the rest)
+  max_tendencies: 8                # learned tendencies kept; no new one is accepted past this
+  max_new_tendencies_per_night: 1  # how many new ones one night may add
+  tendency_forget_below: 0.05      # a tendency that fades below this is forgotten
+  tendency_name_max_length: 40     # characters in a tendency's name
   max_new_memories: 5
   importance_values: {low: 0.25, medium: 0.55, high: 0.85}   # LLM says a bucket, code makes the number
   day_log_max_ticks: 40            # how much of the day's log the consolidation prompt sees

@@ -840,6 +840,10 @@ def sleep_nights(cfg: Config, page: int = 1, limit: int | None = None) -> dict:
     for i, s in enumerate(allogs):
         ch = jload(s["tendency_changes"], {})
         full = traced.get(s["id"]) or {}
+        for k in list(full) + list(ch):                   # tendencies are learned: new names appear over time
+            if k not in hist:
+                hist[k] = [0.0] * i
+                cur[k] = 0.0
         for k in hist:
             if k in full:
                 cur[k] = full[k]["to"]
@@ -847,6 +851,7 @@ def sleep_nights(cfg: Config, page: int = 1, limit: int | None = None) -> dict:
                 cur[k] = ch[k]["to"]
             hist[k].append(round(cur[k], 4))
         xs.append(i + 1)
+    out["tendency_ids"] = list(hist)
     out["history"] = {"x": xs, "tendencies": hist, "dates": [s["sim_date"] for s in allogs]}
     return out
 

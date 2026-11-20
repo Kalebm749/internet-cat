@@ -109,19 +109,10 @@ def seed_self_image(cfg: Config) -> list[str]:
 
 
 def tendency_phrase(cfg: Config, name: str, value: float) -> str:
-    labels = cfg.character.get("tendency_labels", {}).get(name)
+    """A tendency in words: its own name, with how strong it is (the thresholds are `tendency_words`)."""
     w = cfg.settings["tendency_words"]
-    if labels:
-        if value < w["low_below"]:
-            return f"{labels[0]} ({name})"
-        if value > w["high_above"]:
-            return f"{labels[1]} ({name})"
-        return f"neither {labels[0]} nor {labels[1]} ({name})"
-    if value < w["low_below"]:
-        return f"low {name}"
-    if value > w["high_above"]:
-        return f"high {name}"
-    return f"moderate {name}"
+    R = lambda key: P.render(cfg, "brain.situation." + key, name=name)
+    return R("tendency_low") if value < w["low_below"] else R("tendency_high") if value > w["high_above"] else R("tendency_mid")
 
 
 def _obj(o: dict) -> str:

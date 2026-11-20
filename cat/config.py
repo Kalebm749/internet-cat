@@ -168,6 +168,14 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
             n = sl.get(k, 1)
             if isinstance(n, bool) or not isinstance(n, int) or n < 1:
                 errs.append(f"settings.yaml sleep.{k}: must be an integer >= 1")
+        for k in ("max_tendencies", "max_new_tendencies_per_night", "tendency_name_max_length"):
+            n = sl.get(k, 1)
+            if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+                errs.append(f"settings.yaml sleep.{k}: must be an integer >= 1")
+        for k in ("tendency_start", "tendency_forget_below"):
+            n = sl.get(k, 0.3)
+            if not _num(n) or not 0 <= n <= 1:
+                errs.append(f"settings.yaml sleep.{k}: must be 0..1")
         c = sl.get("self_image_min_confidence", 0)
         if not _num(c) or not 0 <= c <= 1:
             errs.append("settings.yaml sleep.self_image_min_confidence: must be 0..1")

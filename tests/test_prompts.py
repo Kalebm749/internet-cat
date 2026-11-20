@@ -22,7 +22,7 @@ def test_brain_prompt_has_words_not_numbers(cfg, conn):
     assert "running on nothing" in p                  # sustenance 12 -> its empty-band expression
     assert "calm and tired" in p and "tired" in p     # mood, energy words
     assert "the sofa [soft, warm, climbable]" in p
-    assert "bold (boldness)" in p and "solitary (sociability)" in p and "neither scruffy nor tidy" in p
+    assert "very boldness" in p and "a little sociability" in p and "tidiness" in p
     assert "A bird lands." in p and "It rains." in p and "nap; then wash" in p
     assert "the kitchen" in p and "Memories" not in p
     assert not re.search(r"\b\d+(\.\d+)?\b", p.replace("7:40", "")), "no raw numbers"

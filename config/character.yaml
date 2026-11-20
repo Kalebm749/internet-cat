@@ -9,14 +9,10 @@ core_traits: [curious, playful]        # never change
 self_image:                            # optional text hint; empty by default. Learned lines live in the database.
   seed: ""
 
-tendencies:                            # 0..1, drift a little each night
-  boldness: 0.5
-  sociability: 0.5
-  tidiness: 0.5
-tendency_labels:
-  boldness: [timid, bold]
-  sociability: [solitary, social]
-  tidiness: [scruffy, tidy]
+# Tendencies are not defined here: the creature learns what it tends to be, in its own words, during sleep
+# (a new one starts weak and grows or fades with what it does). You may still seed some by hand,
+# e.g.  tendencies: {curious about small things: 0.4}
+tendencies: {}
 
 start_area: garden
 
