@@ -8,7 +8,7 @@ Everything runs on **one machine**: an Ubuntu laptop (HP Omen 15, GTX 1060 6GB, 
 
 ## 1. Goals for v1
 
-1. A world loop that runs 24/7 and keeps the entity alive: ticks, brain and narrator calls, needs, mood, memory, sleep.
+1. A world loop that runs 24/7 and keeps the entity alive: ticks, brain and journal calls, needs, mood, memory, sleep.
 2. A read-only website, served on the home network, that shows the creature's current state and history.
 3. Survives the brain going offline, the machine or containers restarting, and bad LLM output, without corrupting state.
 
@@ -39,7 +39,7 @@ Everything runs on **one machine**: an Ubuntu laptop (HP Omen 15, GTX 1060 6GB, 
 | Deployment | Docker Compose: `ollama`, `engine`, `web`, `devdash` |
 | Tests | `pytest`, with a `MockBackend` so everything runs without Ollama |
 
-**Models.** A 4–8B instruct model at ~Q4 (e.g. `qwen3:8b`, `llama3.1:8b`, `gemma3:4b` as the lighter fallback), plus `nomic-embed-text`. Use **one chat model for brain, narrator and sleep** so only one big model is resident (switching models on 6GB of VRAM reloads them each call). The default is now `qwen3:14b` (~9GB at Q4: part on the GPU, the rest in system RAM, so a call can take minutes; `llm_timeout_seconds` is 600). On a 16GB machine that is workable; `qwen3:8b` is the faster fallback: change the three `*_model` settings and run `deploy/pull-models.sh`. Check the Ollama library for newer small models before pulling. To choose, compare candidates on saved prompts: JSON validity (should be 100% with `format`), seconds per call, the narrator's rejected-change rate, and read the diary text for voice and variety.
+**Models.** A 4–8B instruct model at ~Q4 (e.g. `qwen3:8b`, `llama3.1:8b`, `gemma3:4b` as the lighter fallback), plus `nomic-embed-text`. Use **one chat model for brain, journal, director and sleep** so only one big model is resident (switching models on 6GB of VRAM reloads them each call). The default is now `qwen3:14b` (~9GB at Q4: part on the GPU, the rest in system RAM, so a call can take minutes; `llm_timeout_seconds` is 600). On a 16GB machine that is workable; `qwen3:8b` is the faster fallback: change the three `*_model` settings and run `deploy/pull-models.sh`. Check the Ollama library for newer small models before pulling. To choose, compare candidates on saved prompts: JSON validity (should be 100% with `format`), seconds per call, the narrator's rejected-change rate, and read the diary text for voice and variety.
 
 ---
 
@@ -75,7 +75,7 @@ internet-cat/
   config/      character.yaml  world.yaml  settings.yaml  prompts.yaml
   cat/
     config.py prompts.py clock.py world.py character.py effects.py memory.py
-    brain.py narrator.py sleep.py llm.py db.py engine.py main.py
+    brain.py journal.py sleep.py llm.py db.py engine.py main.py
     trace.py logs.py devqueue.py devcontrol.py downtime.py healthcheck.py pullmodels.py
     web/       app.py views.py templates/ static/
     devdash/   app.py auth.py data.py playground.py templates/ static/ (vendor/uPlot)
@@ -126,7 +126,7 @@ Four YAML files in `config/` (`settings.yaml`, `character.yaml`, `world.yaml`, `
 
 - `ollama_host` defaults to `http://ollama:11434` (the Compose service name).
 - `character.yaml` and `world.yaml` currently hold a placeholder character (Nit, with no species or appearance) and a tiny house; the engine works with any content that follows the schema.
-- `settings.yaml` and `prompts.yaml` are read when a service starts; the dev dashboard's reload applies both live. `prompts.yaml` holds every fixed prompt text (brain, narrator, sleep) with `{placeholders}`, so the prompts can be tuned without code changes.
+- `settings.yaml` and `prompts.yaml` are read when a service starts; the dev dashboard's reload applies both live. `prompts.yaml` holds every fixed prompt text (brain, journal, director, sleep) with `{placeholders}`, so the prompts can be tuned without code changes.
 - A need in `character.yaml` has `start`, `decay_per_hour`, a `meaning` and `expressions` for the bands `full`, `okay` (may be null), `low` and `empty`; `settings.yaml` has the `need_bands` thresholds, `max_pressing_needs`, `stale_after_ticks`, `sustenance_need`, `energy_start`, the `dislike_drain` and the `mood` band mapping. There are no per-need flags and no affinity tables: the code never picks, suggests or ranks actions by need.
 
 ---
@@ -138,7 +138,7 @@ Follow `creature-architecture.md` §3. As built:
 1. **World events** roll at the start of the tick, then the **world director** may add one more happening (an LLM call every `director.every_ticks` action ticks, or `stale_every_ticks` when the place is stale; never asleep or offline; validated by `cat/director.py` and applied as an event, traced in `tick_traces.director`). Events (weather changes, spawned objects, and `drains` that take points from needs).
 2. **Rest checks.** If asleep, or exhausted at night, the tick is a *rest* tick (no brain call, §11).
 3. **Brain call** builds the situation overview (words, never numbers). Each need level becomes a band; the prompt's "What's pulling at you right now" section shows the expression text of the most pressing needs (lowest bands first, at most `max_pressing_needs`), and `stale_here` after `stale_after_ticks` ticks in one area. The selection and the reasons are traced for the dashboard. The prompt also lists the **menu of moves** (`cat/moves.py` `offered()`, from `config/moves.yaml`, fixed order, never ranked by need) and the habit lines. Ollama is asked for `reaction, thought, move, why, feeling` with a JSON schema; a `move` not on the menu is invalid. Relevant long-term and recent short-term memories are included.
-4. **Resolve and narrate.** `moves.resolve()` turns the chosen move into gains, effort, a duration and validated world ops (code only). The **narrator call** then writes the prose (`outcome`) and nothing else; with `moves.narrate: false` or on failure a template is used. At a project milestone a separate `create` call makes the piece.
+4. **Resolve, then journal.** `moves.resolve()` turns the chosen move into gains, effort, a duration, validated world ops and the plain outcome text (code only; `reveals` verbs add what is true of the target). After the apply step the **journal call** (`cat/journal.py`, `brain_model`) writes the entity's own entry from those facts and nothing else; if it fails the moment has no entry. At a project milestone a separate `create` call makes the piece.
 5. **Apply:** validate every change (§9), decay needs for the move's duration, apply event and dislike drains, add the move's gains (sustenance only through a `consume` move), apply the repetition penalty (same move key in the same place within `repetition_penalty.window` decisions, read from `ticks.move_key`) to the listed needs, spend energy for the effort, clamp, recompute mood from the bands.
 
    **Activities** (`state.activity`): a move longer than `activity.step_minutes` is paid for once and then carried by ticks of that length that make no LLM calls (`kind='carry'` in `ticks`); an event, a newly empty need, sleep or exhaustion ends it, and the next prompt says what interrupted it.
@@ -177,7 +177,7 @@ Anything that fails goes into `rejected_changes` with a reason, is logged, and d
 
 ## 11. Sleep
 
-- The creature falls asleep when exhausted at night, or when the brain picks the `sleep` move, which is on the menu only when it is tired enough (or night). Asleep ticks skip the brain and narrator, restore energy, and decay needs slowly. It wakes when energy is restored, in the morning.
+- The creature falls asleep when exhausted at night, or when the brain picks the `sleep` move, which is on the menu only when it is tired enough (or night). Asleep ticks skip the brain and journal, restore energy, and decay needs slowly. It wakes when energy is restored, in the morning.
 - When sleep begins, the sleep cycle makes up to six calls (consolidate memories, drift tendencies, learn preferences, propose a self-image line, form or tend a project, word the habits code found). **Nothing is written unless all succeed**; if the brain is offline it stays pending and retries on every sleeping tick. LLM output becomes numbers in code: importance buckets, tendency proposals scaled and **clamped** to ±`sleep.tendency_max_step`, blended preference valences. Core traits never change.
 - **Projects step:** one call sees the day's log, its likes and its open projects and may start **at most one** project (from an enjoyed activity it keeps returning to) or pause, resume or drop one. Code enforces `projects.max_active`, rejects duplicate or empty titles, and pauses an active project untouched for `projects.pause_after_idle_nights` nights. The outcome is in the `sleep_traces` row with step `projects`. During the day each active project is a `work_on` move; `cat/projects.py` sizes a tapering step, stores the brain's `why` as the note, notes milestones and completion (a `create` call in the brain's voice makes the piece), and exempts the move from the repetition penalty. It is traced in `tick_traces.project`.
 - **Habits step** (`cat/habits.py`): code counts recurring (move, part of day) pairs over the last `habits.window_ticks` decisions; one call words each as a "you tend to…" line (fallback: `habits.fallback`); the `habits` table is replaced. Shown in the brain prompt, on the website and in the dashboard's Projects page. They describe the past and never rank a move.

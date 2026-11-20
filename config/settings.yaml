@@ -9,7 +9,7 @@ embed_model: nomic-embed-text
 ollama_think: false            # qwen3: disable thinking so JSON `format` output stays clean
 llm_timeout_seconds: 600   # a 14B model split between GPU and RAM can take minutes
 health_timeout_seconds: 3
-llm_temperature: {brain: 0.9, narrator: 0.5, sleep: 0.5, director: 0.8, create: 0.9}
+llm_temperature: {brain: 0.9, journal: 0.7, sleep: 0.5, director: 0.8, create: 0.9}
 llm_num_ctx: 4096
 error_backoff_seconds: 30      # extra wait after a tick that raised an unexpected error
 llm_retries: 1                 # retry once on timeout/invalid JSON, then doze
@@ -91,7 +91,11 @@ moves:
   min_scale: 0.25              # ... a shorter one gives and costs proportionally less, down to this fraction
   max_scale: 2.0               # ... and a longer one more, up to this multiple
   novelty_hours: 24            # a place not visited for this many sim hours counts as new (go: novelty gains)
-  narrate: true                # a cheap prose call turns the result into a sentence; false = templated outcome
+
+# --- journal: the entity's own entry, written AFTER code has decided what its move did (one call, brain_model) ---
+journal:
+  enabled: true                # false: no entry; the diary shows the reason it gave for the move instead
+  max_length: 400              # characters kept of an entry
 
 # --- activities: a move takes time. It runs without LLM calls until it ends or something interrupts it ---
 activity:

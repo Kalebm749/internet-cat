@@ -65,6 +65,22 @@ objects:
   - {id: puddle,     name: a deep puddle,              area: alley, tags: [wet], state: {}}
   - {id: sacking,    name: a heap of old sacking,      area: alley, tags: [soft, warm, hideable], state: {}}
 
+# What is true of a thing with each tag, as the end of a sentence starting "It ...". Moves with `reveals: true`
+# (looking closely, turning something over, ...) report these, so the diary and the entity's journal have
+# something true to say instead of something invented. A tag with no line here is not reported.
+tag_facts:
+  edible: can be eaten
+  climbable: can be climbed
+  warm: is warm
+  movable: can be moved
+  fragile: is fragile
+  soft: is soft
+  container: has room inside it
+  toy: is something to play with
+  hideable: has room to hide in
+  shiny: catches the light
+  wet: is wet
+
 weather: [clear, cloudy, rain]   # first entry is the starting weather
 
 events:

@@ -71,7 +71,7 @@ def test_the_seed_covers_everything(world):
 PAGES = [
     ("/", ["ticks run", "invalid-JSON rate", "Force sleep cycle", "force_sleep", "in the "]),
     ("/ticks", ["/ticks/", "dozing", "rejections"]),
-    ("/llm", ["sleep_consolidate", "brain", "narrator", "uPlot.iife.min.js"]),
+    ("/llm", ["sleep_consolidate", "brain", "journal", "uPlot.iife.min.js"]),
     ("/memory", ["Long-term memories", "<circle", "Most recalled", "times recalled"]),
     ("/needs?range=all", ["chart-needs", "critical level the longest", "sustenance"]),
     ("/behaviour", ["Action variety", "Top repeated actions", "Rejection reasons"]),
@@ -152,12 +152,12 @@ def test_tick_detail_explains_every_diary_entry_the_public_site_shows(world):
         accepted = [x for x in d["effects"] if x["accepted"]]
         site_ops = {w["op"] for w in e["world_changes"]}
         assert site_ops <= {x["op"] for x in accepted} | {"create", "despawn"}   # spawns and expiries are the world's, not effects
-        # the brain's and narrator's exact words are recorded
+        # the brain's and the journal's exact words are recorded
         kinds = {c["kind"] for c in d["llm"] if c["status"] == "ok"}
         if (t["intent"] or "").startswith("an impulse"):       # the fast path: no brain call at all
-            assert "brain" not in kinds and "narrator" in kinds
+            assert "brain" not in kinds and "journal" in kinds
         else:
-            assert {"brain", "narrator"} <= kinds
+            assert {"brain", "journal"} <= kinds
         assert d["stages"] and d["trace"]["status"] == "ok"
     state = web.get("/api/state").json()                                   # and the live panel numbers for the latest tick
     latest = data.tick_detail(cfg, state["latest_tick_id"])
@@ -167,13 +167,13 @@ def test_tick_detail_explains_every_diary_entry_the_public_site_shows(world):
 
 
 # ---------------------------------------------------------------------------
-# "I can recover the exact prompt and raw response for any brain or narrator call in the last 14 days
+# "I can recover the exact prompt and raw response for any brain or journal call in the last 14 days
 #  and replay it in the playground"
 # ---------------------------------------------------------------------------
-def test_every_brain_and_narrator_call_keeps_exact_prompt_and_response(world):
+def test_every_brain_and_journal_call_keeps_exact_prompt_and_response(world):
     cfg, _ = world
     conn = db.connect(cfg.db_path, readonly=True)
-    rows = conn.execute("SELECT * FROM llm_calls WHERE kind IN ('brain','narrator')").fetchall()
+    rows = conn.execute("SELECT * FROM llm_calls WHERE kind IN ('brain','journal')").fetchall()
     assert len(rows) >= 120
     for r in rows:
         assert r["system_prompt"] and r["user_prompt"] and r["raw_response"] and r["schema"] and r["parsed"], r["id"]
@@ -188,7 +188,7 @@ def test_retention_keeps_13_days_drops_15_and_what_is_kept_replays(world, tmp_pa
     shutil.copy(cfg.db_path, work / "cat.db")
     c2 = load_config(overrides=sibling_overrides(work / "cat.db"))
     conn = db.connect(c2.db_path)
-    ids = [r[0] for r in conn.execute("SELECT id FROM llm_calls WHERE kind IN ('brain','narrator') ORDER BY id")]
+    ids = [r[0] for r in conn.execute("SELECT id FROM llm_calls WHERE kind IN ('brain','journal') ORDER BY id")]
     old13 = (datetime.now() - timedelta(days=13)).isoformat(timespec="milliseconds")
     old15 = (datetime.now() - timedelta(days=15)).isoformat(timespec="milliseconds")
     keep, drop = ids[:5], ids[5:10]

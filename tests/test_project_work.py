@@ -1,12 +1,12 @@
-"""Project work in the tick: the narrator's report, tapering progress, exemption from repetition,
-artifacts, completion, and what the brain and narrator are told."""
+"""Project work in the tick: tapering progress, exemption from repetition, artifacts, completion, and what
+the brain and the journal are told."""
 import json
 import random
 import re
 
 import pytest
 
-from cat import brain, narrator, projects as PJ
+from cat import brain, projects as PJ
 from cat.engine import Engine
 from cat.llm import MockBackend
 from cat.world import WorldState
@@ -104,13 +104,7 @@ def test_no_project_section_without_projects_and_never_a_number(cfg, conn):
 
 
 def test_the_brain_output_schema_has_no_project_field():
-    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling", "entry"}
-
-
-def test_the_narrator_is_not_told_about_projects(cfg, conn):
-    w = WorldState.seed(conn, cfg, "2026-11-18T19:40")
-    text = narrator.describe_world(cfg, "2026-11-18T19:40", "garden", "clear", w.here("garden"), [])
-    assert "project" not in text.lower() and "project" not in narrator.system_prompt(cfg).lower()
+    assert set(brain.BRAIN_SCHEMA["properties"]) == {"reaction", "thought", "move", "why", "feeling"}
 
 
 # ---------- in the engine: work_on is a move, and code decides the progress ----------
@@ -124,7 +118,7 @@ def make(cfg, label=WORK, why="the trunk is done"):
     b.need_ids = list(cfg.character["needs"])
     b.tendency_names = list(cfg.character["tendencies"])
     b.handlers["brain"] = lambda m, s: pick(m, label, why=why)
-    b.handlers["narrator"] = lambda m, s: {"outcome": "It draws."}
+    b.handlers["journal"] = lambda m, s: {"entry": "I drew."}
     e = Engine(cfg, b, rng=random.Random(1))
     e.world.events = None
     return e, b
@@ -311,9 +305,9 @@ def test_the_creation_prompt_is_editable_yaml(cfg):
     assert "A big step!" in calls[0][1]["content"]
 
 
-def test_the_narrator_never_writes_the_piece(cfg):
+def test_the_journal_never_writes_the_piece(cfg):
     e, b, calls = creating(cfg)
-    b.handlers["narrator"] = lambda m, s: {"outcome": "x", "artifact": {"kind": "k", "title": "t", "text": "narrator wrote this"}}
+    b.handlers["journal"] = lambda m, s: {"entry": "x", "artifact": {"kind": "k", "title": "t", "text": "journal wrote this"}}
     add_project(e, progress=0.0)
     e.tick()
     assert e.conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0

@@ -340,7 +340,7 @@ def test_tick_detail_has_every_section_for_a_normal_tick(cfg, seeded):
     tid = db.connect(cfg.db_path).execute(
         "SELECT t.id FROM ticks t JOIN recall_logs r ON r.tick_id=t.id WHERE t.kind='tick' ORDER BY t.id DESC LIMIT 1").fetchone()[0]
     html = dash(cfg).get(f"/ticks/{tid}").text
-    for needle in ("World tick", "Event rolls", "Recall", "Brain call", "Narrator call", "Effects", "Need math",
+    for needle in ("World tick", "Event rolls", "Recall", "Brain call", "Journal call", "Effects", "Need math",
                    "Mood math", "Memory writes", "What the public site shows", "System prompt", "User prompt",
                    "JSON schema", "Raw response", "Parsed JSON", "stagebar", "prev #", "all ticks"):
         assert needle in html, needle

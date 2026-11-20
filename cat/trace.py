@@ -21,7 +21,7 @@ from cat.db import dumps
 
 log = logging.getLogger("cat.trace")
 
-KIND = {"brain": "brain", "narrator": "narrator", "consolidate": "sleep_consolidate",
+KIND = {"brain": "brain", "journal": "journal", "consolidate": "sleep_consolidate",
         "tendencies": "sleep_tendencies", "preferences": "sleep_preferences",
         "self_image": "sleep_self_image", "projects": "sleep_projects", "habits": "sleep_habits", "director": "director", "create": "create"}
 

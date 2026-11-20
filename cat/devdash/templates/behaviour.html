@@ -31,7 +31,7 @@
     </table>
   </div>
   <div class="card">
-    <h2>Effect ops <span class="dim small">(what the narrator proposed)</span></h2>
+    <h2>Effect ops <span class="dim small">(what the chosen moves did)</span></h2>
     <table class="data num"><tr><th>op</th><th>proposed</th><th>accepted</th><th>rejected</th></tr>
       {% for o in b.ops %}<tr><td>{{ o.op }}</td><td>{{ o.n }}</td><td class="ok">{{ o.accepted }}</td><td class="{{ 'bad' if o.rejected }}">{{ o.rejected }}</td></tr>
       {% else %}<tr><td colspan="4" class="dim">no changes proposed yet</td></tr>{% endfor %}

@@ -68,7 +68,7 @@ REQUIRED_SETTINGS = [
     "repetition_penalty", "create_limit_per_tick", "allowed_tags", "mood", "doze",
     "sleep", "recall", "notable", "energy_words",
     "events_max_per_tick", "max_changes_per_tick", "inventory_max", "name_max_length",
-    "consume_min_gain", "need_bands", "dislike_drain", "projects", "habits", "anxiety", "director", "moves", "activity", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
+    "consume_min_gain", "need_bands", "dislike_drain", "projects", "habits", "anxiety", "director", "moves", "activity", "max_pressing_needs", "stale_after_ticks", "sustenance_need", "energy_start", "llm_temperature", "journal", "llm_num_ctx", "llm_retries", "error_backoff_seconds", "web_ui", "heartbeat_file", "healthcheck", "health_require_models",
     "pull_timeout_seconds", "backup_keep", "downtime_policy", "max_catch_up_hours",
     "catch_up_min_gap_ticks", "catch_up_decay_multiplier", "trace_enabled", "trace_level",
     "trace_retention_days", "trace_recall_candidates", "log_dir", "log_level", "log_max_bytes",
@@ -79,7 +79,7 @@ REQUIRED_SETTINGS = [
 
 CHARACTER_FIELDS = {"name", "pronoun", "core_traits", "tendencies", "tendency_labels", "needs",
                     "start_area", "voice", "backstory", "self_image", "stale_here"}
-WORLD_FIELDS = {"areas", "objects", "weather", "events"}
+WORLD_FIELDS = {"areas", "objects", "weather", "events", "tag_facts"}
 NEED_FIELDS = {"start", "decay_per_hour", "meaning", "expressions"}
 BANDS = ("empty", "low", "okay", "full")            # ascending; the band names the brain's prompt uses
 REQUIRED_BANDS = ("empty", "low", "full")           # `okay` may be null
@@ -107,6 +107,15 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
     # ---- settings ----
     req(settings, REQUIRED_SETTINGS, "settings.yaml")
     st = settings
+    jr = st.get("journal")
+    if not isinstance(jr, dict):
+        errs.append("settings.yaml: journal must be a mapping with enabled and max_length")
+    else:
+        if not isinstance(jr.get("enabled"), bool):
+            errs.append("settings.yaml journal.enabled: must be true or false")
+        ml = jr.get("max_length")
+        if isinstance(ml, bool) or not isinstance(ml, int) or ml < 20:
+            errs.append("settings.yaml journal.max_length: must be an integer >= 20")
     life = st.get("object_lifetime_hours", {})
     if not isinstance(life, dict):
         errs.append("settings.yaml: object_lifetime_hours must be a mapping of who made it -> sim hours")
@@ -216,6 +225,15 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
     if isinstance(world, dict):
         for k in sorted(set(world) - WORLD_FIELDS):
             warns.append(f"world.yaml: unknown top-level field '{k}' (ignored)")
+        tf = world.get("tag_facts", {})
+        if not isinstance(tf, dict):
+            errs.append("world.yaml: tag_facts must be a mapping of tag -> what it means, e.g. soft: is soft")
+        else:
+            for tag, text in tf.items():
+                if tag not in (settings.get("allowed_tags") or []):
+                    errs.append(f"world.yaml tag_facts: '{tag}' is not in settings allowed_tags")
+                if not isinstance(text, str) or not text.strip():
+                    errs.append(f"world.yaml tag_facts.{tag}: must be non-empty text")
 
     need_ids = set(character.get("needs") or {}) if isinstance(character.get("needs"), dict) else set()
     weather = (world.get("weather") if isinstance(world, dict) else None) or ["clear"]
@@ -352,8 +370,6 @@ def check(settings: dict, character: dict, world: dict) -> tuple[list[str], list
                 errs.append("settings.yaml moves.min_scale: must not exceed max_scale")
             if not _num(mv_.get("novelty_hours")) or mv_["novelty_hours"] < 0:
                 errs.append("settings.yaml moves.novelty_hours: must be a number >= 0")
-            if not isinstance(mv_.get("narrate"), bool):
-                errs.append("settings.yaml moves.narrate: must be true or false")
         elif "moves" in st:
             errs.append("settings.yaml moves: must be a mapping")
         dr_ = st.get("director")

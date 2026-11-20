@@ -22,7 +22,7 @@ REACHES = ("here", "carried", "any")
 DOES = ("none", "move_self", "take", "drop", "consume", "work_on", "sleep")
 ONLY_WHEN = ("always", "can_sleep")
 VERB_FIELDS = {"label", "target", "reach", "any_tags", "effort", "minutes", "effects", "by_tag", "novelty",
-               "does", "only_when", "outcome"}
+               "does", "only_when", "outcome", "reveals"}
 
 
 @dataclass
@@ -109,6 +109,18 @@ def _merge(cfg: Config, into: dict[str, str], more: dict[str, str]) -> None:
             into[need] = str(b)
 
 
+def observe(cfg: Config, tags: list[str]) -> str:
+    """What is true of a thing, in plain words, from world.yaml `tag_facts`: "It is soft and can be moved."
+    Only facts code holds; when there are none, it says so instead of inventing any. (Hidden properties a thing
+    only shows when looked at closely are the next step: docs/analysis-2026-11.md, roadmap 2.1.)"""
+    facts = cfg.world.get("tag_facts") or {}
+    bits = [facts[t].strip() for t in tags if facts.get(t)]
+    if not bits:
+        return "Nothing more about it stands out."
+    said = bits[0] if len(bits) == 1 else ", ".join(bits[:-1]) + " and " + bits[-1]
+    return f"It {said}."
+
+
 def resolve(cfg: Config, move: Move, *, target_tags: list[str], rng: random.Random, novel: bool = False,
             project_progress_bucket: str | None = None) -> dict:
     """What the move does, decided by code. Returns {"gains": {need: bucket}, "effort", "duration",
@@ -129,8 +141,11 @@ def resolve(cfg: Config, move: Move, *, target_tags: list[str], rng: random.Rand
         changes.append({"op": "move_self", "area": move.target_id})
     elif does in ("take", "drop", "consume"):
         changes.append({"op": does, "object_id": move.target_id})
+    template = v["outcome"].format(target=move.target_name)
+    if v.get("reveals") and move.target_id is not None:          # looking closely: say what is true of it
+        template = f"{template} {observe(cfg, target_tags)}"
     return {"gains": gains, "effort": v["effort"], "duration": rng.randint(lo, hi), "changes": changes,
-            "does": does, "template": v["outcome"].format(target=move.target_name),
+            "does": does, "template": template,
             "project_bucket": project_progress_bucket if does == "work_on" else None}
 
 
@@ -204,6 +219,8 @@ def check(moves: Any, cfg_character: dict, settings: dict) -> tuple[list[str], l
         does = v.get("does", "none")
         if does not in DOES:
             errs.append(f"{w}: does must be one of {', '.join(DOES)}")
+        if "reveals" in v and (not isinstance(v["reveals"], bool) or (v["reveals"] and tgt != "object")):
+            errs.append(f"{w}: reveals must be true or false, and only an object verb can reveal")
         if v.get("only_when", "always") not in ONLY_WHEN:
             errs.append(f"{w}: only_when must be one of {', '.join(ONLY_WHEN)}")
         is_consume = does == "consume"

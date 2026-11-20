@@ -1,4 +1,4 @@
-"""The tick loop. One tick = world events -> brain -> narrator -> apply -> record (one DB
+"""The tick loop. One tick = world events -> brain -> apply -> journal -> record (one DB
 transaction for the last two; LLM calls happen outside it)."""
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Callable
 
 
-from cat import brain, character, clock, db, downtime, effects, impulses, logs, narrator, sleep
+from cat import brain, character, clock, db, downtime, effects, impulses, journal, logs, sleep
 from cat import moves as MV
 from cat import director as DR
 from cat import habits as HB
@@ -129,8 +129,8 @@ class Engine:
         self.state["is_asleep"] = bool(self.state["is_asleep"])
         self.world = WorldState.load(self.conn, self.cfg, self.state["weather"])
         self.first_dt = clock.parse(db.get_meta(self.conn, "first_sim_time"))
-        # what the brain is told happened last: code's plain account (`result`), never the narrator's prose;
-        # older databases have no `result` yet, so their last line falls back to the outcome once
+        # what the brain is told happened last: code's plain account (`result`; older databases kept prose in
+        # `outcome` and have no `result`, so their last line falls back to it once)
         row = self.conn.execute(
             "SELECT COALESCE(result, outcome) AS o FROM ticks WHERE kind='tick' ORDER BY id DESC LIMIT 1").fetchone()
         self.last_outcome = row["o"] if row else None
@@ -182,11 +182,6 @@ class Engine:
         self.tracer.set_recall(q, self.memory.last_candidates)
         return recalled
 
-    def _narrator_context(self) -> str:
-        st = self.state
-        return narrator.describe_world(self.cfg, st["sim_time"], st["area"], self.world.weather,
-                                       self.world.here(st["area"]), self.world.inventory())
-
     def _menu(self, st: dict | None = None) -> list:
         """The moves on offer right now: built from what is possible, in a fixed order, never by need."""
         cfg, s = self.cfg, self.cfg.settings
@@ -219,17 +214,6 @@ class Engine:
         res["project"] = ({"id": int(mv.target_id), "advance": bucket, "note": why}
                           if res["does"] == "work_on" and str(mv.target_id).isdigit() else None)
         return res
-
-    def _narrate(self, mv, res: dict) -> str:
-        """One cheap prose call for the diary. It decides nothing; if it fails the plain template is used."""
-        if not self.cfg.settings["moves"]["narrate"]:
-            return res["template"]
-        try:
-            return narrator.resolve(self.backend, self.cfg, mv.label, self._narrator_context(),
-                                    res["template"])["outcome"]
-        except BackendError as e:
-            log.warning("narration unavailable (%s): using the templated outcome", e)
-            return res["template"]
 
     def _repetition_multiplier(self, key: str, area: str) -> float:
         """Shrink the gains of the repetition-penalised needs if this same move (same verb and target) was
@@ -334,7 +318,7 @@ class Engine:
         if clock.is_night(dt, s["phases"]) and st["energy"] < s["sleep"]["fall_asleep_energy_below"]:
             return self._rest_tick(fired, nudge, onset=True)
 
-        # 2+3. brain and narrator (LLM calls, outside any transaction)
+        # 2+3. the decision (LLM call, outside any transaction), then code decides what the move does
         result = None
         impulse = None
         anx_prev = character.anxiety_of(st["mood"], cfg)
@@ -360,9 +344,8 @@ class Engine:
                         b = brain.think(self.backend, cfg, ctx)
                 mv = b["move"]
                 res = self._resolve_move(mv, b["why"], now)
-                with self.tracer.stage("narrator"):
-                    outcome = self._narrate(mv, res)
-                n = {"outcome": outcome, "gains": res["gains"], "effort": res["effort"],
+                # what the diary shows as having happened is code's plain account: no prose layer can add to it
+                n = {"outcome": res["template"], "gains": res["gains"], "effort": res["effort"],
                      "duration": res["duration"], "changes": res["changes"], "project": res["project"],
                      "does": res["does"], "template": res["template"]}
                 result = (b, n)
@@ -401,7 +384,7 @@ class Engine:
             scale = character.duration_scale(cfg, n["duration"])
             needs = character.apply_gains(needs, n["gains"], cfg,
                                           consumed=fx.consumed, multiplier=mult, scale=scale)
-            if adv and adv.get("ok") and adv["completed"]:        # finishing a project feels good (code, not the narrator)
+            if adv and adv.get("ok") and adv["completed"]:        # finishing a project feels good (code pays it)
                 needs = character.add_points(needs, cfg.settings["projects"]["completion_gains"])
             energy = character.spend_energy(st["energy"], n["effort"], cfg, scale=scale)
             if adv is not None:
@@ -412,7 +395,7 @@ class Engine:
                 anxiety=anx_prev, drains=drains, dislike_drains=dis))
             feeling = b["feeling"]
             new_area = fx.area
-            row = {"kind": "tick", "entry": b["entry"], "reaction": b["reaction"], "thought": b["thought"],
+            row = {"kind": "tick", "entry": None, "reaction": b["reaction"], "thought": b["thought"],
                    "action": b["move"].label, "intent": b["why"], "move_key": b["move"].key, "outcome": n["outcome"],
                    "result": n["template"],
                    "gains": n["gains"], "effort": n["effort"], "duration": minutes,
@@ -453,6 +436,10 @@ class Engine:
                      "weather": self.world.weather, "brain_online": online, "activity": new_activity}
         self.tracer.add_stage("apply", t_apply)
 
+        # its own journal entry, written now that code has decided what happened (LLM call, outside the txn)
+        if result:
+            row["entry"] = self._journal(result[0], row, fired, before, needs, mood, energy, recalled, impulse)
+
         # the creature chose to sleep (honoured when tired enough, or at night)
         falls_asleep = bool(result) and result[1]["does"] == "sleep"      # offered only when allowed
         new_state["is_asleep"] = falls_asleep
@@ -477,7 +464,7 @@ class Engine:
             if why:
                 t = clock.time_label(dt)
                 # what is remembered is what the world did (code's plain account) and what the creature itself
-                # said, never the narrator's prose, which can invent details that were not there
+                # wrote about it afterwards (marked as its words, not as fact)
                 text = (f"{t}, {cfg.world['areas'][st['area']]['name']}: {row['action']}. "
                         f"{result[1].get('template') or ''}").strip()
                 if row.get("entry") or row["reaction"]:
@@ -488,10 +475,29 @@ class Engine:
         info = self._commit(row, fired, now, st["area"], new_state, short_mem, recalled,
                             online, sleep_start=falls_asleep, project_adv=adv)
         if result:
-            self.last_outcome = row["result"]          # the plain account; the narrator's prose is for the diary only
+            self.last_outcome = row["result"]          # code's plain account of what happened
         if falls_asleep:
             self._try_sleep_cycle()
         return info
+
+    def _journal(self, b: dict, row: dict, fired: list[dict], before: dict, needs: dict, mood: dict,
+                 energy: float, recalled: list[dict], impulse: dict | None) -> str | None:
+        """The entity's own entry for this moment, from facts only (cat/journal.py). Without one (journaling off or
+        the call failed) an impulse keeps its fixed first-person line; otherwise the moment has no entry."""
+        cfg, st = self.cfg, self.state
+        prefs = [dict(r) for r in self.conn.execute(
+            "SELECT subject, valence FROM preferences ORDER BY abs(valence) DESC LIMIT ?",
+            (2 * cfg.settings["preferences_shown"],))]
+        with self.tracer.stage("journal"):
+            text = journal.write(
+                self.backend, cfg, sim_time=st["sim_time"], area_id=st["area"], weather=self.world.weather,
+                action=row["action"], why=b.get("why") or "", impulse=bool(impulse), result=row["result"],
+                events=[e["text"] for e in fired], before=before, after=needs, mood=mood, energy=energy,
+                self_image=self._self_image_lines(), tendencies=st["tendencies"], preferences=prefs,
+                projects=PJ.brain_view(cfg, self.conn, st["sim_time"]), memories=[m["text"] for m in recalled])
+        if text is None and impulse:
+            return impulse["entry"]
+        return text
 
     # ---------- sleeping ----------
     def _interrupt_reason(self, act: dict, fired: list[dict], st: dict) -> str | None:
@@ -513,7 +519,7 @@ class Engine:
                                   "remaining": act["remaining"]})
 
     def _carry_tick(self, fired: list[dict], nudge: float, act: dict) -> dict:
-        """A tick inside a longer move: no recall, brain, narrator or director call. Time passes and needs
+        """A tick inside a longer move: no recall, brain, journal or director call. Time passes and needs
         decay (plus any drains); the move's gains and effort were already paid when it began."""
         cfg, st, s = self.cfg, self.state, self.cfg.settings
         now = st["sim_time"]
@@ -543,7 +549,7 @@ class Engine:
         return self._commit(row, fired, now, st["area"], new_state, None, [], online=False)
 
     def _rest_tick(self, fired: list[dict], nudge: float, onset: bool) -> dict:
-        """One tick of sleep: no brain or narrator. Restores rest, advances the clock, wakes
+        """One tick of sleep: no brain or journal. Restores rest, advances the clock, wakes
         when rested (and it is morning), retries the sleep cycle if it is still pending."""
         cfg, st, s = self.cfg, self.state, self.cfg.settings
         sl = s["sleep"]
@@ -622,7 +628,7 @@ class Engine:
                 sleep_start: bool = False, wake: bool = False, project_adv: dict | None = None) -> dict:
         """Record the tick: one transaction; a crash leaves the previous state intact."""
         for e in fired:  # event-spawned objects are world changes too (audit trail)
-            if e["spawned"]:   # recorded from spawn time: the narrator may consume it this tick
+            if e["spawned"]:   # recorded from spawn time: the move may consume it this tick
                 row["changes"] = [e["spawn_info"]] + row["changes"]
         expired, self._expired = getattr(self, "_expired", []), []
         row["changes"] = expired + row["changes"]          # objects that expired at the start of this tick

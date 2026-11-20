@@ -31,7 +31,7 @@ One rule runs through the whole design: **plain code owns time, needs and rules;
 |---|---|---|
 | **Code (the engine)** | the clock, need levels and decay, energy, mood arithmetic, **the menu of moves and what each move does** (gains, effort, duration, world change), which memories are kept, validation of every world change, the saved state | invent story |
 | **The brain (LLM call #1)** | what the entity thinks and feels, and which **move from the menu** it chooses and why | say what happened, change a need, or change the world |
-| **The narrator (LLM call #2)** | the prose: one or two sentences describing what the world decided happened | change any number or the world |
+| **The journal (LLM call #2, in the entity's own voice)** | its first-person entry for the moment, written **after** code decided what happened, from facts only | add any detail the facts do not contain, change any number or the world |
 
 A third LLM role, **the world director**, proposes the occasional small happening in the entity's area (§3, §9). A fourth, **the sleeping mind**, runs once per night and does the slow work: consolidating memories, nudging tendencies, forming preferences, and proposing at most one self-image line.
 
@@ -87,9 +87,10 @@ Everything below happens in this order. The LLM calls happen **outside** any dat
   2. Rest check                   ── asleep? or exhausted at night?  → a rest tick (no LLM), skip to 6
   3. Brain online?                ── cached health check (GET /api/tags); offline → doze tick, skip to 5
   4a. Recall + Brain call         ── builds the prompt, picks the need expressions, asks for JSON
-  4b. Narrator call               ── action + world facts → outcome, gains, effort, duration, changes
+  4b. Resolve (code)              ── the move → gains, effort, duration, world change, plain outcome text
   5. Apply (code)                 ── validate changes → decay → event drains → dislike drains → gains
                                      → spend energy → clamp → mood
+  5b. Journal call                ── facts of what happened → its own first-person entry (no numbers)
   6. Record (one transaction)     ── tick row, events, object changes, short-term memory, new state
   7. Maybe sleep                  ── if the brain chose sleep (and it is allowed), run the sleep cycle
 ```
@@ -130,12 +131,15 @@ A cheap check against Ollama (`/api/tags`, `health_timeout_seconds`), cached for
 1. **Recall** (only if there are long-term memories): the engine builds a short query from the current area, the objects here, the mood word and what just happened, embeds it, and scores every long-term memory (§7). The top `recall.k` (5) go into the prompt.
 2. **The menu**: code builds the list of moves that are possible right now from config/moves.yaml (go to each area, eat/play with/rest on/climb/examine/take each fitting object, drop a carried thing, look out, wait, work on each active project, and **sleep only when sleep is allowed**). The order is fixed by the file; it is **never ranked, filtered or marked by need**. At most `moves.max_offered` are shown.
 3. **Prompt** (§10): self-image, tendencies, habits ("you tend to…"), likes/dislikes, time and place, mood and energy words, **"What's pulling at you right now"**, objects around, what just happened, recent actions, memories, active projects, and the menu.
-4. The brain returns JSON: `reaction, thought, move (a menu id such as m3), why, feeling (negative|neutral|positive), entry`. A `move` that is not on the menu is invalid and counts as a failed call. **`entry`** is the creature's own first-person journal entry for the moment (what it is doing and why, drawing on how it feels, what it remembers, how it tends to be and its projects); the website shows it as the main text of the diary entry, with the narrator's world note above it. (Older entries without one show "because: …" and the quote.) Short-term memories are built from the world's plain account of the move plus the creature's own entry, never from the narrator's prose.
+4. The brain returns JSON: `reaction, thought, move (a menu id such as m3), why, feeling (negative|neutral|positive)`. A `move` that is not on the menu is invalid and counts as a failed call. It does **not** write the journal entry: it decides before anything has happened, so it could only say what it means to do.
 
-**What the creature perceives and remembers is what happened, not what was narrated.** Each tick stores code's plain account of the move (`ticks.result`, the verb's `outcome` text) beside the narrator's prose (`ticks.outcome`). The prose is for the diary only: the next prompt's "What just happened" is the plain account, and so is the sleep cycle's day log, from which lasting memories are written. The narrator can invent a detail (a glint, a smell); it never reaches the creature's perception or memory. In the consolidation prompt, words after "You wrote" are marked as what it said at the time, not what happened.
+**What the creature perceives and remembers is what happened, not what an LLM wrote about it.** Code's plain account of the move (`ticks.result`, the same text as `ticks.outcome`) is what the diary shows as having happened, what the next prompt's "What just happened" says, and what the sleep cycle's day log (from which lasting memories are written) contains. Nothing invented (a glint, a smell, a frayed edge) can reach the diary's world line, the creature's perception or its lasting memories. In the consolidation prompt, words after "You wrote" are marked as what it said, not what happened.
 
-### Step 4b: resolve the move (code) and narrate it (LLM)
-**Code decides what the move does** (`cat/moves.py`): the need gains (`effects` and `by_tag` buckets, `novelty` for a place not visited for `moves.novelty_hours`), the effort, a duration drawn from the verb's `minutes`, and the world change (go, take, drop, consume), validated by `cat/effects.py`. A project move reports validated progress. The **narrator only describes the world** in one or two plain sentences (where it is, what is there, what changed: "You are in the garden. The grass is warm."). It never describes the creature's body, senses or feelings (only the creature's own mind knows those), is not shown object tags, and can change no number. With `moves.narrate: false`, or if the call fails, the verb's `outcome` text is used. When a project milestone or the finish is reached, a separate call asks the brain, in its own voice, for the piece it made.
+### Step 4b: resolve the move (code)
+**Code decides what the move does** (`cat/moves.py`): the need gains (`effects` and `by_tag` buckets, `novelty` for a place not visited for `moves.novelty_hours`), the effort, a duration drawn from the verb's `minutes`, the world change (go, take, drop, consume, validated by `cat/effects.py`), and the plain outcome text (the verb's `outcome`). A verb with `reveals: true` (look closely at, inspect, turn over, tap, …) also says what is true of the target, from world.yaml `tag_facts` ("You looked closely at a loose ball of yarn. It is something to play with and can be moved."); a thing with no such facts gives "Nothing more about it stands out." A project move reports validated progress. When a project milestone or the finish is reached, a separate call asks the brain, in its own voice, for the piece it made.
+
+### Step 5b: the journal (LLM, its own voice)
+After code has decided everything, **one call writes the creature's own entry** (`cat/journal.py`, `brain_model`, prompts under `journal` in prompts.yaml). It is given facts only: what it chose and the reason it gave (or that an impulse took over), code's plain account of what happened, events around it, which needs crossed into another band (as that band's own expression, never a need's name or a number), how it is now (the same impression lines as the brain), and any memories that came to mind. It is told not to add details the facts do not contain, to mention memories, likes, tendencies or projects only when they bear on the moment, never to name its own traits or needs as labels, and that saying little ("I don't know") is fine. It decides nothing and changes nothing. If the call fails (or `journal.enabled` is false) the moment has no entry and the diary shows the reason it gave instead; an impulse keeps its fixed first-person line. Carried-on ticks, rest ticks and dozes make no journal call. A decision therefore still costs two chat calls (brain, journal).
 
 ### Step 5: apply, in this exact order
 1. **Validate and apply world changes** (§9). Rejected changes are logged and do not happen.
@@ -175,7 +179,7 @@ Five needs in the placeholder character, each 0..100: **sustenance, wonder, joy,
 | **Dislike drains** | down | While something it dislikes is present (§8). |
 | **Repetition** | shrinks *gains* | A repeated action pays less (below). |
 
-The narrator never subtracts, and nothing a move does drains a need. Bad things that happen are story; the harm lands through decay, events or dislikes, and through mood (§6).
+A move never subtracts: nothing a move does drains a need. Bad things that happen are story; the harm lands through decay, events or dislikes, and through mood (§6).
 
 ### The sustenance rule (hard rule)
 `sustenance_need` (default `sustenance`) rises **only** through a `consume` move on an `edible` object (a validated `consume` change). It gets the move's gain, and at least `consume_min_gain` (`+`).
@@ -207,7 +211,7 @@ At ~13 sim hours per real hour, an entity that never eats and never has a good m
 ## 5. Energy, sleep and dozing
 
 ### Energy is not a need
-**Energy** is a separate resource, a single number from **−50 to 50**, starting at `energy_start` (30). It is **spent by effort** (low 2, medium 6, high 12 points per 20 minutes of the move, scaled by its length; resting costs none: `effort_energy_cost`) and **restored only by sleeping or dozing**. It is never derived from needs and the narrator cannot touch it. Its words (`energy_words`): exhausted (< −25), tired (< 0), fine (< 25), wide awake (≥ 25). The words go into the prompt ("Energy: tired"); the number does not.
+**Energy** is a separate resource, a single number from **−50 to 50**, starting at `energy_start` (30). It is **spent by effort** (low 2, medium 6, high 12 points per 20 minutes of the move, scaled by its length; resting costs none: `effort_energy_cost`) and **restored only by sleeping or dozing**. It is never derived from needs and no LLM can touch it. Its words (`energy_words`): exhausted (< −25), tired (< 0), fine (< 25), wide awake (≥ 25). The words go into the prompt ("Energy: tired"); the number does not.
 
 ### Falling asleep: three ways
 1. **Exhaustion at night:** night **and** energy < −25 → falls asleep immediately, with no brain call.
@@ -217,7 +221,7 @@ At ~13 sim hours per real hour, an entity that never eats and never has a good m
 A rested entity by day, even if it asks to sleep, is ignored.
 
 ### Being asleep
-Each asleep tick is 60 sim minutes, skips the brain and narrator, restores `sleep.restore_per_sim_hour` (12) energy per hour, decays needs at `sleep.decay_multiplier` (0.3) of the awake speed, and still rolls events (which can still drain needs).
+Each asleep tick is 60 sim minutes, skips the brain and journal, restores `sleep.restore_per_sim_hour` (12) energy per hour, decays needs at `sleep.decay_multiplier` (0.3) of the awake speed, and still rolls events (which can still drain needs).
 
 ### Waking
 It wakes when **energy ≥ `wake_energy_at_least` (40)** *and* it is past `wake_not_before_hour` (6) *and* it is not night, or after `sleep.max_hours` (12 sim hours) regardless. Starting from −25 at 12 energy/hour, reaching 40 takes about 5½ hours, so the 06:00 floor usually decides the wake time for a normal night.
@@ -355,7 +359,7 @@ Nothing here picks an action: code never chooses, suggests or ranks actions by p
 
 **Areas** (`world.yaml`): a name, a description and exits; exits must be mirrored. (Happenings come from two sources: the hand-written `events` in `world.yaml` and the world director, §3. Objects it spawns are marked `created_by = director`.) **Objects**: an id, name, area (or `inventory`), **tags** and a small state. Tags decide what is possible: `edible` (can be consumed), `movable` (can be taken and moved). Other tags (`warm`, `climbable`, `soft`, `toy`, …) steer which verbs apply (`any_tags`) and the extra gains (`by_tag`) in moves.yaml. Objects are **seeded once**, on the very first start.
 
-Only code, through the chosen move, changes the saved world, and only through these operations (the narrator cannot). Changes are checked **in order**; a rejected one is logged and skipped, the rest still apply, and at most `max_changes_per_tick` (6) are accepted.
+Only code, through the chosen move, changes the saved world, and only through these operations (no LLM can). Changes are checked **in order**; a rejected one is logged and skipped, the rest still apply, and at most `max_changes_per_tick` (6) are accepted.
 
 | Operation | Allowed when | Effect |
 |---|---|---|
@@ -381,7 +385,7 @@ All fixed wording lives in `config/prompts.yaml` (see §13). The dynamic parts a
 - *Who you are* also carries the habits line ("Things you have found yourself doing again and again: …"), a description of the past only.
 - It never contains need numbers. The menu ids (m1, m2…) are the only options, in a fixed order that is never ranked or marked by need.
 
-**The narrator's prompt:** a neutral system prompt (no personality; it writes one or two sentences of prose and must not invent objects or exits) plus the world description, the move and what the world decided happened. It returns only `outcome`; it cannot change a number or the world. Project pieces come from a separate call in the brain's own voice.
+**The journal's prompt:** the brain's identity lines (name, backstory, identity, core traits) and the journal rules as its system prompt; the facts of the moment (Step 5b) as its user message. It returns only `entry`; it cannot change a number or the world. Project pieces come from a separate call in the brain's own voice.
 
 **The world director's prompt:** the place, time, weather, objects, recent happenings and its last few actions, with the rules above in its system prompt. No needs, no mood.
 
@@ -523,7 +527,8 @@ Reading the numbers: a need that decays 5/hour loses 25 points in 5 hours, so it
 | verb `minutes`, `effort` | how long a move takes and what it costs in energy |
 | `moves.max_offered` | menu length cap (earlier verbs, nearer targets win) |
 | `moves.novelty_hours` | how long before a place counts as new again (feeds the `go` novelty gains) |
-| `moves.narrate` | `false` = templated outcome text, one fewer LLM call per decision |
+| `journal.enabled` | `false` = no journal entry (the diary shows the reason it gave), one fewer LLM call per decision |
+| world.yaml `tag_facts`, moves.yaml `reveals` | what looking closely at a thing reports, and which verbs report it |
 | `activity.enabled`, `step_minutes` | carry long moves in slices with no LLM calls. `false` = one decision per tick |
 | `activity.carry_interval_seconds` | real seconds between carry ticks |
 | `activity.interrupt_on_events`, `interrupt_on_empty_need` | what breaks an activity |
@@ -564,13 +569,13 @@ The wording is in the `director` section of `prompts.yaml`. To make the world ge
 The wording that forms and advances projects is in `prompts.yaml`: the `projects` entry under `sleep` (when to start one: raise or lower the bar by editing "returning again and again"), `brain.create*` (the piece it makes), and `brain.situation.project*` (how the brain is reminded). Project work being exempt from repetition is intentional. To keep some pressure on a project that drags on, raise `taper` (for example 0.8) so its steps shrink faster toward the end.
 
 ### The LLMs
-`brain_model`, `narrator_model`, `sleep_model`, `embed_model`, `llm_temperature` (brain 0.9 = adventurous, narrator 0.5 = steady; the default models are `qwen3:14b`, with `llm_timeout_seconds` 600), `llm_num_ctx` (4096; raise if prompts get truncated), `llm_retries`, `llm_timeout_seconds`. Changing `embed_model` requires re-embedding stored memories: `scripts/reembed.py`.
+`brain_model`, `narrator_model`, `sleep_model`, `embed_model`, `llm_temperature` (brain 0.9 = adventurous, journal 0.7; `narrator_model` is the director's model; the default models are `qwen3:14b`, with `llm_timeout_seconds` 600), `llm_num_ctx` (4096; raise if prompts get truncated), `llm_retries`, `llm_timeout_seconds`. Changing `embed_model` requires re-embedding stored memories: `scripts/reembed.py`.
 
 ### The words (prompts)
 All of the following are in `config/prompts.yaml`; each entry's comment lists its `{placeholders}`:
 - **Brain system:** `intro`, `identity`, `core_traits`, `voice`, `output` (the JSON contract).
 - **Brain situation:** headings and sentences, including `heading_pulling` and `none_pulling`.
-- **Narrator:** `system` (rules, the seven operations; keep the doubled braces `{{ }}`), `needs_heading`, `need_line`, `need_consume_note`, `user`.
+- **Journal:** `system` (its rules; keep the doubled braces `{{ }}`), `heading_happened`, `did`, `why`, `impulse`, `result`, `events`, `need_eased`, `heading_now`, `heading_memories`, `closing`.
 - **Sleep:** `system`, the five `jobs`, and the five step prompts.
 
 The validator refuses an empty or missing entry or an unknown `{placeholder}` and reports every problem. Keep the JSON-format instructions intact (the models are also given a JSON schema, but the text helps). Never put need numbers or a list of options in a prompt: that breaks the design rule that needs shape what is *said*, not what is *chosen*.

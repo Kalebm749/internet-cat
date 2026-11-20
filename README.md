@@ -17,7 +17,7 @@ runs on **one Ubuntu laptop** with **Docker Compose**, and a read-only website s
 ```
 
 ## Docs
-- [`docs/creature-architecture.md`](docs/creature-architecture.md): the concepts (brain, narrator, needs, mood, memory, sleep)
+- [`docs/creature-architecture.md`](docs/creature-architecture.md): the concepts (brain, needs, mood, memory, sleep)
 - [`docs/behavior-guide.md`](docs/behavior-guide.md): how it all comes together: triggers and impacts, how to tune every parameter, how to reset the simulation
 - [`docs/server-architecture.md`](docs/server-architecture.md): how it is built and deployed, and the host setup
 - [`docs/web-gui.md`](docs/web-gui.md): the website
@@ -154,7 +154,7 @@ to the `ollama` service in `compose.yaml` (loopback only).
 | Symptom | Likely cause / fix |
 |---|---|
 | Engine logs "models are missing" and the diary shows "dozing" | Run `deploy/pull-models.sh`. |
-| Engine logs "brain/narrator unavailable" repeatedly | `docker compose logs ollama`; `docker compose ps`; GPU out of memory (try a smaller model such as `gemma3:4b`). |
+| Engine logs "brain unavailable" or "journal entry unavailable" repeatedly | `docker compose logs ollama`; `docker compose ps`; GPU out of memory (try a smaller model such as `gemma3:4b`). |
 | Ollama is slow / `ollama ps` doesn't say 100% GPU | The NVIDIA Container Toolkit step was skipped, or a native Ollama still holds the GPU (`sudo systemctl disable --now ollama`). |
 | `docker compose up` fails with "could not select device driver nvidia" | Container Toolkit not configured: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`. |
 | Site unreachable from another device | ufw rule/subnet, or the laptop's IP changed (use a DHCP reservation). |
@@ -194,7 +194,7 @@ another machine without exposing it, tunnel: `ssh -L 8090:127.0.0.1:8090 <laptop
 | **Sleep** | each night: inputs, raw LLM outputs, **proposed vs clamped** tendency changes, new memories, preference changes; tendency history chart |
 | **World** | areas, objects (tags, state, who made them), inventory, and each object's history (created / moved / eaten, by which tick) |
 | **Logs** | tail of `data/logs/*.jsonl` (all services), filter by service, level, tick, text; **live tail**; a tick id links to Tick detail |
-| **Projects** | every project with its progress number, idle nights and stage, and every artifact it has made; the settings behind them. A tick page also explains the narrator's project report |
+| **Projects** | every project with its progress number, idle nights and stage, and every artifact it has made; the settings behind them. A tick page also explains each work-on move's progress |
 | **Config** | `character.yaml`, `world.yaml`, `settings.yaml` as the engine loaded them, a diff against the files on disk, and a *Reload settings* button |
 | **Playground** | replay any stored call, edit the prompt / model / temperature, run it, compare with the original; run the same prompt on 2-3 models side by side |
 
@@ -269,7 +269,7 @@ then `.venv/bin/python scripts/show_diary.py -n 50`. See `CLAUDE.md` for convent
 ```
 compose.yaml  Dockerfile  .env.example     deployment (ollama, engine, web, devdash)
 config/       character.yaml  world.yaml  settings.yaml   (PLACEHOLDER content: replace)
-cat/          engine, brain, narrator, effects, memory, sleep, trace, web/, devdash/ ...
+cat/          engine, brain, journal, effects, memory, sleep, trace, web/, devdash/ ...
 deploy/       backup.sh  update.sh  pull-models.sh
 scripts/      seed_db.py  add_ticks.py  show_diary.py  check_ollama.py  reembed.py
 data/         cat.db, devdash.db, logs/, backups/   (bind mount, git-ignored)

@@ -14,6 +14,12 @@ This review led to a first "baseline" PR, to make the first real run honest and 
 - **Roadmap 1.6, object lifecycle.** Objects brought by events and the director expire (`object_lifetime_hours`) and the expiry is audited.
 - **Phase 0, measurement.** `scripts/measure_run.py` reports brain errors, latency, prompt size against the context limit, menu-position bias, choice variety, impulses, need bands, anxiety and accumulated inner state.
 
+A second change followed the first real diary entries, which read as performance (an invented "faded and frayed" yarn, a journal restating the move before it happened and naming its own trait):
+
+- **The narrator is gone.** The diary's world line is code's plain account.
+- **The journal is written after the outcome.** `cat/journal.py` writes it in the entity's voice, from facts only. It reuses the narrator's call, so there are still two calls per decision. It mentions memories, tendencies or projects only when they bear on the moment, never names its traits or needs, and may say "I don't know".
+- **Looking closely reveals something true.** Examine-type verbs (`reveals: true`) report what is true of the target, from world.yaml `tag_facts`. This is a first step towards roadmap 2.1.
+
 Deliberately not changed: Nit's character sheet (core traits stay), menu order and tags (so the first run measures list-order bias as it is), and anything in phases 2–5.
 
 ---

@@ -10,7 +10,7 @@ Three containers: **ollama** (models), **engine** (the only writer; tick loop, S
 site), plus an optional **devdash** (read-only dashboard, writes only to its own db). Each tick the engine
 rolls world events, maybe asks the **director** for a happening, builds a **menu of moves** from the world
 (`config/moves.yaml`), asks the **brain** to pick one (with a reason, a reaction and a feeling), lets **code**
-decide what the move does (need gains, effort, duration, world change), asks the **narrator** for one or two
+decide what the move does (need gains, effort, duration, world change), asks the **journal** (in its own voice, after the fact) for one or two
 sentences of prose, then applies everything in one DB transaction. A move longer than 20 sim minutes becomes an
 **activity**: the next ticks only advance the clock (no LLM calls) until it ends or something interrupts it.
 When it is tired at night it sleeps, and the **sleep cycle** (up to six LLM calls) consolidates memories and
@@ -26,7 +26,7 @@ changes tendencies, preferences, self-image, projects and habits.
 | Mood | `character.py`, `mood.*` | one −50..50 number from need bands, event nudges, the brain's 3-value `feeling` | mood does not change what is offered or picked |
 | Moves | `moves.py`, `moves.yaml` | the menu (fixed order, cut at `moves.max_offered`) and each move's effect | no ranking, no marking by need |
 | Brain | `brain.py`, `prompts.yaml` | prompt assembly; JSON schema `reaction, thought, move, why, feeling` | an invalid or off-menu move fails the call (retry once, then doze) |
-| Narrator | `narrator.py` | prose only (template fallback) | cannot change numbers or the world |
+| Journal | `journal.py` | its own entry, written after code decided what happened, from facts only | cannot add details, change numbers or the world |
 | Effects | `effects.py` | the only code that changes the world: seven validated ops | rejected changes are logged, not applied |
 | Activities | `engine.py` | long moves, carry ticks, interruption by events or a newly empty need | carry ticks make no decisions |
 | World director | `director.py` | one small happening every few ticks (LLM), validated as an event | never sees needs or mood |
@@ -47,7 +47,7 @@ changes tendencies, preferences, self-image, projects and habits.
 | Call | When | Per |
 |---|---|---|
 | brain | every decision (not carry ticks) | decision |
-| narrator | after every decision (`moves.narrate: false` removes it) | decision |
+| journal | after every decision (`journal.enabled: false` removes it) | decision |
 | director | every ~6 decisions (2 when stale) | few decisions |
 | create (a project piece) | at a milestone or finishing | rare |
 | sleep (consolidate, tendencies, preferences, self-image, projects, habits) | each night | night |

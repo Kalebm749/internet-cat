@@ -94,14 +94,14 @@ def test_llm_list_filters_and_statuses(cfg):
     L = lambda **f: data.llm_list(cfg, f, 1, 500)
     allc = L()
     assert allc["total"] == conn.execute("SELECT COUNT(*) FROM llm_calls").fetchone()[0]
-    assert set(allc["kinds"]) >= {"brain", "narrator"} and allc["models"] == ["qwen3:14b"]
+    assert set(allc["kinds"]) >= {"brain", "journal"} and allc["models"] == ["qwen3:14b"]
     assert [c["id"] for c in allc["items"]] == sorted((c["id"] for c in allc["items"]), reverse=True)
     bad = L(valid="invalid")["items"]
     assert [(c["kind"], c["attempt"], c["status"]) for c in bad] == [("brain", 1, "error")]
     assert "not on the menu" in bad[0]["error"]
     assert all(c["status"] == "ok" for c in L(valid="valid")["items"])
     assert L(errors=1)["total"] == 1
-    assert all(c["kind"] == "narrator" for c in L(kind="narrator")["items"]) and L(kind="nope")["total"] == 0
+    assert all(c["kind"] == "journal" for c in L(kind="journal")["items"]) and L(kind="nope")["total"] == 0
     assert L(model="qwen3:14b")["total"] == allc["total"] and L(model="other")["total"] == 0
     assert [c["id"] for c in L(slow_ms=8000)["items"]] == [3]
     assert all(c["tick_id"] == 2 for c in L(tick_id=2)["items"]) and L(tick_id=2)["total"] >= 2

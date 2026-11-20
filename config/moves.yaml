@@ -14,6 +14,7 @@
 #   novelty    {need: bucket}                   (area verbs) extra gains for somewhere not visited lately
 #   does       none | move_self | take | drop | consume | work_on | sleep
 #   only_when  always | can_sleep               `can_sleep`: only when it is allowed to go to sleep
+#   reveals    (object) true: the result also says what is true of the target, from world.yaml tag_facts
 #   outcome    plain-words result, used when no narration is available; {target} as above
 # Only a `consume` verb may feed the sustenance need.
 
@@ -74,6 +75,7 @@ verbs:
     effects: {curiosity: "+"}
     by_tag: {shiny: {wonder: "+"}, fragile: {wonder: "+"}}
     does: none
+    reveals: true
     outcome: "You looked closely at {target}."
   take:
     label: "pick up {target}"
@@ -366,6 +368,7 @@ verbs:
     minutes: [5, 20]
     effects: {curiosity: +}
     does: none
+    reveals: true
     outcome: "You inspected {target} carefully."
   poke:
     label: "poke at {target}"
@@ -375,6 +378,7 @@ verbs:
     minutes: [2, 8]
     effects: {curiosity: +}
     does: none
+    reveals: true
     outcome: "You poked at {target}."
   circle:
     label: "go all the way around {target}"
@@ -429,6 +433,7 @@ verbs:
     minutes: [5, 15]
     effects: {curiosity: +}
     does: none
+    reveals: true
     outcome: "You described {target} to yourself in detail."
   tap:
     label: "tap on {target} and listen"
@@ -438,6 +443,7 @@ verbs:
     minutes: [3, 8]
     effects: {curiosity: +}
     does: none
+    reveals: true
     outcome: "You tapped on {target} and listened."
   wonder_about:
     label: "wonder where {target} came from"
@@ -597,6 +603,7 @@ verbs:
     minutes: [3, 10]
     effects: {wonder: +}
     does: none
+    reveals: true
     outcome: "You lifted {target} into the light."
   weigh:
     label: "judge how heavy {target} is"
@@ -607,6 +614,7 @@ verbs:
     minutes: [3, 8]
     effects: {curiosity: +}
     does: none
+    reveals: true
     outcome: "You judged how heavy {target} was."
   turn_over:
     label: "turn {target} over and over"
@@ -617,6 +625,7 @@ verbs:
     minutes: [3, 10]
     effects: {curiosity: +}
     does: none
+    reveals: true
     outcome: "You turned {target} over and over."
   nudge:
     label: "nudge {target} along"
@@ -727,6 +736,7 @@ verbs:
     minutes: [3, 10]
     effects: {curiosity: +}
     does: none
+    reveals: true
     outcome: "You traced the edges of {target}."
   scramble:
     label: "scramble up {target}"
@@ -807,6 +817,7 @@ verbs:
     minutes: [5, 15]
     effects: {curiosity: ++}
     does: none
+    reveals: true
     outcome: "You checked behind and under {target}."
   look_inside:
     label: "look inside {target}"
@@ -817,6 +828,7 @@ verbs:
     minutes: [3, 10]
     effects: {curiosity: ++}
     does: none
+    reveals: true
     outcome: "You looked inside {target}."
   peer_into:
     label: "peer into {target} and wait"

@@ -24,9 +24,8 @@ BRAIN_SCHEMA = {
         "move": {"type": "string"},
         "why": {"type": "string"},
         "feeling": {"type": "string", "enum": FEELINGS},
-        "entry": {"type": "string"},
     },
-    "required": ["reaction", "thought", "move", "why", "feeling", "entry"],
+    "required": ["reaction", "thought", "move", "why", "feeling"],
 }
 
 
@@ -154,6 +153,22 @@ def speech_register(cfg: Config, ctx: "BrainContext") -> str | None:
     return None
 
 
+def state_lines(cfg: Config, mood: dict, energy: float) -> list[str]:
+    """How it is right now, as impressions (never "you feel X", never a number): the mood line with the energy
+    word, an anxiety line above the calm band, and how its words come. Shared by the brain and the journal."""
+    R = lambda key, **kw: P.render(cfg, "brain.situation." + key, **kw)
+    out = [R("feeling", mood=R("mood_" + {"content": "content", "low": "low"}.get(mood.get("word"), "calm")),
+             energy=character.energy_word(energy, cfg))]
+    aw = character.anxiety_word(float(mood.get("anxiety", 0.0)), cfg)
+    key = "brain.situation.anxiety_" + aw.replace(" ", "_") if aw else ""
+    if aw and P.lookup(cfg.prompts, key):          # a band word with no impression line says nothing
+        out.append(P.render(cfg, key))
+    sp = speech_register(cfg, type("S", (), {"mood": mood, "energy": energy})())
+    if sp:                                         # how its words come follows its state, not a fixed style
+        out.append(R(sp))
+    return out
+
+
 def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     dt = clock.parse(ctx.sim_time)
     area = cfg.world["areas"][ctx.area_id]
@@ -180,15 +195,7 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     L.append("\n" + R("heading_now"))
     L.append(R("time", time=clock.time_label(dt), part=clock.part_of_day(dt), weather=ctx.weather))
     L.append(R("place", area=area["name"], description=area["description"]))
-    L.append(R("feeling", mood=R("mood_" + {"content": "content", "low": "low"}.get(ctx.mood["word"], "calm")),
-               energy=character.energy_word(ctx.energy, cfg)))
-    aw = character.anxiety_word(float(ctx.mood.get("anxiety", 0.0)), cfg)
-    key = "brain.situation.anxiety_" + aw.replace(" ", "_") if aw else ""
-    if aw and P.lookup(cfg.prompts, key):          # a band word with no impression line says nothing
-        L.append(P.render(cfg, key))
-    sp = speech_register(cfg, ctx)                 # how its words come follows its state, not a fixed style
-    if sp:
-        L.append(R(sp))
+    L.extend(state_lines(cfg, ctx.mood, ctx.energy))
 
     L.append("\n" + "\n".join(pulling_section(cfg, ctx.needs, ctx.stale_here)))
 
@@ -247,7 +254,6 @@ def parse(raw: dict, menu: list) -> dict[str, Any]:
     return {"reaction": str(raw.get("reaction") or "").strip(),
             "thought": str(raw.get("thought") or "").strip(),
             "move": move, "why": str(raw.get("why") or "").strip(),
-            "entry": " ".join(str(raw.get("entry") or "").split()),
             "feeling": feeling if feeling in FEELINGS else "neutral"}
 
 
