@@ -141,10 +141,10 @@ const ids = (w) => entries(w).map((e) => parseFloat(e.dataset.id));
       assert.ok(w.document.body.classList.contains("state-dozing"));
       assert.match(w.document.querySelector("#pill").textContent, /dozing/);
     });
-    await t("the presence is desaturated while dozing and has no picture", async () => {
+    await t("the presence is desaturated while dozing and the portrait is Nit's two viewer-side images", async () => {
       const svg = w.document.querySelector("#presence");
       assert.match(svg.getAttribute("style"), /--pv-s:12%/);
-      assert.strictEqual(w.document.querySelectorAll("img").length, 0);
+      assert.strictEqual(w.document.querySelectorAll("img").length, 2);
       assert.match(w.document.querySelector("#portrait-caption").textContent, /, in /);
     });
     await t("the self-image section is present and says what it has", async () => {
