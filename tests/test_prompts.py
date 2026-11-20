@@ -20,7 +20,8 @@ def test_brain_prompt_has_words_not_numbers(cfg, conn):
                                        recent_actions=["nap", "wash"]))
     assert "7:40 pm" in p and "evening" in p and "the living room" in p
     assert "running on nothing" in p                  # sustenance 12 -> its empty-band expression
-    assert "calm and tired" in p and "tired" in p     # mood, energy words
+    assert "Things are even and quiet in you." in p and "Energy: wide awake" in p     # an impression of the mood, an energy word
+    assert "You feel" not in p                         # states are never announced to it
     assert "the sofa [soft, warm, climbable]" in p
     assert "very boldness" in p and "a little sociability" in p and "tidiness" in p
     assert "A bird lands." in p and "It rains." in p and "nap; then wash" in p

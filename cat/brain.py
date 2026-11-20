@@ -165,10 +165,12 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     L.append("\n" + R("heading_now"))
     L.append(R("time", time=clock.time_label(dt), part=clock.part_of_day(dt), weather=ctx.weather))
     L.append(R("place", area=area["name"], description=area["description"]))
-    L.append(R("feeling", mood=ctx.mood["description"], energy=character.energy_word(ctx.energy, cfg)))
+    L.append(R("feeling", mood=R("mood_" + {"content": "content", "low": "low"}.get(ctx.mood["word"], "calm")),
+               energy=character.energy_word(ctx.energy, cfg)))
     aw = character.anxiety_word(float(ctx.mood.get("anxiety", 0.0)), cfg)
-    if aw:
-        L.append(R("anxiety", word=aw))
+    key = "brain.situation.anxiety_" + aw.replace(" ", "_") if aw else ""
+    if aw and P.lookup(cfg.prompts, key):          # a band word with no impression line says nothing
+        L.append(P.render(cfg, key))
 
     L.append("\n" + "\n".join(pulling_section(cfg, ctx.needs, ctx.stale_here)))
 
