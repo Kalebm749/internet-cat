@@ -113,6 +113,13 @@
   </section>
 
   <aside class="col col-right" aria-label="About {{ s.creature.name }}">
+    <nav class="rail" id="rail" aria-label="Sections" hidden>
+      <button type="button" data-panel="about-card" aria-pressed="true">About</button>
+      <button type="button" data-panel="habits-card" aria-pressed="false">Habits</button>
+      <button type="button" data-panel="projects-card" aria-pressed="false">Projects</button>
+      <button type="button" data-panel="keepsakes-card" aria-pressed="false">Keepsakes</button>
+      <a href="/biography">Biography</a>
+    </nav>
     <section class="card" id="about-card">
       <h2 class="section-title">About {{ s.creature.name }}</h2>
       <ul class="chips" id="traits">

@@ -18,7 +18,11 @@ Spec for the website. Read `server-architecture.md` (§13) for where this sits: 
 
 ---
 
-## 2. Layout (desktop)
+## 2. Layout (desktop): the Book
+
+(Supersedes the three-column layout described below.) A **band** at the top shows how it is: the portrait, the mood/anxiety/energy card, and the **needs** as five large labelled columns (label, band word, a thick bar and a trend arrow), readable at a glance. Below it is **one page** of diary, centred. The About, Habits, Projects and Keepsakes panels open one at a time in a drawer on the right, chosen from a vertical **tab rail** (with a link to the Biography page). Without JavaScript the panels simply stack below the diary. Under 1250px wide the drawer becomes an ordinary block; under 1000px the band stacks.
+
+## 2b. Layout (older three-column description)
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
