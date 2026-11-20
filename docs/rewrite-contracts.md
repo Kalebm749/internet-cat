@@ -1,0 +1,695 @@
+# Rewrite: System Contracts
+
+*Status: draft for review. No code yet. This document defines the contracts between the systems of
+the rewrite. Each system is implemented and tested on its own once its contract is agreed.
+Decisions you have made so far: the rewrite replaces `cat/` in place, waking decisions use a small
+(~4B) model, sleep uses the 14B model, and Nit's form is still to be described (§2.1).*
+
+---
+
+## 0. Why the current system is being replaced
+
+What goes wrong today, as observed in the first real runs and the November analysis
+(`docs/analysis-2026-11.md`):
+
+| Problem | Cause in the current design | Answer in this rewrite |
+|---|---|---|
+| Choices follow list position and verb salience, not inner state | A ~30-item menu built from verb × object × tag (`moves.yaml`), shown to a 14B model in a 4096-token context | Small menus: the actions the creature **knows** at **this location**, plus three universal actions |
+| It never ate while hungry, so code-driven reflexes, drives and impulses were added | Five abstract needs (wonder, joy, peace, curiosity, sustenance) and an anxiety gauge compete. Code started overriding the LLM to compensate | Three variables (mood, energy, hunger) that shape the prompt and the consequences. Code never picks the move |
+| Nothing to learn | Every object and tag is shown to the brain. Every verb always does the same thing | Hidden actions found by `inspect`. Outcomes can vary. The menu is built from what the creature knows, not from what exists |
+| Identity is LLM text read back by the LLM | Tendencies, preferences and self-image are written from LLM summaries with no evidence | Character changes need code-checked evidence (§5.6) |
+| Ticks are sim-time chunks with hidden carry ticks | 20-minute ticks, 90 s real interval, activity carry ticks, a narrator, a director | Event-driven cycle with a ~15 s target. Activities persist across decisions |
+| Adding content means touching `world.yaml`, `moves.yaml`, `tag_facts` and sometimes code | Behaviour is spread over verbs, tags, `does:` handlers and `by_tag` tables | One file per location holds the location and its actions. Code only adds new **effect operations** or **capabilities** |
+
+### Kept from the old code (reused, not preserved)
+- `cat/llm.py`: `LLMBackend`, `OllamaBackend`, `MockBackend`, `call_json` with schema validation and retries, `hash_embed`, `cosine`.
+- `cat/db.py`: `connect`, `transaction`, numbered migrations, `backup`, meta/state helpers.
+- `cat/trace.py`: the tracer and its stage timing, rebuilt around the new cycle.
+- `cat/memory.py`: embedding blobs, the recency/importance/relevance recall scoring.
+- `cat/clock.py`, `cat/logs.py`, `cat/healthcheck.py`, `cat/pullmodels.py`, `cat/downtime.py`, `deploy/`, `Dockerfile`, `compose.yaml`.
+- `cat/drawings.py` + `cat/art.py`: become the `draw` capability (§4.6).
+- `cat/web/` and `cat/devdash/` shells (Flask app, static assets, auth). Views and templates are rebuilt in step 8.
+
+### Removed
+`moves.py`, `impulses.py` (drives, reflexes, anxiety), `director.py`, `harms.py`, `habits.py` (replaced by
+behaviour history), `projects.py` (replaced by activities and character development), `journal.py` (thoughts
+come from the decision call), `prompts.yaml` as one large file (prompts live next to the stage that uses them),
+needs and need bands, `tag_facts`, `moves.yaml`.
+
+---
+
+## 1. Content packs: growing the world without code
+
+Everything about *this* world and *this* creature is data. The code knows only general mechanics.
+
+```
+content/
+  character.yaml            # the starting character sheet (§2.1)
+  world.yaml                # clock, weather, start location, global events
+  locations/
+    fountain.yaml           # one location and every action that belongs to it
+    market.yaml
+    ...
+  actions/
+    universal.yaml          # sleep, move, inspect (the only actions every location has)
+  capabilities.yaml         # which code capabilities are enabled, with permissions (§4.6)
+```
+
+**What needs no code** (content only):
+- A new location, its exits, description, world facts, events and actions.
+- A new action built from existing effect operations and conditions.
+- New hidden actions, discovery chains, varied outcomes, resources that regrow.
+- Changes to character sheet seeds, prompt wording, tuning numbers.
+
+**What needs code** (a new feature):
+- A new **effect operation** (§4.4), such as a new kind of world change.
+- A new **capability** (§4.6), such as painting, making music, web search or writing to a file.
+- A new **condition type** (§4.3).
+
+The loader validates every file at start-up against the schemas in this document. An unknown field, an
+unknown effect operation, a broken exit, or an action pointing to a missing capability stops the engine
+with a message naming the file and line. Content changes go live on restart, and the dev dashboard can
+reload them without a restart. World facts the creature has changed are never overwritten by a reload (§4.2).
+
+---
+
+## 2. Identity and internal state
+
+### 2.1 Character sheet (`content/character.yaml`)
+
+```yaml
+name: Nit
+pronoun: they
+
+# --- immutable: never changed by character development ---
+core:
+  nature: "<TO BE DESCRIBED: what Nit is at spawn>"      # form, kind of being
+  boundaries:                                          # fundamental limits, checked in code and in prompts
+    - "Never pretends an action happened that did not."
+    - "Never harms the places or things others care about."
+  prohibited_actions: []                               # action ids it may never take, enforced by the world
+
+# --- mutable: the starting point; sleep may change these slowly (§5.6) ---
+traits:                     # personality, each with a strength 0..1
+  curious: 0.7
+  steadfast: 0.6
+  cunning: 0.4
+tendencies:                 # behavioural leanings, in words, each with a strength 0..1
+  "lingers near water": 0.3
+background: "Nit woke in the square with no memory of before."
+likes: {}                   # seeds for learned preferences (§2.3); empty is fine
+dislikes: {}
+
+innate_knowledge: [sleep, move, inspect]   # actions known from birth
+start_location: fountain
+```
+
+Rules:
+- The sheet holds **no dialogue, scripts, routines or goals**.
+- `core` is never edited by the creature. Code checks every change proposal against it (§5.6).
+- At first start the sheet is copied into the database as **character version 1**. From then on, the
+  database is the source of truth and the file is only the seed. Each change creates a new version with
+  its evidence, so the dashboard can show how Nit became who they are.
+
+### 2.2 The three variables
+
+| Variable | Range | Rises with | Falls with | Neutral |
+|---|---|---|---|---|
+| `mood` | -1.0 .. 1.0 | Pleasant outcomes, liked things, fresh experiences, rest | Unpleasant outcomes, disliked things, repetition, hunger | Drifts toward the trait baseline (`mood_baseline`, default 0.1) at `mood_drift_per_hour` |
+| `energy` | 0.0 .. 1.0 | Sleep, resting actions, food (a little) | Effort per sim minute of activity, being awake | — |
+| `hunger` | 0.0 .. 1.0 | Time (`hunger_per_hour`), effort | Eating actions | — |
+
+Each variable is a plain number in the state row. Every change is written to the trace with its cause
+(the action, decay, or a preference), so the dashboard can explain any value.
+
+Hunger reaches the rest of the system only through:
+1. **Perception**: a body sentence chosen by band (`content/world.yaml` `body_words`), such as
+   *"Your stomach is a small insistent knot."*
+2. **Mood pressure**: above `hunger_mood_threshold`, mood loses `hunger_mood_drag × (hunger - threshold)` per hour.
+3. **Energy recovery**: hungry sleep restores less energy.
+
+Hunger never picks a move. If real runs show the small model still ignores food, the first fix is in the
+wording and the perception, not an override. Any override would be a new decision, written down here first.
+
+### 2.3 Derived conditions
+
+Boredom, restlessness, mania, creativity and similar states are **derived**, never stored. They are
+computed from mood, energy and the recent-repetition score (§6), and given as words in the prompt.
+
+```yaml
+# content/world.yaml
+derived_conditions:        # first match wins; ranges are inclusive
+  - {name: restless,  mood: [-0.3, 0.2], energy: [0.6, 1.0], repetition: [0.5, 1.0],
+     words: "You feel itchy, as if you have done all this already."}
+  - {name: buoyant,   mood: [0.5, 1.0],  energy: [0.6, 1.0],
+     words: "Everything seems possible; ideas come quickly."}
+  - {name: drained,   mood: [-1.0, 0.0], energy: [0.0, 0.3],
+     words: "Everything feels heavy."}
+  - {name: content,   mood: [0.2, 1.0],  energy: [0.2, 0.7],
+     words: "You feel settled."}
+```
+
+Adding a derived condition is content, not code.
+
+### 2.4 Likes and dislikes (learned)
+
+```
+preference(id, subject_kind, subject_id, valence -1..1, confidence 0..1, evidence[], updated_at)
+  subject_kind: action | action_family | location | topic
+```
+
+- They are formed **only in sleep** (§5.5) from outcomes and mood changes recorded in code.
+- They influence:
+  1. **Consequences**: when an action touches a liked or disliked subject, its mood effect is multiplied
+     by `1 + preference_weight × valence × confidence`.
+  2. **Perception**: the menu shows them in words, e.g. *"make a wish: you have enjoyed this before"*.
+  3. **Memory**: experiences involving strong preferences get extra importance.
+- They never remove an action from the menu.
+
+---
+
+## 3. The conscious cycle
+
+### 3.1 Decisions are not activities
+
+- An **activity** is what the creature is doing: an action instance with a start, a planned duration,
+  progress, and a state (`running | finished | interrupted | abandoned`).
+- A **decision** is one LLM call that chooses what to do next. Decisions happen at decision points, and
+  most of them are *"keep doing this"*.
+
+### 3.2 Decision points
+
+| Trigger | When | Options offered |
+|---|---|---|
+| `activity_finished` | The current activity reached its end | Full menu |
+| `event` | A world event was perceived at this location (salience ≥ `event_salience_min`) | Continue, or full menu |
+| `speech` | Someone spoke to the creature (dashboard or future visitors) | Continue, reply (an action), or full menu |
+| `interval` | `decision_interval_seconds` (target 15 s) passed with **no** activity running | Full menu |
+| `check_in` | An activity has run for `check_in_minutes` sim minutes since the last decision | Continue or stop. No full menu, short prompt |
+| `body` | Hunger or energy crossed a band boundary | Continue, or full menu |
+
+Rules:
+- One decision at a time. A trigger that fires while a call is in flight is queued and merged.
+- The interval is a **target**: if the previous call is still running, the next one waits. Nothing is
+  interrupted half-way.
+- While an activity runs and nothing fires, **no LLM calls are made**. The activity simply progresses.
+
+### 3.3 The cycle
+
+```
+trigger ──► build Mind ──► small LLM decides ──► World.execute ──► apply consequences ──► record
+                ▲                                                                          │
+                └──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Mind snapshot** (built by code, passed to the prompt builder, stored in the trace):
+
+```python
+Mind = {
+  "now":          {"sim_time", "part_of_day", "weather"},
+  "location":     {"id", "name", "description", "visible_facts": [...]},      # facts marked visible
+  "perception":   [event texts since the last decision],
+  "body":         {"mood", "energy", "hunger", "words": [...], "derived": "restless"},
+  "activity":     {"action", "elapsed_min", "planned_min", "progress"} | None,
+  "recent":       [last N completed activities with outcomes, from code],
+  "memories":     [recalled long-term memories, k ≤ 5] + [today's notable moments, ≤ 5],
+  "identity":     {"name", "nature", "traits_words", "tendencies", "boundaries"},
+  "options":      [Option],         # what it can do right now, see below
+}
+Option = {"id", "label", "description", "inputs": schema | None,
+          "notes": ["you have enjoyed this before", "you did this a moment ago"]}
+```
+
+`options` = known actions at this location whose conditions hold + `move` to each exit + `inspect` + `sleep`
+(when allowed), minus `core.prohibited_actions`. The list is shuffled with a seed and shown without numbers.
+Usually there are 4–10 options.
+
+**Decision output** (JSON, schema-validated):
+
+```json
+{
+  "action": "make_wish",
+  "inputs": {"wish": "to remember where I came from"},
+  "thought": "The water keeps moving with no wind. If anything here listens, it's this.",
+  "reasoning": "I've been circling the square all morning and I want to ask for something.",
+  "preserve": false
+}
+```
+
+- `thought`: what it thinks, in its own voice. Shown in the diary.
+- `reasoning`: why, in its own voice. Stored and shown on the dashboard.
+- `preserve`: the creature marks this thought as worth keeping. It becomes a core-memory candidate (§5.2).
+- At `check_in`, `action` must be `continue` or `stop`.
+- An invalid output is retried up to `llm_retries` times with the validation error. If it still fails, the
+  creature continues the current activity, or idles if there is none (`idle` is an internal no-op that
+  is never offered). The failure is traced.
+
+### 3.4 Timing budget (GTX 1060 6 GB)
+
+| Call | Model | Target | Frequency |
+|---|---|---|---|
+| Decision | ~4B (`decision_model`) | < 8 s | ≤ 1 per 15 s while idle; much less during activities |
+| Check-in | ~4B | < 4 s | Once per `check_in_minutes` of activity |
+| Embedding | `nomic-embed-text` | < 0.5 s | Per notable experience and per recall |
+| Capability (draw, write) | ~4B | < 20 s | Per activity step that needs one |
+| Sleep stages | ~14B (`sleep_model`) | minutes each | Once per night |
+
+Only one model is loaded at a time while awake. Sleep swaps to the 14B model and swaps back on waking.
+
+---
+
+## 4. World and interactions
+
+### 4.1 Location file
+
+```yaml
+# content/locations/fountain.yaml
+id: fountain
+name: the fountain
+description: >
+  The heart of the square. An old stone fountain stands in a wide basin, its water always
+  faintly moving even when there is no wind.
+exits: [market, clock_tower, garden]
+sheltered: false
+
+facts:                      # world state owned by this location (§4.2)
+  wishes:   {type: list, default: [], visible: summary}   # visible: none | summary | full
+  coins:    {type: int,  default: 14, visible: none}
+
+events:                     # things that can happen here
+  - {id: glint, text: "Something glints deep in the water.", chance_per_hour: 0.4, salience: 0.6}
+
+actions:
+  - id: sit_and_reflect
+    name: sit and reflect
+    description: "Sit on the rim and let your thoughts settle."
+    family: rest
+    discovery: known_on_arrival       # known_on_arrival | hidden | innate
+    duration: {minutes: [10, 30]}
+    continuous: true                  # may span several decisions; check-ins apply
+    per_minute: {energy: +0.002}
+    on_finish:
+      creature: {mood: +0.05}
+      reflection: true                # the prompt invites a deliberate reflection; may set preserve
+
+  - id: make_wish
+    name: make a wish
+    description: "Say a wish to the moving water."
+    family: wish
+    discovery: hidden
+    inspect_hint: "Coins glint in the basin, as if people have wished here before."
+    requires:
+      - {energy_gte: 0.1}
+    inputs:
+      wish: {type: text, max_chars: 200, prompt: "What do you wish for?"}
+    duration: {minutes: [2, 5]}
+    on_finish:
+      world:
+        - {op: append, fact: fountain.wishes,
+           value: {text: "{inputs.wish}", made: "{now}", status: open}}
+      creature: {mood: +0.08}
+      discover: [assess_wishes]
+      remember: {importance: 0.6, text: "I wished at the fountain: {inputs.wish}"}
+
+  - id: assess_wishes
+    name: look over your wishes
+    description: "Think back over what you have wished for here."
+    family: wish
+    discovery: hidden                 # revealed by make_wish, not by inspect
+    requires:
+      - {fact_count_gte: [fountain.wishes, 1]}
+    duration: {minutes: [5, 15]}
+    revisit_key: [fountain.wishes]    # returning is fresh when these facts changed (§6.3)
+    outcomes:                         # weighted variation; the first matching `when` applies
+      - when: {random_lt: 0.15}
+        world: [{op: update_where, fact: fountain.wishes,
+                 match: {status: open}, set: {status: answered}, pick: random_one}]
+        creature: {mood: +0.2}
+        text: "One wish feels lighter, as if something has answered it."
+        remember: {importance: 0.8}
+      - text: "The wishes are still there, waiting."
+        creature: {mood: +0.02}
+```
+
+### 4.2 World state
+
+- The world is **locations + facts + the clock + weather**. There is no object inventory.
+- A fact is a typed value (`int`, `float`, `text`, `bool`, `list`, `map`) addressed as `location.fact`.
+- Global facts (`world.weather`, `world.day`) live in `content/world.yaml`.
+- `visible` decides what the Mind's `visible_facts` shows. `none` facts exist only for conditions and outcomes.
+- **Resources** are facts with a regrowth rule, for example the market stall:
+
+```yaml
+# content/locations/market.yaml (excerpt)
+facts:
+  offerings: {type: int, default: 2, max: 3, visible: summary,
+              regrow: {amount: 1, at_hours: [6, 12]}}
+actions:
+  - id: eat_offering
+    name: eat an offering
+    description: "Take one of the small offerings left at the stall, and eat it."
+    family: eat
+    discovery: known_on_arrival
+    requires: [{fact_gte: [market.offerings, 1]}]
+    duration: {minutes: [5, 10]}
+    on_finish:
+      world: [{op: add, fact: market.offerings, value: -1}]
+      creature: {hunger: -0.45, energy: +0.05, mood: +0.04}
+```
+
+- On reload, the loader adds new facts with their defaults, removes facts that are no longer declared, and
+  **never overwrites a value the creature has changed** (tracked by a `touched` flag).
+
+### 4.3 Action contract
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | yes | Unique across the world |
+| `name`, `description` | yes | What the creature sees |
+| `family` | yes | Groups actions for repetition (§6) and preferences, e.g. `eat`, `rest`, `wish`, `make` |
+| `location` | implicit | The file it is in; `universal.yaml` actions are everywhere |
+| `discovery` | yes | `innate` (in the character sheet), `known_on_arrival` (learned on the first visit), `hidden` (needs `inspect` or a `discover` effect) |
+| `inspect_hint` | for `hidden` + inspectable | The sentence `inspect` reveals |
+| `requires` | no | List of conditions; all must hold to be offered **and** to execute |
+| `inputs` | no | Named inputs the LLM fills in: `text {max_chars}`, `choice {options}`, `int {min,max}` |
+| `duration` | yes | `{minutes: [min, max]}`, seeded random pick |
+| `continuous` | no | `true`: an activity that runs across decisions with check-ins |
+| `per_minute` | no | Creature effects applied while it runs (continuous only) |
+| `on_finish` | one of these | Effects when it completes: `world`, `creature`, `discover`, `remember`, `reflection` |
+| `outcomes` | one of these | Weighted, conditional alternatives to `on_finish`, each with `text` |
+| `on_interrupt` | no | Effects when stopped early (default: a share of `on_finish` creature effects, proportional to progress) |
+| `capability` | no | Name of a code capability (§4.6) that runs as part of the action |
+| `revisit_key` | no | Facts whose change makes a repeat meaningful (§6.3) |
+| `effort` | no | Energy per minute, default from `world.yaml` effort table |
+
+**Conditions** (closed set, each one small code function):
+`energy_gte/lte`, `hunger_gte/lte`, `mood_gte/lte`, `fact_gte/lte/eq`, `fact_count_gte`, `hours`,
+`weather_in`, `knows`, `done_before`, `not_done_since_minutes`, `random_lt` (outcomes only).
+
+### 4.4 Effect operations
+
+World effects are a closed set of operations, each validated against the fact type:
+
+| op | Meaning |
+|---|---|
+| `set` | Set a fact |
+| `add` | Add to a number (clamped to `min`/`max`) |
+| `append` | Append to a list (bounded by `max_len`, oldest dropped) |
+| `update_where` | Update list items matching a pattern (`pick: all \| random_one \| newest`) |
+| `remove_where` | Remove matching list items |
+| `emit_event` | Make an event happen here, now or after a delay |
+
+Creature effects: `mood`, `energy`, `hunger` deltas (clamped). Other effects: `discover: [action ids]`,
+`remember: {importance, text}`, `reflection: true`.
+
+Templates in strings may use `{inputs.x}`, `{now}`, `{location.name}`, `{fact:location.fact}`.
+
+### 4.5 Universal actions
+
+```yaml
+# content/actions/universal.yaml
+- id: move
+  inputs: {to: {type: choice, options: "{exits}"}}
+  duration: {minutes: [3, 8]}
+  # on arrival: actions with discovery known_on_arrival become known; arrival is a perception
+
+- id: inspect
+  description: "Look carefully around here for something you have not noticed."
+  duration: {minutes: [5, 15]}
+  # reveals ONE undiscovered hidden action here that has an inspect_hint, chosen by seeded random
+  # weighted toward ones whose requires hold. Result text = the hint. Nothing left: "Nothing new here."
+  # Repeated inspect with nothing to find is penalised by repetition (§6), not blocked.
+
+- id: sleep
+  requires: [{energy_lte: 0.35}, {hours: [20, 9]}]   # either condition true; configurable
+  # ends waking; starts the sleep cycle (§5)
+```
+
+`inspect` reveals an **interaction**, never an object.
+
+### 4.6 Capabilities (external platform features)
+
+A capability is code. Actions use it by name, and `content/capabilities.yaml` enables it and sets its limits:
+
+```yaml
+draw:
+  enabled: true
+  handler: cat.capabilities.draw          # reuses drawings.py + art.py
+  permissions: {writes_artifacts: true}
+  limits: {per_day: 6, llm_calls_per_use: 1}
+write:
+  enabled: true
+  handler: cat.capabilities.write         # a short piece of writing saved as an artifact
+  limits: {per_day: 10, max_chars: 2000}
+web_search:
+  enabled: false
+  handler: cat.capabilities.web_search
+  permissions: {network_hosts: ["<search api host>"]}
+  limits: {per_day: 5, max_results: 3}
+```
+
+Capability interface:
+
+```python
+class Capability(Protocol):
+    name: str
+    input_schema: dict                                          # merged into the action's inputs
+    def available(self, ctx) -> bool                           # enabled, within limits, permissions present
+    def run(self, ctx, inputs) -> CapabilityResult             # may call an LLM or the network; no DB writes
+CapabilityResult = {"ok": bool, "text": str,                   # what the creature perceives
+                    "artifact": {...} | None,                  # stored by the world, shown on the website
+                    "facts": [world ops] , "creature": {...}}  # extra consequences, validated like any effect
+```
+
+- `run` happens **before** the database transaction, like embeddings today, so a slow call never holds a lock.
+- A capability that is disabled, over its limit, or missing a permission makes its actions unavailable,
+  with the reason in the trace.
+- Adding painting or music = a new capability module plus an action in some location's YAML.
+
+### 4.7 Executing an action
+
+```
+World.execute(decision, mind) -> Resolution
+  1. validate: action is in mind.options; inputs match schema; requires hold now
+  2. if prohibited by core: reject (traced; the creature perceives "You decide against it.")
+  3. start activity (duration pick), or apply immediately if duration ≤ one step
+  4. capability.run (if any), outside the transaction
+  5. in ONE transaction: world ops, creature deltas, discoveries, memory rows, behaviour history row
+Resolution = {status: accepted | rejected | completed, activity_id, text, deltas, discoveries, artifact}
+```
+
+`text` is a plain account written by code, from the action's `text`/`outcomes`. No narrator.
+
+---
+
+## 5. Sleep and memory
+
+### 5.1 Memory stores
+
+| Store | Written by | Contents |
+|---|---|---|
+| `experiences` | Code, every completed or interrupted activity and every perceived event | Facts: action, inputs, outcome text, deltas, location, time, thought |
+| `short_term` | Code, when an experience is notable (big delta, new discovery, strong preference, `preserve`) | Today's notable moments, with an embedding |
+| `long_term` | Sleep only | Distilled memories, with importance, embedding and links to the source experiences |
+| `core` | Sleep only, from `preserve` candidates | Few, never forgotten, always shown in the identity block |
+| `knowledge` | Code (discovery) + sleep (wording) | What it knows it can do (§5.4) |
+
+### 5.2 Sleep stages
+
+Sleep runs the 14B model. It follows the old plan-then-commit pattern: all stages produce a plan, and one
+transaction commits it. If any stage fails, the creature still sleeps, energy restores, and the
+failed stages are retried the next night.
+
+| # | Stage | Input | Output | Who decides |
+|---|---|---|---|---|
+| 1 | Daily consolidation | Today's experiences (code facts), short-term memories, mood curve | A day summary + a ranked list of what mattered | LLM ranks, code bounds the list |
+| 2 | Core memories | Thoughts with `preserve: true` today | Accept ≤ `core_per_night` (default 1) as core memories | LLM chooses, code caps |
+| 3 | Long-term memory | Stage 1 ranking | ≤ `long_term_per_night` memories, each linked to experience ids | LLM writes, code checks the links exist |
+| 4 | Learned actions | Actions discovered today | Knowledge entries in its own words (below) | Code facts, LLM wording |
+| 5 | Preferences | Per subject: count, mean mood delta, outcomes | New/updated likes and dislikes | **Code computes** candidates; LLM may reject or word them |
+| 6 | Character development | Evidence summary (§5.6) | ≤ 1 change proposal | LLM proposes, code validates and clamps |
+| 7 | Maintenance | All long-term memories | Merge near-duplicates (cosine > `dup_threshold`), forget low-importance old memories | Code |
+
+### 5.3 Forgetting
+
+`retention = importance × recency_decay(age) × (1 + recall_count × recall_boost)`. Memories below
+`forget_below` are deleted (not core, not linked to a current character version's evidence).
+
+### 5.4 Learned actions
+
+```
+knowledge(action_id, location_id, discovered_at, discovered_by: innate|arrival|inspect|effect,
+          own_words, times_done, last_done_at, last_outcome)
+```
+
+Example: `make_wish | fountain | day 3 | inspect | "You can make a wish to the fountain's water." | 4 | ...`
+
+- A discovery is usable **right away**, and recorded in knowledge as provisional.
+- Sleep stage 4 confirms it and writes `own_words`.
+- The menu comes from knowledge ∩ world. If an action is removed from the content, its knowledge row stays
+  but it is not offered. If it comes back, it is known again.
+- The creature can be asked *"what can you do?"* and answer from knowledge, not from config.
+
+### 5.5 Preferences from evidence (stage 5)
+
+For each subject with ≥ `pref_min_samples` experiences in the last `pref_window_days`:
+`signal = mean(mood delta attributed to the action) − mean(all mood deltas)`. If
+`|signal| ≥ pref_threshold`, code proposes a preference with that valence. Existing preferences move at most
+`pref_step` per night toward the signal, and decay toward 0 without new evidence.
+
+### 5.6 Character development (stage 6)
+
+```
+Proposal = {kind: add_trait | adjust_trait | add_tendency | adjust_tendency | remove_tendency | background_note,
+            target, new_value, rationale, evidence: [experience or memory ids]}
+```
+
+Code checks, in order:
+1. **Evidence**: ≥ `dev_min_evidence` (default 5) linked experiences, spread over ≥ `dev_min_days` (default 3)
+   different days, and they exist.
+2. **Behaviour**: for tendencies, the behaviour history must support it, e.g. "lingers near water" needs
+   time-at-water-locations above the base rate.
+3. **Conflict**: the change must not contradict `core`. Code checks prohibited/boundary keywords, and a
+   second short LLM call answers yes/no "does this contradict any of these boundaries?". Either one can veto.
+4. **Size**: trait strength changes are ≤ `dev_max_step` (0.05). New traits/tendencies start at 0.2.
+   At most one change per night. A changed trait has a cooldown of `dev_cooldown_days`.
+5. **Apply**: a new character version is written with the proposal, evidence and the verdict of each check.
+
+Rejected proposals are kept, so the dashboard shows what Nit *almost* became.
+
+---
+
+## 6. Repetition and behavioural quality
+
+### 6.1 Behaviour history
+
+```
+behaviour(id, activity_id, action_id, family, location_id, input_signature, revisit_signature,
+          started_at, ended_at, status, restart_of, thought_embedding)
+```
+
+- `input_signature`: normalised inputs (lowercased, whitespace collapsed), or a hash of them.
+- `revisit_signature`: hash of the `revisit_key` facts' values at the start.
+- `restart_of`: set when the same action + input signature starts within `restart_window_minutes` of a
+  **finished** instance. Continuing an activity is one row, never a restart.
+
+### 6.2 Freshness score
+
+For a candidate option, code computes `freshness ∈ [0.1, 1]`:
+
+```
+repeat_action   = decayed count of the same action_id     (half-life repeat_half_life_min)
+repeat_family   = decayed count of the same family        (weight family_weight)
+repeat_target   = decayed count of the same input_signature
+aimless_visit   = returns to a location with no non-move action there last visit
+freshness = clamp(1 − a·repeat_action − b·repeat_family − c·repeat_target − d·aimless_visit, 0.1, 1)
+```
+
+Freshness is used in two places:
+1. **Consequence**: positive mood effects of the action are multiplied by `freshness`. A tired
+   repetition really does feel flat.
+2. **Perception**: below `freshness_note_below`, the option carries a note such as
+   *"you've done this several times already today"*.
+
+Options are never removed for repetition.
+
+### 6.3 Meaningful returns
+
+If an action has `revisit_key` and the revisit signature differs from the last time, `repeat_action` and
+`repeat_target` count as zero. Checking the fountain because a new wish was made is fresh. Checking it
+again when nothing has changed is not.
+
+### 6.4 Repeated words
+
+- **Thoughts**: a new thought whose embedding has cosine > `thought_dup_threshold` with one of the last
+  `thought_window` thoughts is still stored, but adds a mood penalty, and the next prompt shows
+  *"you keep coming back to the same thought"*.
+- **Reflections and written pieces** (`write` capability, sleep summaries): the same check against the last
+  `reflection_window` items. A near-duplicate gets progressively less mood reward, and the sleep stage
+  that produced it is retried once with *"this is close to what you wrote on day N"*.
+
+---
+
+## 7. Models
+
+| Setting | Default | Used for |
+|---|---|---|
+| `decision_model` | `qwen3:4b` | Decisions, check-ins, capability calls |
+| `sleep_model` | `qwen3:14b` | All sleep stages, the conflict check |
+| `embed_model` | `nomic-embed-text` | Memories, thoughts, recall |
+
+- All calls go through `call_json` with a JSON schema (Ollama `format`), retries, and full tracing.
+- The decision prompt has a hard budget (`decision_prompt_tokens`, default 1500). If the Mind does not
+  fit, code drops in this order: older recent activities, lower-scored memories, fact detail. Never the options.
+- If Ollama is offline: activities keep running, decision points idle, and the creature *dozes* as today.
+- `MockBackend` is extended with deterministic decisions so every system above has model-free tests.
+
+---
+
+## 8. Dashboard (rebuilt last)
+
+Built on the same tables, read-only, except dev commands:
+- **Live**: location, activity with progress, mood/energy/hunger graphs, derived condition, last thoughts.
+- **Decision inspector**: for each decision, the Mind snapshot, the prompt, the raw output, validation,
+  resolution and deltas.
+- **Knowledge**: what it knows, where, when and how it learned it.
+- **Character**: version history with evidence, rejected proposals.
+- **Memory**: core / long-term / short-term with links to experiences, forget scores.
+- **Repetition**: freshness per action and family over time.
+- **World**: facts per location (with touched flags), events, capability usage against limits.
+- **Content**: validation result of `content/`, reload button.
+
+---
+
+## 9. Database (new life)
+
+The schema changes too much to migrate a running creature. The rewrite starts **a new life**. The old
+`data/cat.db` is backed up and left in place, and the new engine writes `data/nit.db`.
+
+Tables: `meta`, `state` (mood, energy, hunger, location, sim_time), `facts`, `activities`, `decisions`,
+`experiences`, `short_term`, `long_term`, `core_memories`, `knowledge`, `preferences`,
+`character_versions`, `dev_proposals`, `behaviour`, `artifacts`, `capability_usage`, `sleep_runs`,
+`llm_calls`, `embed_calls`, `traces`.
+
+---
+
+## 10. Build order and test gate per step
+
+| Step | Deliverable | Done when |
+|---|---|---|
+| 1 | Content loader + validators, world state, conditions, effect ops | Every example in §4 loads; bad files fail with file/line; ops are property-tested |
+| 2 | Character versions, state variables, derived conditions | Decay/drift numbers match a table; derived conditions table-driven |
+| 3 | Decision scheduler + Mind builder + decision schema | Scheduler tests with a fake clock: no call during activities except check-ins; interval never interrupts |
+| 4 | `World.execute`, activities, capabilities (draw first) | Execution is atomic; rejected decisions change nothing; capability limits enforced |
+| 5 | Memory stores + sleep stages 1–7 | Each stage tested with the mock; plan/commit all-or-nothing; dev proposal checks reject bad evidence |
+| 6 | Behaviour history + freshness | Scenario tests: continue ≠ restart; meaningful return is fresh; duplicate journal is penalised |
+| 7 | Ollama integration with 4B/14B | A 2-hour real run: measure latency, invalid outputs, option-position bias, eats when hungry |
+| 8 | Dashboard + website | Every Mind and decision explainable from the UI |
+
+---
+
+## 11. Rules in CLAUDE.md this rewrite would overturn
+
+These are decided rules today. They need your explicit yes, and CLAUDE.md gets updated with the code:
+
+- **"Never kill the creature on an update."** §9 starts a new life. The alternative is a one-off converter
+  that carries old long-term memories and the drawings into the new tables, at real cost.
+- **"No config field, prompt or doc may state what the entity is" / "starts with no self-image".** You want
+  Nit to be something at spawn, so `core.nature` states it.
+- **Innate drives / feeding reflex** (`cat/impulses.py`): removed. Code never picks the move (§2.2).
+- **"All tuning numbers live in `config/settings.yaml`"** and **"fixed prompt text lives in `config/prompts.yaml`"**:
+  world content moves to `content/`. Engine tuning stays in `config/settings.yaml`, and prompts sit next to
+  the stage that uses them under `config/prompts/`.
+- **Closed moves from `moves.yaml`**: replaced by location-scoped actions and learned knowledge.
+
+## 12. Open questions for you
+
+1. **Nit's nature**: what Nit is at spawn (form, kind of being, anything about their personality and
+   background you want fixed in `core` versus left mutable).
+2. **Time scale**: is sim time real time (one real day = one creature day, so ~8 real hours asleep), or
+   accelerated (e.g. `time_scale: 4`)? This sets how often it eats, sleeps and how long the sleep model has.
+3. **Locations for the first content pack**: keep the current square (fountain, market, clock tower,
+   nook, garden, notice board, stationer's back room, alley) and convert it, or start smaller (fountain + market) and grow?
+4. **Web search**: enable it in the first version? It needs an API key and an allowed host.
+5. **Speech**: should you (or website visitors) be able to talk to Nit in the first version, or later?
+6. **New life**: is starting a fresh database acceptable (old one kept as a backup)?
