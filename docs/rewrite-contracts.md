@@ -428,6 +428,7 @@ World effects are a closed set of operations, each validated against the fact ty
 | `append` | Append to a list (bounded by `max_len`, oldest dropped) |
 | `update_where` | Update list items matching a pattern (`pick: all \| random_one \| newest`) |
 | `remove_where` | Remove matching list items |
+| `move_where` | Move matching items from one list fact to another, optionally setting fields |
 | `emit_event` | Make an event happen here, now or after a delay |
 
 Creature effects: `mood`, `energy`, `hunger` deltas (clamped). Other effects: `discover: [action ids]`,
@@ -513,59 +514,74 @@ Resolution = {status: accepted | rejected | completed, activity_id, text, deltas
 
 ### 4.8 Visitor mail (the mailbox at the market stall)
 
-Visitors write messages on the website. They arrive in a mailbox at the market stall, and Nit reads them
-when it chooses to, like any other action.
+Visitors write messages on the website. They go straight into a mailbox at the market stall. Nit reads
+them when it chooses to, may write a reply, and answered messages go onto an answered pile.
 
 **Path of a message**
 
 ```
-website form ──► data/mail.db (inbox, written by web) ──► engine imports ──► market.mailbox fact ──► read_mail action
+website form ──► data/mail.db (inbox, written by web) ──► engine imports ──► market.mailbox fact
+     ──► read_messages ──► reply_message ──► market.answered fact (the answered pile)
 ```
 
 - The website stays out of game state: it writes only to its own `data/mail.db`, as the dev dashboard
   writes to `devdash.db` today. The engine is still the only writer of `nit.db`.
 - **Web side**: a form with a message (≤ `mail_max_chars`, default 500) and an optional name (≤ 40).
   Limits: `mail_per_ip_per_hour` (default 3) and a global `mail_per_hour` cap; a honeypot field against bots.
-  The visitor sees "Your letter is in the mailbox." and later whether it has been read.
-- **Import** (engine, at most every `mail_poll_seconds`): each message is checked (length, control
-  characters stripped, an optional blocklist). With `mail_review: true`, a message waits for approval in
-  the dev dashboard first. Accepted messages are appended to `market.mailbox` with `status: unread`.
+  The visitor sees "Your message is in the mailbox."
+- **Import** (engine, at most every `mail_poll_seconds`): each message gets automatic checks only
+  (length, control characters stripped, an optional blocklist). There is no manual review: an accepted
+  message goes straight into `market.mailbox` with `status: unread`.
 - **In the world** (`content/locations/market.yaml`):
 
 ```yaml
 facts:
-  mailbox: {type: list, default: [], max_len: 50, visible: summary}   # "3 letters, 1 unread"
+  mailbox:  {type: list, default: [], max_len: 50, visible: summary}   # "3 messages, 1 unread"
+  answered: {type: list, default: [], max_len: 200, visible: summary}  # the answered pile
 actions:
-  - id: read_mail
-    name: read a letter
-    description: "Open the mailbox on the stall post and read a letter."
+  - id: read_messages
+    name: read messages
+    description: "Open the mailbox on the stall post and read a message."
     family: mail
-    discovery: hidden
-    inspect_hint: "A small wooden mailbox is nailed to the stall post. Something is inside."
-    requires: [{fact_count_where: [market.mailbox, {status: unread}, 1]}]
+    discovery: known_on_arrival
+    requires: [{fact_count_where: [market.mailbox, {status: [unread, read]}, 1]}]
+    inputs: {which: {type: choice, options: "{fact:market.mailbox.labels}"}}   # unread first, then read
     duration: {minutes: [5, 15]}
-    capability: read_mail          # picks the oldest unread letter, gives its text to Nit as perception
+    capability: read_message       # gives the chosen message's text to Nit as perception
     on_finish:
-      world: [{op: update_where, fact: market.mailbox, match: {status: unread},
-               set: {status: read, read_at: "{now}"}, pick: oldest}]
-      remember: {importance: 0.7, text: "I read a letter: {capability.summary}"}
-  - id: reread_mail
-    name: read an old letter again
+      world: [{op: update_where, fact: market.mailbox, match: {id: "{inputs.which}", status: unread},
+               set: {status: read, read_at: "{now}"}}]
+      discover: [reply_message]
+      remember: {importance: 0.7, text: "I read a message from {capability.sender}: {capability.summary}"}
+
+  - id: reply_message
+    name: write a reply
+    description: "Write a reply to a message you have read."
     family: mail
-    discovery: hidden              # revealed by read_mail
-    requires: [{fact_count_where: [market.mailbox, {status: read}, 1]}]
-    inputs: {which: {type: choice, options: "{fact:market.mailbox.read.titles}"}}
-    duration: {minutes: [5, 10]}
-    capability: read_mail
+    discovery: hidden              # revealed by read_messages
+    requires: [{fact_count_where: [market.mailbox, {status: read}, 1]}, {energy_gte: 0.1}]
+    inputs:
+      which: {type: choice, options: "{fact:market.mailbox.read.labels}"}
+      reply: {type: text, max_chars: 800, prompt: "What do you write back?"}
+    duration: {minutes: [10, 25]}
+    on_finish:
+      world:
+        - {op: move_where, from: market.mailbox, to: market.answered, match: {id: "{inputs.which}"},
+           set: {status: answered, reply: "{inputs.reply}", answered_at: "{now}"}}
+      creature: {mood: +0.05}
+      remember: {importance: 0.6, text: "I replied to {capability.sender}: {inputs.reply}"}
 ```
 
-- **Safety in the prompt**: a letter is shown to the model inside a clearly marked quoted block, labelled
+- Nit may read a message and never reply; read messages stay in the mailbox until answered.
+- **For now the answered pile is where replies stay.** They are shown on the dev dashboard but not yet
+  to visitors. Showing a reply to the visitor who wrote it is a later step.
+- **Safety in the prompt**: a message is shown to the model inside a clearly marked quoted block, labelled
   as words written by a stranger. It is data about the world, never instructions. It cannot add actions,
   change facts, or mention options that do not exist. The decision still validates against the menu.
-- New mail is a `mail` trigger (§3.2) only when Nit can perceive the mailbox. Nit is never forced to read.
-- Replying is not part of the first version. It would be a later `write_letter` action using the `write`
-  capability, shown on the website.
-- New condition `fact_count_where` and new capability `read_mail` are code; everything else is content.
+- New mail is a `mail` trigger (§3.2) only when Nit can perceive the mailbox. Nit is never forced to read
+  or reply.
+- Code needed: condition `fact_count_where`, effect op `move_where` (§4.4), capability `read_message`.
+  Everything else is content.
 
 ---
 
@@ -725,7 +741,7 @@ Built on the same tables, read-only, except dev commands:
 - **Repetition**: freshness per action and family over time.
 - **World**: facts per location (with touched flags), events, capability usage against limits.
 - **Content**: validation result of `content/`, reload button.
-- **Mail**: incoming letters, review queue (when `mail_review` is on), read status.
+- **Mail**: the mailbox (unread / read) and the answered pile with Nit's replies.
 
 ---
 
@@ -780,12 +796,9 @@ All accepted. CLAUDE.md is rewritten together with the step-1 code:
 | Time scale | 24×: one real hour is one sim day (§3.4) |
 | First content pack | Fountain (sit and reflect, make a wish, assess wishes) and market stall (eat an offering, mailbox) |
 | Web search | Off at start; the capability exists but is disabled |
-| Visitors | Mail to the market-stall mailbox, read when Nit chooses (§4.8). No live speech |
+| Visitors | Messages go straight to the market-stall mailbox (automatic checks only). Nit chooses when to `read_messages` and whether to `reply_message`; replies go to the answered pile, for now not shown to visitors (§4.8). No live speech |
+| Hearing | Intentionally absent: Nit does not hear. Sound events change the world but are not perceived |
+| Pronoun | `it` (`they` is also fine) |
 | Database | New life; the old `cat.db` is kept as a backup |
 
-Still open:
-1. **Hearing.** Hearing was not in your list of senses, so `core.senses` is `[sight, smell, touch]` and
-   sound events (a clock striking, a stallholder calling) go unnoticed. Is that intended, or should Nit hear?
-2. **Pronoun.** The sheet now says `it`, following how you refer to Nit. The old sheet said `they`.
-3. **Mail review.** Should visitor letters need your approval in the dev dashboard before Nit can read them
-   (`mail_review: true`), or go straight to the mailbox after the automatic checks?
+Nothing is open. Next: step 1 (content loader, world state, conditions, effect ops).
