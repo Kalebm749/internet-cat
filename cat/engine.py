@@ -366,7 +366,8 @@ class Engine:
                 # an impulse is the fast path: rolled BEFORE the brain, so when it fires there is no brain call
                 # and nothing it would have thought or felt is recorded against a move it did not choose
                 menu_now = self._menu()
-                impulse = (impulses.feeding_reflex(cfg, st["needs"], menu_now, f"{now}|{st['area']}")
+                impulse = (impulses.drive(cfg, self.conn, self.world, st["needs"], menu_now, st["area"],
+                                          f"{now}|{st['area']}")
                            or impulses.take_over(cfg, anx_prev, menu_now, f"{now}|{st['area']}"))
                 if impulse:                  # anxiety took the decision over: the world still only offers this menu
                     b = {"move": impulse["move"], "entry": impulse["entry"], "reaction": "", "thought": "",
@@ -444,7 +445,8 @@ class Engine:
             if sliced:
                 new_activity = {"label": b["move"].label, "key": b["move"].key, "why": b["why"], "total": total,
                                 "remaining": total - step, "started_at": now,
-                                "empty_at_start": [k for k, v in needs.items() if character.need_band(v, cfg) == "empty"]}
+                                "empty_at_start": [k for k, v in needs.items() if character.need_band(v, cfg) == "empty"],
+                                "low_at_start": [k for k, v in needs.items() if character.need_band(v, cfg) in ("low", "empty")]}
                 if n.get("drawing") and n["does"] in ("draw_new", "draw_more"):     # so an interruption can cut it
                     made = next((c.get("object_id") for c in fx.applied if c.get("op") in ("create", "set_state")), None)
                     new_activity["drawing_object"] = made
@@ -582,6 +584,10 @@ class Engine:
         if a["interrupt_on_empty_need"]:
             empty = {k for k, v in st["needs"].items() if character.need_band(v, self.cfg) == "empty"}
             if empty - set(act.get("empty_at_start", [])):
+                return "need"
+        if a.get("interrupt_on_low_need"):              # a need newly low comes before what it was doing
+            low = {k for k, v in st["needs"].items() if character.need_band(v, self.cfg) in ("low", "empty")}
+            if low - set(act.get("low_at_start", act.get("empty_at_start", []))):
                 return "need"
         return None
 

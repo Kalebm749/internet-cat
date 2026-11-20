@@ -106,6 +106,7 @@ activity:
   carry_interval_seconds: 10   # real seconds between those ticks (a decision still waits tick_interval_seconds)
   interrupt_on_events: true    # any event (hand-written, injected or the director's) ends it
   interrupt_on_empty_need: true   # a need newly dropping into the empty band ends it
+  interrupt_on_low_need: true  # ... and so does one newly dropping into the low band (needs come before what it was doing)
 
 # --- anxiety: the pressure it is under, 0..100. Low needs and tiredness push it up; being fed and rest ease it ---
 anxiety:
@@ -144,14 +145,15 @@ drawing:
     paints: {red: "#b8402e", orange: "#d9822b", yellow: "#e2b93b", green: "#5d8a3a", teal: "#2f8a83",
              blue: "#3a5f9e", violet: "#6d4b8f", pink: "#d47a92", brown: "#7a5232", white: "#f7f3ea"}   # `paints` is here
 
-# --- reflexes: innate, and the ONE place code picks a move because of a need. Rolled before the brain; traced
-#     like an impulse and shown in the diary (prompts.yaml impulse.<name>). The first real run never ate at all. ---
-reflexes:
-  feeding:
-    enabled: true
-    bands: [empty]             # sustenance (sustenance_need) in one of these bands ...
-    chance: 0.35               # ... and something edible on the menu: this chance per decision ...
-    verbs: [eat, nibble, savour, gobble]   # ... that it eats with one of these (consume verbs only)
+# --- drives: innate, and the ONE place code picks a move because of a need. When a need is LOW or EMPTY, its drive
+#     may take the decision before the brain is asked: the move on the menu that feeds it most. Hungry with nothing
+#     to eat here, it forages (towards where it has eaten or seen food; else somewhere it has not been for longest).
+#     Only the most pressing need acts. Traced like an impulse, shown in the diary (prompts.yaml impulse.drive*). ---
+drives:
+  enabled: true
+  needs: [sustenance, joy, wonder, peace, curiosity]   # needs that have a drive (ids from character.yaml)
+  chance: {low: 0.25, empty: 0.6}   # per decision, by the most pressing need's band; okay and full never act
+  forage: true                 # sustenance with nothing to eat here: go looking
 
 # --- need bands: a level becomes a band; the brain sees words, never numbers ---
 need_bands: {empty_below: 15, low_below: 40, okay_below: 75}   # below empty_below => empty; ... ; else full

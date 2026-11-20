@@ -249,6 +249,39 @@ def keepsakes_view(conn, cfg: Config, offset: int = 0, limit: int | None = None)
 
 
 # ---------- diary ----------
+VOWELS = set("aeiou")
+REFLEXIVE = {"they": ("themself", "their"), "she": ("herself", "her"), "he": ("himself", "his"), "it": ("itself", "its")}
+
+
+def _gerund(word: str) -> str:
+    """watch -> watching, sit -> sitting, ease -> easing, lie -> lying, go -> going."""
+    w = word.lower()
+    if w.endswith("ie"):
+        return word[:-2] + "ying"
+    if w.endswith("e") and not w.endswith(("ee", "ye", "oe")) and len(w) > 2:
+        return word[:-1] + "ing"
+    if (len(w) <= 4 and len(w) >= 3 and w[-1] not in VOWELS | set("wxy") and w[-2] in VOWELS
+            and w[-3] not in VOWELS):
+        return word + word[-1] + "ing"
+    return word + "ing"
+
+
+def doing_phrase(cfg: Config, label: str) -> str:
+    """A move's label as what it is doing: "watch the ripples ..." -> "watching the ripples ...", with "yourself" and
+    "your" in its own pronoun ("hum a tune to yourself" -> "humming a tune to themself")."""
+    if not label:
+        return ""
+    first, _, rest = label.partition(" ")
+    refl, poss = REFLEXIVE.get(cfg.character.get("pronoun", "they"), REFLEXIVE["they"])
+    verbs = {v["label"].split()[0].lower() for v in cfg.moves["verbs"].values()} | {"do", "listen", "wait", "wonder"}
+    words = rest.split()
+    for i, w in enumerate(words):                      # "stay still and do nothing" -> "... and doing nothing"
+        if i and words[i - 1] == "and" and w.lower() in verbs:
+            words[i] = _gerund(w)
+    rest = " ".join(refl if w == "yourself" else poss if w == "your" else w for w in words)
+    return (_gerund(first) + (" " + rest if rest else "")).strip()
+
+
 def _world_change_text(cfg: Config, c: dict) -> str | None:
     label = c.get("label") or c.get("name") or c.get("object_id") or "something"
     op = c.get("op")
@@ -271,6 +304,10 @@ def _world_change_text(cfg: Config, c: dict) -> str | None:
         return f"put down {label}"
     if op == "move_object":
         return f"moved {label} to {_area_name(cfg, c.get('area', ''))}"
+    if op == "move_self":
+        return f"→ {label}"
+    if op == "set_state" and c.get("key") == "sittings":
+        return f"added to {label}"
     return None   # move_self / set_state: not worth a tag
 
 
@@ -307,7 +344,13 @@ def _tick_entry(conn, cfg: Config, first: datetime, r: sqlite3.Row) -> dict:
                            (r["id"], nxt if nxt is not None else 2 ** 62)).fetchone()[0]
     why = (r["intent"] or "").strip()
     entry = ((r["entry"] or "") if "entry" in r.keys() else "").strip()
+    mk = (r["move_key"] if "move_key" in r.keys() else None) or ""
+    if mk.startswith("work_on:") and mk.split(":", 1)[1].isdigit():   # progress on a project
+        pr = _safe(conn, lambda c: c.execute("SELECT title FROM projects WHERE id=?", (int(mk.split(":", 1)[1]),)).fetchone(), None)
+        if pr:
+            wc.append({"op": "work_on", "label": pr["title"], "text": f"worked on {pr['title']}"})
     return {"type": "tick", "key": f"t{r['id']}", "id": r["id"], "span": span,
+            "doing": doing_phrase(cfg, r["action"] or ""),
             "why": why, "entry": entry,
             "why_text": f"because: {why}" if (why and not entry) else "",
             "carried": carried,

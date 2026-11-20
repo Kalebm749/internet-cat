@@ -12,7 +12,7 @@ Read-only (the database is opened readonly, like the website). Nothing here call
   choices    most picked moves, how varied they are (entropy), same move twice in a row, impulses,
              places it spent its decisions in
   eating     brain decisions made while hungry (its hunger lines in the prompt), how often food was on the menu
-             then, and how often it ate by choice; meals the feeding reflex took over
+             then, and how often it ate by choice; meals a drive took over
   needs      time in each band per need, how often some need is empty, anxiety and mood
   inner      what it has built up: memories, preferences, tendencies, self-image, habits, projects, nights
 
@@ -151,7 +151,7 @@ def eating_section(conn, cfg) -> dict:
     meals = [r for r in conn.execute("SELECT move_key, intent FROM ticks WHERE kind='tick' AND move_key IS NOT NULL")
              if r["move_key"].split(":")[0] in eat_verbs]
     out["meals"] = len(meals)
-    out["reflex_meals"] = sum(1 for r in meals if (r["intent"] or "") == "an impulse (feeding)")
+    out["reflex_meals"] = sum(1 for r in meals if (r["intent"] or "").startswith("an impulse (drive"))
     return out
 
 
@@ -238,7 +238,7 @@ def report(m: dict) -> str:
          f"  hungry: {ea['hungry']['decisions']} brain decisions, food on the menu in {ea['hungry']['food_offered']}, "
          f"ate by choice {ea['hungry']['ate']}; not hungry: {ea['not_hungry']['decisions']}, food on the menu in "
          f"{ea['not_hungry']['food_offered']}, ate {ea['not_hungry']['ate']}",
-         f"  meals in all: {ea['meals']}, of which the feeding reflex took over {ea['reflex_meals']}",
+         f"  meals in all: {ea['meals']}, of which a drive took over {ea['reflex_meals']}",
          "== needs (share of ticks in each band)"]
     for nid, d in n["bands_pct"].items():
         L.append(f"  {nid:<14}" + ", ".join(f"{bb} {v:3.0f}%" for bb, v in d.items()))

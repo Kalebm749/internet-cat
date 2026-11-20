@@ -125,11 +125,11 @@ A journal page. Entries are newest first, grouped under **day headers** ("Wednes
 Each **tick entry**:
 ```
 7:20 pm · the park                                       ⟵ small, ink-soft
-climbs the old oak to watch the sunset                   ⟵ action, Lora italic
-You climbed the old oak.                                 ⟵ outcome (code's plain account), Lora
-  "Up high. The light went orange while I waited."     ⟵ its journal entry, written after, Caveat, --ink
-  joy ▲  peace ▼                                         ⟵ need changes, small chips
+watching the ripples in the mysterious fountain          ⟵ what it is doing, small italic (`doing`, from the move)
+  The water moved, but nothing came of it.             ⟵ its journal entry: the main text, large, Caveat
+  joy ▲  → the garden  worked on …                       ⟵ need changes, movement, projects, world changes
 ```
+The plain outcome text ("You watched …") is not shown: it is what the brain and memory use. Without an entry the reason it gave ("because: …") stands in.
 - **World events** that happened that tick show as a margin note above the entry: small italic, a leaf/dot marker, e.g. *It starts to drizzle.*
 - **World changes** (moved, created, consumed objects) show as tiny tags: `+ fort (created)`, `− sardine (eaten)`.
 - **Dozing ticks** collapse into a single line: "dozed from 6:02 pm to 6:40 pm (brain offline)".

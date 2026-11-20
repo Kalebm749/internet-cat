@@ -24,7 +24,7 @@ def town(tmp_path):
     c.settings["activity"]["enabled"] = False
     c.settings["director"]["enabled"] = False
     c.settings["moves"].update(shuffle=False, max_offered=500)      # every move on the menu, in file order
-    c.settings["reflexes"]["feeding"]["enabled"] = False
+    c.settings["drives"]["enabled"] = False
     c.world["events"] = []
     return c
 

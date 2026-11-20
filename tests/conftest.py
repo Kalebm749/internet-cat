@@ -23,7 +23,7 @@ def cfg(tmp_path):
     c.settings["anxiety"]["enabled"] = False       # test_anxiety turns it on
     c.settings["activity"]["enabled"] = False       # most tests want one decision per tick; test_activity turns it on
     c.settings["moves"]["shuffle"] = False          # most tests read the menu in file order; test_moves checks the shuffle
-    c.settings["reflexes"]["feeding"]["enabled"] = False   # test_reflex turns it on
+    c.settings["drives"]["enabled"] = False         # test_reflex turns them on
     return c
 
 
