@@ -20,6 +20,7 @@ def cfg(tmp_path):
     c = load_config(d)
     c.settings["gain_values"] = {"0": 0, "+": 15, "++": 30}      # tests keep the original bucket sizes
     c.settings["db_path"] = str(tmp_path / "cat.db")
+    c.settings["anxiety"]["enabled"] = False       # test_anxiety turns it on
     c.settings["activity"]["enabled"] = False       # most tests want one decision per tick; test_activity turns it on
     return c
 

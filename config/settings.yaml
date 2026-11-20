@@ -101,6 +101,25 @@ activity:
   interrupt_on_events: true    # any event (hand-written, injected or the director's) ends it
   interrupt_on_empty_need: true   # a need newly dropping into the empty band ends it
 
+# --- anxiety: the pressure it is under, 0..100. Low needs and tiredness push it up; being fed and rest ease it ---
+anxiety:
+  enabled: true
+  start: 10
+  band_points: {empty: 20, low: 8}         # the level it heads for: each need in that band adds these points
+  energy_points: {"-25": 15, "0": 5}       # ... and so does tiredness: energy below -25 adds 15, below 0 adds 5
+  rise_per_hour: 14                        # sim points per hour it climbs toward its target ...
+  fall_per_hour: 8                         # ... and eases back when the target is lower (x sleep_fall_multiplier asleep)
+  sleep_fall_multiplier: 2.0
+  mood_weight: 0.25                        # mood points lost per anxiety point (100 anxiety = -25 mood)
+  decay_pressure: 0.25                     # needs already low or empty decay up to this much faster at anxiety 100
+  sleep_restore_penalty: 0.4               # at anxiety 100, sleep restores this much less energy
+  words: {25: "", 50: uneasy, 75: on edge, 101: frantic}   # anxiety -> word (below each key); "" = not mentioned
+  impulse_above: 40                        # above this, each decision may be taken over by an impulse
+  impulse_max_chance: 0.5                  # chance of an impulse at anxiety 100 (rising from 0 at impulse_above)
+  impulses:                                # what an impulse does: it takes over with one of the listed moves
+    restless: {weight: 3, verbs: [go, pace, fidget, search_around, wander_edge, follow_sound]}
+    freeze: {weight: 1, verbs: [wait, breathe, listen, hide_in]}
+
 # --- need bands: a level becomes a band; the brain sees words, never numbers ---
 need_bands: {empty_below: 15, low_below: 40, okay_below: 75}   # below empty_below => empty; ... ; else full
 max_pressing_needs: 2          # the brain's prompt shows the expressions of at most this many needs

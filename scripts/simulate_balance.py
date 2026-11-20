@@ -99,12 +99,12 @@ def run(config_dir, policy: str, seed: int, ticks: int) -> dict:
         e = Engine(cfg, b, rng=random.Random(seed))
         holder["engine"] = e
         e.run(ticks=ticks, interval=0)
-        rows = e.conn.execute("SELECT kind, needs_after, energy_after FROM ticks ORDER BY id").fetchall()
+        rows = e.conn.execute("SELECT kind, needs_after, energy_after, mood_after FROM ticks ORDER BY id").fetchall()
         sleeps = e.conn.execute("SELECT COUNT(*) FROM sleep_log").fetchone()[0]
         decisions = sum(1 for r in rows if r["kind"] == "tick")
         e.conn.close()
     bands = {n: {k: 0 for k in character.BANDS} for n in cfg.character["needs"]}
-    energy, any_empty, n = [], 0, 0
+    energy, any_empty, n, anx = [], 0, 0, []
     for r in rows:
         if r["kind"] in ("doze", "catchup"):
             continue
@@ -116,12 +116,15 @@ def run(config_dir, policy: str, seed: int, ticks: int) -> dict:
             bands[nid][band] += 1
             empty = empty or band == "empty"
         any_empty += empty
+        anx.append(float((json.loads(r["mood_after"]) or {}).get("anxiety", 0.0)))
         if r["energy_after"] is not None:
             energy.append(r["energy_after"])
     n = max(n, 1)
     return {"bands": {k: {b: v / n for b, v in d.items()} for k, d in bands.items()},
             "any_empty": any_empty / n, "energy": statistics.mean(energy) if energy else None,
-            "sleeps": sleeps, "decisions": decisions, "ticks": n}
+            "sleeps": sleeps, "decisions": decisions, "ticks": n,
+            "anxiety": statistics.mean(anx) if anx else 0.0,
+            "anxious": (sum(1 for a in anx if a > cfg.settings["anxiety"]["impulse_above"]) / len(anx)) if anx else 0.0}
 
 
 def merge(results: list[dict]) -> dict:
@@ -129,6 +132,8 @@ def merge(results: list[dict]) -> dict:
            "energy": statistics.mean(r["energy"] for r in results if r["energy"] is not None) if any(
                r["energy"] is not None for r in results) else None,
            "sleeps": statistics.mean(r["sleeps"] for r in results),
+           "anxiety": statistics.mean(r["anxiety"] for r in results),
+           "anxious": statistics.mean(r["anxious"] for r in results),
            "decisions": statistics.mean(r["decisions"] for r in results),
            "ticks": statistics.mean(r["ticks"] for r in results)}
     for nid in results[0]["bands"]:
@@ -141,7 +146,8 @@ def report(policy: str, m: dict) -> str:
          f"{m['sleeps']:.1f} sleeps, mean energy {m['energy'] if m['energy'] is None else round(m['energy'], 1)})"]
     for nid, d in m["bands"].items():
         L.append(f"  {nid:<14}" + ", ".join(f"{b} {d[b] * 100:3.0f}%" for b in character.BANDS))
-    L.append(f"  some need empty: {m['any_empty'] * 100:.0f}% of the time")
+    L.append(f"  some need empty: {m['any_empty'] * 100:.0f}% of the time; mean anxiety {m['anxiety']:.0f}, "
+             f"above the impulse threshold {m['anxious'] * 100:.0f}% of the time")
     return "\n".join(L)
 
 

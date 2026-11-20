@@ -186,6 +186,8 @@
     {% for nid, pts in i.terms.items() %}<tr><td>{{ d.need_labels.get(nid, nid) }}</td><td>{{ i.bands[nid] }}</td><td>{{ pts }}</td></tr>{% endfor %}
     <tr><td>event nudge (decaying)</td><td>{{ i.event_nudge }}</td><td>{{ i.event_points }}</td></tr>
     <tr><td>brain's own feeling: <b>{{ i.feeling }}</b></td><td></td><td>{{ i.feeling_points }}</td></tr>
+    {% if i.anxiety is defined %}<tr><td>anxiety: <b>{{ i.anxiety }}</b> (was {{ i.anxiety_before if i.anxiety_before is defined else '–' }})</td><td></td><td>{{ i.anxiety_points }}</td></tr>{% endif %}
+    {% if i.impulse %}<tr><td>impulse took over: <b>{{ i.impulse.impulse }}</b> → {{ i.impulse.move }} (chance {{ i.impulse.chance }})</td><td></td><td></td></tr>{% endif %}
     <tr><td colspan="2"><b>mood</b> = sum, clamped to −50..50</td><td><b>{{ i.unclamped }} → {{ m.value if m.value is not none else m.valence }}</b></td></tr>
     <tr><td colspan="2"><b>word</b> (above {{ i.thresholds.word_threshold }}: content; below −{{ i.thresholds.word_threshold }}: low; otherwise calm)</td><td><b>{{ m.word }}</b></td></tr>
   </table>

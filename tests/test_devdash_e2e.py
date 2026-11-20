@@ -146,7 +146,7 @@ def test_tick_detail_explains_every_diary_entry_the_public_site_shows(world):
         assert (mm["word"], mm["value"]) == (t["mood_after"]["word"], t["mood_after"]["value"])
         i = mm["inputs"]
         assert max(-50, min(50, i["unclamped"])) == pytest.approx(mm["value"], abs=0.06)
-        assert (sum(i["terms"].values()) + i["event_points"] + i["feeling_points"]
+        assert (sum(i["terms"].values()) + i["event_points"] + i["feeling_points"] + i.get("anxiety_points", 0)
                 == pytest.approx(i["unclamped"], abs=2e-3))
         # world changes tags come from the effects that were accepted (plus event spawns)
         accepted = [x for x in d["effects"] if x["accepted"]]

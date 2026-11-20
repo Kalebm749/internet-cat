@@ -35,6 +35,7 @@ brain:
     self_image: "What you currently think you are (your self-image): {self_image}"   # {self_image}
     self_image_empty: "Your self-image is empty: you have no picture yet of what you are or whether you have a form."
     tendencies: "How you have found yourself tending to be: {tendencies}."       # {tendencies}
+    anxiety: "You feel {word}."                            # {word}: only when anxiety is above the calm band
     tendency_low: "a little {name}"                          # {name}: a faint tendency
     tendency_mid: "{name}"                                   # {name}
     tendency_high: "very {name}"                             # {name}: a strong tendency
@@ -114,6 +115,11 @@ director:
   none_events: "(nothing yet)"
   none_actions: "(nothing yet)"
   stale_note: "The entity has been in this place for a while, doing much the same things. A small change here would be welcome."
+
+impulse:                                                   # first-person lines when an impulse takes over a decision
+  default: "I did not stop to think about it. I just did it."
+  restless: "I could not sit still, and before I had thought it through I was already doing this."
+  freeze: "Everything felt like too much, so I stopped and held still."
 
 habits:
   fallback: "You tend to {label} in the {part}."                 # {label} {part}; used when the model gives no line
