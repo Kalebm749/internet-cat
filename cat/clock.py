@@ -67,3 +67,9 @@ def part_of_day(dt: datetime) -> str:
     if h < 21:
         return "evening"
     return "night"
+
+
+def now_real() -> str:
+    """The real wall-clock time, to the second (for real_time columns and logs)."""
+    from datetime import datetime as _dt
+    return _dt.now().isoformat(timespec="seconds")

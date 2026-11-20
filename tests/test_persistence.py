@@ -41,6 +41,11 @@ def test_an_older_world_is_updated_without_losing_the_life(town):
         e.conn.execute("UPDATE objects SET name='the old stall' WHERE id='stall'")
         e.conn.execute("DELETE FROM objects WHERE id='nest'")
         db.set_meta(e.conn, "schema_version", 1)
+        e.conn.execute("DROP TABLE known_properties")               # from before properties were hidden
+        e.conn.execute("ALTER TABLE experiences DROP COLUMN needs_score")
+        e.conn.execute("INSERT INTO ticks(kind,sim_time,real_time,area,action,move_key) VALUES('tick','2026-11-18T07:00','r','garden',"
+                       "'play with a loose ball of yarn','play:yarn')")
+        db.set_meta(e.conn, "knowledge_backfilled", "")
     lived = e.conn.execute("SELECT COUNT(*) FROM ticks").fetchone()[0]
     e.conn.close()
 
@@ -51,6 +56,8 @@ def test_an_older_world_is_updated_without_losing_the_life(town):
     assert e2.world.objects["stall"]["name"] == "the bread stall"       # the file decides the world's things
     assert e2.conn.execute("SELECT COUNT(*) FROM ticks").fetchone()[0] == lived   # its life is all there
     assert db.schema_version(e2.conn) == db.SCHEMA_VERSION
+    assert "toy" in e2._known()["a loose ball of yarn"]                 # what it did before still taught it
+    e2.tick()                                                           # and the new columns are written
     backups = list((town.db_path.parent / "backups").glob("cat-*-pre-update.db"))
     assert backups                                                      # and a copy was taken first
     import sqlite3

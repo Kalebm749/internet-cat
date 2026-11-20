@@ -110,3 +110,61 @@ def test_the_journal_starts_from_how_it_is(town):
     assert "comes before anything else" in user
     words, severe = brain.state_words(town, {k: 80.0 for k in needs}, 30.0, {"anxiety": 0.0})
     assert words == [] and not severe
+
+
+def test_a_nap_rests_but_the_nights_work_waits_for_night_or_a_long_gap(town):
+    e = engine(town)
+    from cat import db
+    assert e._cycle_due("2026-11-18T13:00")                                     # never had one: due
+    db.set_meta(e.conn, "last_cycle_sim_time", "2026-11-18T02:00")
+    assert not e._cycle_due("2026-11-18T13:00")                                 # an afternoon nap
+    assert e._cycle_due("2026-11-18T22:00")                                     # night
+    assert e._cycle_due("2026-11-19T13:00")                                     # a day gone by without one
+
+
+def test_properties_are_hidden_until_found_and_its_record_is_shown_on_the_menu(town):
+    e = engine(town)
+    yarn = dict(e.world.objects["yarn"])
+    assert "toy" not in brain._obj(yarn, e._known())                            # not known yet
+    mv = M.Move("m1", "examine:yarn", "examine", "yarn", yarn["name"], "examine a loose ball of yarn")
+    learned = e._learned(mv, {"target": yarn}, "2026-11-18T09:00")
+    assert {k["tag"] for k in learned} == set(yarn["tags"])                     # looking closely shows all
+    with e.conn:
+        for k in learned:
+            e.conn.execute("INSERT INTO known_properties(name,tag,learned_sim_time,how) VALUES(?,?,?,?)",
+                           (k["name"], k["tag"], "2026-11-18T09:00", k["how"]))
+        for i in range(3):                                                       # playing with it went badly
+            e.conn.execute("INSERT INTO experiences(tick_id,sim_time,subject_kind,subject_key,subject_name,score,"
+                           "note,needs_score) VALUES(?,?,?,?,?,?,?,?)", (i, "s", "move", "play:yarn", "x", -4, "", -4))
+    assert "toy" in brain._obj(yarn, e._known())
+    play = M.Move("m2", "play:yarn", "play", "yarn", yarn["name"], "play with a loose ball of yarn")
+    assert e._history_notes([play])["play:yarn"] == "it went badly 3 of the last 3 times"
+    assert e._expected("play:yarn") == -4
+
+
+def test_what_it_did_before_hidden_properties_still_counts(town):
+    e = engine(town)
+    from cat import db
+    with e.conn:
+        e.conn.execute("INSERT INTO ticks(kind,sim_time,real_time,area,move_key) VALUES('tick','s','r','garden','play:yarn')")
+        db.set_meta(e.conn, "knowledge_backfilled", "")
+    e._backfill_knowledge()
+    assert e._known()["a loose ball of yarn"] == {"toy"}                         # what playing needed, not all of it
+
+
+def test_surprise_and_strange_or_disliked_places_stir_it(town):
+    e = engine(town)
+    needs = {k: 50.0 for k in e.state["needs"]}
+    worse = e._surprise(10.0, needs, {**needs, "joy": 60.0})                    # expected +10, got -10
+    assert worse["worse"] and worse["anxiety"] > 0 and worse["mood"] == 0
+    better = e._surprise(0.0, {**needs, "joy": 70.0}, needs)
+    assert not better["worse"] and better["mood"] > 0
+    assert e._surprise(0.0, needs, needs) is None and e._surprise(None, needs, needs) is None
+    e.state["area"] = "alley"
+    calm = e._anxiety_extra()
+    assert calm["unfamiliar"] > 0                                                # never been here
+    with e.conn:
+        e.conn.execute("INSERT INTO preferences(subject,valence,reason,updated_at) VALUES('a deep puddle',-0.6,'x','')")
+    assert e._anxiety_extra()["disliked"] > 0
+    from cat import character
+    assert character.anxiety_next(0, needs, 30.0, 600, town, extra=20) > character.anxiety_next(0, needs, 30.0, 600, town)

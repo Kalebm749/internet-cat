@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 3          # bump with each entry in MIGRATIONS; an existing database is migrated, never reset
+SCHEMA_VERSION = 4          # bump with each entry in MIGRATIONS; an existing database is migrated, never reset
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -70,6 +70,12 @@ CREATE TABLE IF NOT EXISTS drawings(
 CREATE TABLE IF NOT EXISTS experiences(
   id INTEGER PRIMARY KEY, tick_id INT, sim_time TEXT,
   subject_kind TEXT, subject_key TEXT, subject_name TEXT, score REAL, note TEXT);
+
+-- what it knows about things (a property per thing name): learned by looking closely, by doing something with
+-- it, or from what happened. The brain is shown only these, never the world's tags (cat/engine_mind.py).
+CREATE TABLE IF NOT EXISTS known_properties(
+  id INTEGER PRIMARY KEY, name TEXT, tag TEXT, learned_sim_time TEXT, how TEXT, tick_id INT,
+  UNIQUE(name, tag));
 
 -- long-term projects: formed in sleep, advanced by choosing their work (a work-on move, or drawing for a
 -- drawing project), with the pieces they leave behind
@@ -184,6 +190,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     _add_column(conn, "projects", "medium", "TEXT")       # 'drawing': its work is drawing, its pieces real drawings
     _add_column(conn, "artifacts", "drawing_id", "INT")   # a piece that is a real drawing (drawings.id)
     _add_column(conn, "ticks", "result", "TEXT")         # code's plain account of what the move did (never narrator prose)
+    _add_column(conn, "experiences", "needs_score", "REAL")   # the needs-only part of score (what it expects next time)
     migrate(conn)
 
 
@@ -198,9 +205,15 @@ def _m3_experiences(conn: sqlite3.Connection) -> None:
     """3: the experiences table (created by SCHEMA); older lives simply start with no experiences recorded."""
 
 
+def _m4_knowledge(conn: sqlite3.Connection) -> None:
+    """4: known_properties (created by SCHEMA) and experiences.needs_score. What it already knew from its past is
+    rebuilt by the engine at the next start (`_backfill_knowledge`), from the moves it made."""
+
+
 MIGRATIONS: list[tuple[int, str, Any]] = [
     (2, "world sources and the world sync", _m2_world_sources),
     (3, "experiences: how things went, for likes and dislikes", _m3_experiences),
+    (4, "known properties and expectations", _m4_knowledge),
 ]
 
 

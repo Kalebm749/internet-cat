@@ -56,13 +56,14 @@ def anxiety_target(needs: dict[str, float], energy: float, cfg: Config) -> float
 
 
 def anxiety_next(prev: float, needs: dict[str, float], energy: float, minutes: float, cfg: Config,
-                 asleep: bool = False) -> float:
+                 asleep: bool = False, extra: float = 0.0) -> float:
     """Anxiety climbs toward its target at `rise_per_hour` and eases back at `fall_per_hour`
-    (faster asleep), so it builds while needs stay unmet and drains once they are fed."""
+    (faster asleep), so it builds while needs stay unmet and drains once they are fed. `extra` raises the target
+    (a place it hardly knows, disliked things nearby: settings `emotion`)."""
     a = cfg.settings["anxiety"]
     if not a["enabled"]:
         return 0.0
-    tgt = anxiety_target(needs, energy, cfg)
+    tgt = min(100.0, anxiety_target(needs, energy, cfg) + max(0.0, float(extra)))
     h = minutes / 60
     if tgt > prev:
         out = min(tgt, prev + a["rise_per_hour"] * h)

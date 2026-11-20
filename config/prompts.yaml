@@ -83,7 +83,11 @@ brain:
     heading_moves: "## What you can do right now"
     moves_note: "Every move listed here is something you can actually do. What a move does to you, you find out by doing it."
     move_line: "- [{id}] {label}"                             # {id} {label} (the label may end with never_tried)
-    never_tried: " (never tried)"                            # added to a move whose verb it has never made (moves.mark_untried)
+    never_tried: " (never tried)"
+    note: " ({note})"                                         # {note}: what its own record says about a move
+    note_hurt: "last time: {what}"                            # {what}: the hurt, e.g. "your footing went, and you slipped"
+    note_bad: "it went badly {k} of the last {n} times"       # {k} {n}
+    note_good: "it did you good {k} of the last {n} times"    # {k} {n}                            # added to a move whose verb it has never made (moves.mark_untried)
     closing: "What do you do next? Choose one move and reply with JSON."
 
 journal:                                                     # the entity's own journal entry, written AFTER code has decided what its move did

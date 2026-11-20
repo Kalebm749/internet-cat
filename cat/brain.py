@@ -53,6 +53,8 @@ class BrainContext:
     projects: list[dict] = field(default_factory=list)           # active projects (words only, see projects.brain_view)
     menu: list = field(default_factory=list)                     # the moves on offer (cat.moves.Move)
     untried: set = field(default_factory=set)                    # verbs on the menu it has never made (from its history)
+    notes: dict = field(default_factory=dict)                    # move key -> what its record says about it
+    known: dict | None = None                                    # thing name -> properties it knows (None: show all)
 
 
 PRESSING_BANDS = ("empty", "low")      # the bands that pull at the entity, most pressing first
@@ -116,10 +118,13 @@ def tendency_phrase(cfg: Config, name: str, value: float) -> str:
     return R("tendency_low") if value < w["low_below"] else R("tendency_high") if value > w["high_above"] else R("tendency_mid")
 
 
-def _obj(o: dict) -> str:
+def _obj(o: dict, known: dict | None = None) -> str:
+    """A thing as it knows it: its name, and only the properties it has found out (all of its own things')."""
     bits = [o["name"]]
-    if o["tags"]:
-        bits.append(f"[{', '.join(o['tags'])}]")
+    tags = o["tags"] if known is None or o.get("created_by") == "creature" \
+        else [t for t in o["tags"] if t in known.get(o["name"].lower(), set())]
+    if tags:
+        bits.append(f"[{', '.join(tags)}]")
     if o["state"]:
         bits.append("(" + ", ".join(f"{k}: {v}" for k, v in o["state"].items()) + ")")
     return " ".join(bits)
@@ -236,8 +241,8 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
                              R("project_idle", ago=pr["idle"]) if pr["idle"] else "")))
 
     L.append("\n" + R("heading_around"))
-    L.append(R("here", items="; ".join(_obj(o) for o in ctx.objects_here) or R("here_nothing")))
-    L.append(R("carrying", items="; ".join(_obj(o) for o in ctx.inventory) or R("carrying_nothing")))
+    L.append(R("here", items="; ".join(_obj(o, ctx.known) for o in ctx.objects_here) or R("here_nothing")))
+    L.append(R("carrying", items="; ".join(_obj(o, ctx.known) for o in ctx.inventory) or R("carrying_nothing")))
     exits = [cfg.world["areas"][e]["name"] for e in area["exits"]]
     L.append(R("exits", exits=", ".join(exits)))
 
@@ -261,7 +266,8 @@ def situation_prompt(cfg: Config, ctx: BrainContext) -> str:
     if ctx.menu:
         L.append("\n" + R("heading_moves"))
         L.append(R("moves_note"))
-        L.extend(R("move_line", id=m.id, label=m.label + (R("never_tried") if m.verb in ctx.untried else ""))
+        L.extend(R("move_line", id=m.id, label=m.label + (R("never_tried") if m.verb in ctx.untried else "")
+                   + (R("note", note=ctx.notes[m.key]) if m.key in ctx.notes else ""))
                  for m in ctx.menu)
 
     L.append("\n" + R("closing"))

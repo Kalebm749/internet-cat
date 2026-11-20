@@ -170,6 +170,20 @@ experience:
   good_above: 8                # ... above this: a like candidate
   valence_scale: 12            # valence = average / this, clamped to -1..1
   opinion_cap: 0.3             # a like or dislike the sleeping mind names without evidence is at most this strong
+  note_min: 2                  # a move is noted on the menu from its history only after this many times
+  note_good_at: 8              # a time counts as "did you good" at this score (below 0 it "went badly")
+
+# --- emotion beyond needs and energy (traced in the tick's mood inputs) ---
+emotion:
+  surprise_threshold: 5        # need points between what happened and what it expected (its record for the move)
+  surprise_anxiety_per_point: 1.5   # worse than expected: anxiety jumps by this per point past the threshold ...
+  max_surprise_anxiety: 25     # ... at most
+  surprise_mood_per_point: 0.03     # better than expected: mood is nudged (like an event) by this per point ...
+  max_surprise_mood: 0.5       # ... at most
+  unfamiliar_points: 15        # a place it has made fewer than familiar_after decisions in adds this to anxiety's
+  familiar_after: 8            # target, fading as it gets to know it
+  disliked_points: 20          # each disliked thing present adds this x |valence| to anxiety's target ...
+  max_disliked_points: 25      # ... at most
 
 # --- drives: innate, and the ONE place code picks a move because of a need. When a need is LOW or EMPTY, its drive
 #     may take the decision before the brain is asked: the move on the menu that feeds it most. Hungry with nothing
@@ -267,6 +281,8 @@ sleep:
   wake_energy_at_least: 40         # wakes when energy reaches this ...
   wake_not_before_hour: 6          # ... and it is past this hour and not night
   max_hours: 12                    # safety cap on one sleep (sim hours)
+  cycle_min_gap_hours: 20          # the night's work runs when it falls asleep at dusk/night, or when this long has
+                                   # passed without it; a daytime nap only rests
   restore_per_sim_hour: 12         # energy points restored per sim hour asleep
   nest_restore_multiplier: 1.4     # ... times this when it sleeps where something tagged `nest` is (its own place)
   decay_multiplier: 0.3            # needs decay this much slower while asleep (a night is 8-12 sim hours)

@@ -75,7 +75,10 @@ internet-cat/
   config/      character.yaml  world.yaml  settings.yaml  prompts.yaml
   cat/
     config.py prompts.py clock.py world.py character.py effects.py memory.py
-    brain.py journal.py sleep.py llm.py db.py engine.py main.py
+    brain.py journal.py sleep.py llm.py db.py main.py
+    engine.py (the tick and its record) + mixins: engine_mind.py (menu, prompts, history notes, knowledge,
+      emotion) engine_rest.py (carry, sleep, naps, downtime) engine_upkeep.py (backups, world sync,
+      bootstrap) engine_dev.py (dev commands, director, signals)
     trace.py logs.py devqueue.py devcontrol.py downtime.py healthcheck.py pullmodels.py
     web/       app.py views.py templates/ static/
     devdash/   app.py auth.py data.py playground.py templates/ static/ (vendor/uPlot)
