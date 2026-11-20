@@ -49,6 +49,13 @@ database (`data/nit.db`, the old `cat.db` kept as a backup), and world content l
   and holds the clock at the waking moment until it is committed. Only its own behaviour is evidence: experiences
   from a capability marked `external` (reading a letter) never count. Utilities (builtins) are never liked or
   disliked; preferences learn from `mood_base` (the mood effect before preferences). Tests: `test_sleepcycle.py`.
+- Done (step 6): `cat/behaviour.py` (freshness from decayed counts of the same action, family, target and aimless
+  returns; a changed `revisit_key` makes a return fresh; continuing is one activity, a quick restart is recorded),
+  stored per activity (`freshness`, `repeat_parts`, `restart_of`). Positive mood effects x freshness; stale options get
+  a menu note but are never removed; the repetition score feeds the derived conditions (restless). Repeated thoughts
+  (embeddings, table `thoughts`) are noticed every time but cost mood at most once per
+  `thought_dup_cooldown_minutes`; a night summary close to an earlier one is retried once, then costs mood that
+  grows with the streak. Tests: `test_behaviour.py`.
 - Run the new engine: `.venv/bin/python -m cat.nit --mock --fast --hours 24` (into `data/nit-mock.db`), or
   `.venv/bin/python -m cat.nit --ollama-host http://127.0.0.1:11434` (real time, `data/nit.db`).
 - See the Mind and one decision: `.venv/bin/python scripts/nit_mind.py [--know make_wish] [--event "..."]

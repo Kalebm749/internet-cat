@@ -23,7 +23,8 @@ from typing import Any, Callable
 
 import threading
 
-from cat import content as contentmod, decision as decisionmod, identity, knowledge, life as lifemod, memories
+from cat import clock as clock_mod
+from cat import behaviour, content as contentmod, decision as decisionmod, identity, knowledge, life as lifemod, memories
 from cat import mind as mindmod, sleepcycle, store
 from cat.capabilities import Registry
 from cat.decision import Decision
@@ -116,6 +117,11 @@ class Loop:
             with store.transaction(self.conn):
                 if sp.plan is not None:
                     sleepcycle.commit(self.conn, sp.plan, self.life.sim_time)
+                    if sp.plan.summary_repeated:                  # the same entry again: progressively flatter
+                        streak = sleepcycle.repeat_streak(self.conn)
+                        mood = self.t["repetition"]["reflection_dup_mood"] * streak
+                        lifemod.record_body(self.conn, self.life,
+                                            self.life.body.apply(self.life.bodystate, {"mood": mood}, "same reflection"))
                 else:
                     self.conn.execute("INSERT INTO sleep_runs(started_at, finished_at, status, stages, summary) "
                                       "VALUES (?, ?, 'failed', '{}', ?)",
@@ -168,6 +174,7 @@ class Loop:
                              perception=self.exec.perception, activity=view,
                              recent=self.exec.recent(self.t["decisions"]["recent_activities"]),
                              memories=list(dict.fromkeys([r["text"] for r in recalled] + notable)),
+                             repetition=behaviour.repetition_score(self.conn, self.t["repetition"]["recent"]),
                              seed=f"{self.seed}|{now}", capability_ok=self.exec.capability_ok,
                              notes=self._notes(), core_memories=memories.core_texts(self.conn))
         self.exec.perception = []
@@ -189,9 +196,13 @@ class Loop:
         self._catch_up()                                                          # it thought; time passed
         d = res.decision
         cap = self.exec.prepare(d)
+        tvec = memories.embed(self.backend, self.t["models"]["embed_model"], [d.thought])[0] \
+            if d.thought and not d.fallback else None
         with store.transaction(self.conn):
             did = self._record(due, d, res, mind, ms)
             memories.mark_recalled(self.conn, [r["id"] for r in recalled], self.life.sim_time)
+            if d.thought and not d.fallback:
+                self._thought(did, d.thought, tvec)
             rep.result = self.exec.start(d, did, cap)
             lifemod.save(self.conn, self.life)
         rep.decision = d
@@ -211,16 +222,43 @@ class Loop:
         return memories.recall(self.conn, self.t, vec, self.life.sim_time)
 
     def _notes(self):
+        """Menu notes: learned likes and dislikes (§2.4) and staleness (§6.2), in the prompt file's words."""
         prefs = memories.preferences(self.conn)
-        if not prefs:
-            return None
         words = {1: self.prompts["note_liked"], -1: self.prompts["note_disliked"]}
         minimum = self.t["sleep"]["pref_note_min"]
+        below = self.t["repetition"]["note_below"]
 
         def notes(action):
-            n = memories.note_for(prefs, action, minimum)
-            return [words[n]] if n else []
+            out = []
+            n = memories.note_for(prefs, action, minimum) if prefs else 0
+            if n:
+                out.append(words[n])
+            if not action.builtin:
+                f = behaviour.freshness(self.conn, self.life.content, self.t, action, None, self.life.sim_time,
+                                        self.life.world.values)
+                if f.value < below:
+                    out.append(self.prompts["note_repeated"])
+            return out
         return notes
+
+    def _thought(self, decision_id: int, text: str, vec) -> None:
+        """Store the thought; a near-duplicate of a recent one costs a little mood and is noticed (§6.4)."""
+        rp = self.t["repetition"]
+        repeated = False
+        if vec is not None and rp["thought_window"]:
+            rows = self.conn.execute("SELECT embedding FROM thoughts WHERE embedding IS NOT NULL ORDER BY id DESC "
+                                     "LIMIT ?", (rp["thought_window"],)).fetchall()
+            v = memories.from_blob(memories.to_blob(vec))
+            repeated = any(memories.cosine(memories.from_blob(r[0]), v) > rp["thought_dup_threshold"] for r in rows)
+        self.conn.execute("INSERT INTO thoughts(decision_id, sim_time, text, embedding, repeated) VALUES (?, ?, ?, ?, ?)",
+                          (decision_id, self.life.sim_time, text, memories.to_blob(vec), int(repeated)))
+        if repeated:
+            self.exec.perception.append(self.texts["same_thought"])
+            last = self.conn.execute("SELECT MAX(sim_time) FROM body_changes WHERE cause = 'same thought'").fetchone()[0]
+            if last is None or (clock_mod.parse(self.life.sim_time) - clock_mod.parse(last)).total_seconds() / 60 \
+                    >= rp["thought_dup_cooldown_minutes"]:
+                changes = self.life.body.apply(self.life.bodystate, {"mood": rp["thought_dup_mood"]}, "same thought")
+                lifemod.record_body(self.conn, self.life, changes)
 
     def _record(self, due, d: Decision, res, mind, ms: int) -> int:
         cur = self.conn.execute(

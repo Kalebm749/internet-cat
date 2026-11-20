@@ -322,7 +322,10 @@ class MockBackend(LLMBackend):
                     inputs[name] = spec.get("minimum", 0)
                 else:
                     inputs[name] = "something small and true"
-            return {"thought": "The water keeps moving, even with no wind.", "reasoning": "I want to see what happens.",
+            thought = r.choice(["The water keeps moving, even with no wind.", "I wonder who left the coins here.",
+                                "Something about this place feels familiar.", "I am not sure what I am looking for.",
+                                "The light has changed since this morning.", "I want to know what comes next."])
+            return {"thought": thought, "reasoning": "I want to see what happens.",
                     "action": action, "inputs": inputs, "preserve": False, "letter": None}
         if task == "brain":
             text = messages[-1]["content"] if messages else ""

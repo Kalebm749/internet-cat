@@ -21,7 +21,7 @@ import sqlite3
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from cat import clock, conditions, knowledge, life as lifemod, memories, templating
+from cat import behaviour, clock, conditions, knowledge, life as lifemod, memories, templating
 from cat.capabilities import CapabilityResult, CapContext, Registry
 from cat.content import ActionSpec
 from cat.decision import CONTINUE, IDLE, STOP, Decision, load_prompt_file
@@ -37,7 +37,7 @@ WORLD_TEXT_FIELDS = {
     "arrive": {"location"}, "inspect_found": {"hint", "name"}, "inspect_nothing": set(), "discovered": {"name"},
     "finished": {"name"}, "interrupted": {"name"}, "rejected": {"name", "reason"}, "fall_asleep": set(),
     "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_gone": set(),
-    "capability_failed": set(),
+    "capability_failed": set(), "same_thought": set(),
 }
 
 
@@ -54,6 +54,7 @@ class Running:
     planned: float                       # sim minutes
     cap: dict | None = None              # the capability result (asdict), if the action used one
     thought: str = ""
+    freshness: float = 1.0               # §6: positive mood effects are multiplied by this
 
     def elapsed(self, now: str) -> float:
         return (clock.parse(now) - clock.parse(self.started)).total_seconds() / 60
@@ -102,7 +103,7 @@ class Executor:
                               (self.life.sim_time, "(action no longer exists)", r["id"]))
             return None
         return Running(r["id"], action, json.loads(r["inputs"]), r["started_at"], r["planned_minutes"],
-                       json.loads(r["capability"]) if r["capability"] else None)
+                       json.loads(r["capability"]) if r["capability"] else None, freshness=r["freshness"])
 
     def _experience(self, kind: str, text: str, *, action_id: str | None = None, activity_id: int | None = None,
                     data: dict | None = None, thought: str | None = None, importance: float = 0.0,
@@ -229,13 +230,18 @@ class Executor:
             capd = asdict(cap)
             if cap.text:
                 self.perception.append(cap.text)
+        fr = behaviour.freshness(self.conn, self.c, self.t, a, decision.inputs, self.life.sim_time,
+                                 self.life.world.values)
         cur = self.conn.execute(
             "INSERT INTO activities(decision_id, action_id, location, inputs, started_at, planned_minutes, status, "
-            "capability) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)",
+            "capability, family, input_sig, revisit_sig, restart_of, freshness, repeat_parts) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)",
             (decision_id, a.id, self.life.location, _dump(decision.inputs), self.life.sim_time, planned,
-             _dump(capd) if capd else None))
+             _dump(capd) if capd else None, a.family, behaviour.input_signature(decision.inputs),
+             behaviour.revisit_signature(a, self.life.world.values), fr.restart_of, fr.value,
+             _dump({**fr.parts, "revisit_changed": fr.revisit_changed})))
         self.running = Running(cur.lastrowid, a, dict(decision.inputs), self.life.sim_time, planned, capd,
-                               decision.thought)
+                               decision.thought, fr.value)
         if planned <= 0:
             self._complete()
         return {"status": "started", "activity_id": cur.lastrowid}
@@ -351,6 +357,8 @@ class Executor:
             except OpError as e:
                 log.warning("action %s: world change failed, nothing changed: %s", a.id, e)
         effects = {k: v * factor for k, v in (block.get("creature") or {}).items()}
+        if effects.get("mood", 0.0) > 0:
+            effects["mood"] *= r.freshness                    # a tired repetition really does feel flat (§6.2)
         cap = r.cap or {}
         for k, v in (cap.get("creature") or {}).items():
             effects[k] = effects.get(k, 0.0) + v

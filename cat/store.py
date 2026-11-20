@@ -163,6 +163,24 @@ MIGRATIONS: list[list[str]] = [
             summary     TEXT
         )""",
     ],
+    [  # 6: behaviour history (§6): signatures and freshness on activities, thoughts, repeated reflections
+        "ALTER TABLE activities ADD COLUMN family TEXT",
+        "ALTER TABLE activities ADD COLUMN input_sig TEXT",           # normalised inputs: the target
+        "ALTER TABLE activities ADD COLUMN revisit_sig TEXT",         # the revisit_key facts when it started
+        "ALTER TABLE activities ADD COLUMN restart_of INTEGER",       # the finished instance it restarted
+        "ALTER TABLE activities ADD COLUMN freshness REAL NOT NULL DEFAULT 1",
+        "ALTER TABLE activities ADD COLUMN repeat_parts TEXT",        # what made it less fresh
+        """CREATE TABLE thoughts (
+            id          INTEGER PRIMARY KEY,
+            decision_id INTEGER,
+            sim_time    TEXT NOT NULL,
+            text        TEXT NOT NULL,
+            embedding   BLOB,
+            repeated    INTEGER NOT NULL DEFAULT 0
+        )""",
+        "ALTER TABLE sleep_runs ADD COLUMN summary_embedding BLOB",
+        "ALTER TABLE sleep_runs ADD COLUMN repeated INTEGER NOT NULL DEFAULT 0",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

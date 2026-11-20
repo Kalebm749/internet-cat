@@ -42,6 +42,7 @@ PROMPT_FIELDS = {
     "preferences": {"name", "lines"},
     "develop": {"name", "sheet", "behaviour", "preferences", "memories", "lines"},
     "conflict": {"name", "boundaries", "change"},
+    "repeated": {"name", "day"},
 }
 CURSOR = "sleep.cursor"
 OWN_KINDS = ("activity", "thought")
@@ -68,6 +69,8 @@ class SleepPlan:
     merges: list[tuple[int, int]] = field(default_factory=list)   # (keep, drop)
     forget: list[int] = field(default_factory=list)
     cursor: int | None = None                                  # new experience cursor, if stages 1-3 covered the window
+    summary_embedding: list[float] | None = None
+    summary_repeated: bool = False                             # §6.4: close to an earlier night's summary, even after a retry
 
 
 class StageError(Exception):
@@ -170,7 +173,18 @@ def plan(conn: sqlite3.Connection, content: Content, tuning: dict, backend: LLMB
                     out.append({"id": i, "why": str(m.get("why", ""))})
             return {"summary": raw["summary"].strip(), "mattered": out[: sl["consolidate_max"]]}
         res = _ask(backend, model, "sleep_consolidate", system, user, schema, parse, retries)
+        close = _close_summary(conn, tuning, backend, res["summary"])
+        if close is not None:                                  # the same entry as an earlier night: once more
+            day, _ = close
+            again = _ask(backend, model, "sleep_consolidate", system,
+                         user + "\n\n" + prompts["repeated"].format(name=name, day=day), schema, parse, retries)
+            if _close_summary(conn, tuning, backend, again["summary"]) is None:
+                res = again
+            else:
+                p.summary_repeated = True
         p.summary, p.mattered = res["summary"], res["mattered"]
+        p.summary_embedding = memories.embed(backend, tuning["models"]["embed_model"], [p.summary])[0]
+        res["repeated"] = p.summary_repeated
         return res
     stage("consolidate", consolidate)
 
@@ -466,6 +480,36 @@ def check_proposal(conn, tuning, backend, prompts, sheet, proposal: dict, now: s
     return verdicts, ok
 
 
+def _close_summary(conn, tuning, backend, summary: str) -> tuple[str, float] | None:
+    """(day, similarity) of an earlier night's summary this one is too close to, or None."""
+    rp = tuning["repetition"]
+    if not rp["reflection_window"]:
+        return None
+    rows = conn.execute("SELECT started_at, summary_embedding FROM sleep_runs WHERE summary_embedding IS NOT NULL "
+                        "ORDER BY id DESC LIMIT ?", (rp["reflection_window"],)).fetchall()
+    if not rows:
+        return None
+    vec = memories.embed(backend, tuning["models"]["embed_model"], [summary])[0]
+    if vec is None:
+        return None
+    v = np.asarray(vec, dtype=np.float32)
+    for r in rows:
+        sim = memories.cosine(memories.from_blob(r["summary_embedding"]), v)
+        if sim > rp["reflection_dup_threshold"]:
+            return r["started_at"][:10], sim
+    return None
+
+
+def repeat_streak(conn: sqlite3.Connection) -> int:
+    """How many nights in a row (up to the latest) repeated themselves."""
+    n = 0
+    for r in conn.execute("SELECT repeated FROM sleep_runs ORDER BY id DESC"):
+        if not r[0]:
+            break
+        n += 1
+    return n
+
+
 def _maintenance(conn, tuning, now, p: SleepPlan):
     m = tuning["memory"]
     longs = memories.all_memories(conn, "long")
@@ -545,6 +589,8 @@ def commit(conn: sqlite3.Connection, p: SleepPlan, now: str) -> int:
         conn.execute("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                      (CURSOR, str(p.cursor)))
     status = "failed" if any(s["status"] == "failed" for s in p.stages.values()) else "ok"
-    cur = conn.execute("INSERT INTO sleep_runs(started_at, finished_at, status, stages, summary) VALUES (?, ?, ?, ?, ?)",
-                       (p.started_at, now, status, json.dumps(p.stages, ensure_ascii=False, default=str), p.summary))
+    cur = conn.execute("INSERT INTO sleep_runs(started_at, finished_at, status, stages, summary, summary_embedding, "
+                       "repeated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                       (p.started_at, now, status, json.dumps(p.stages, ensure_ascii=False, default=str), p.summary,
+                        memories.to_blob(p.summary_embedding), int(p.summary_repeated)))
     return cur.lastrowid

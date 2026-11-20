@@ -30,7 +30,7 @@ CONTINUE, STOP, IDLE = "continue", "stop", "idle"
 PROMPTS_PATH = CONFIG_DIR / "prompts" / "decision.yaml"
 PROMPT_FIELDS = {
     "system": {"name", "nature", "senses", "abilities", "traits", "tendencies", "background", "boundaries", "core"},
-    "core": {"lines"}, "note_liked": set(), "note_disliked": set(),
+    "core": {"lines"}, "note_liked": set(), "note_disliked": set(), "note_repeated": set(),
     "time": {"part_of_day", "clock", "weather"},
     "place": {"location", "description"},
     "visible": {"lines"}, "perception": {"lines"}, "body": {"lines"}, "recent": {"lines"},

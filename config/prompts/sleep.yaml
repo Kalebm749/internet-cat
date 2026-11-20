@@ -61,6 +61,9 @@ develop: |
   own experiences over several days show it: add_trait, adjust_trait, remove_trait, add_tendency, adjust_tendency,
   remove_tendency or background_note. Set "change" to false if nothing has truly changed.
 
+repeated: |
+  This is very close to what {name} wrote on {day}. Write the day as it really was, in fresh words.
+
 conflict: |
   These are always true of {name}:
   {boundaries}

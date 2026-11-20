@@ -777,6 +777,19 @@ again when nothing has changed is not.
 
 ---
 
+### 6.5 As built (step 6)
+
+- Tuning: `nit.repetition` in `config/settings.yaml` (half-life 120 sim minutes; weights action 0.25, family 0.1,
+  target 0.3, aimless 0.3; floor 0.1; note below 0.6).
+- A meaningful return (changed `revisit_key` facts) clears the same-action and same-target counts; the family
+  still counts (wishing then looking over the wishes is not a repeat of either, but both are wishing).
+- Freshness is fixed when an activity starts and stored with it; the mood effect it multiplies is the
+  experience's `mood_base`, so preferences learn that a tired repetition felt flat.
+- Builtins get no "done this a lot" note, but their staleness counts toward restlessness: pacing between two
+  places with nothing to do there is exactly what restless means.
+- A repeated thought is always noticed ("You keep coming back to the same thought.") but costs mood at most
+  once per `thought_dup_cooldown_minutes`, so mood's drift back to its baseline always outpaces it.
+
 ## 7. Models
 
 | Setting | Default | Used for |

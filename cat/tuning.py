@@ -56,6 +56,13 @@ SECTIONS = {
         "w_importance": (0, 10), "w_relevance": (0, 10), "recency_half_life_days": (0.01, 365),
         "recall_boost": (0, 10), "forget_below": (0, 1), "dup_threshold": (0.5, 1),
     },
+    "repetition": {
+        "half_life_minutes": (1, 10000), "w_action": (0, 2), "w_family": (0, 2), "w_target": (0, 2),
+        "w_aimless": (0, 2), "freshness_min": (0, 1), "window_hours": (1, 24 * 30),
+        "restart_window_minutes": (0, 24 * 60), "note_below": (0, 1), "recent": (1, 50), "thought_window": (0, 100),
+        "thought_dup_threshold": (0.5, 1), "thought_dup_mood": (-1, 0), "thought_dup_cooldown_minutes": (0, 24 * 60), "reflection_window": (0, 100),
+        "reflection_dup_threshold": (0.5, 1), "reflection_dup_mood": (-1, 0),
+    },
     "mail": {
         "on_mind": (0, 20),
         "on_mind_chars": (40, 4000),
@@ -71,7 +78,8 @@ SLEEP_NUMBERS = {
 }
 SLEEP_OTHER = {"night_hours", "threaded", "dev_forbidden_words"}
 INTEGER_KEYS = {"day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
-                "dev_min_evidence", "dev_min_days", "recall_k", "notable_k", "retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
+                "dev_min_evidence", "dev_min_days", "recall_k", "notable_k", "recent", "thought_window",
+                "reflection_window", "retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
                 "on_mind", "on_mind_chars"}
 MODEL_KEYS = ("decision_model", "sleep_model", "embed_model")
 TOP = {"db_path", "content_dir", "time_scale", "body", "models", "sleep"} | set(SECTIONS)
