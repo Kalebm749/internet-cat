@@ -246,3 +246,23 @@
     schedule();
   });
 })();
+
+
+// ---- the Book layout: side panels open one at a time from a tab rail (all stay visible without JS) ----
+(function () {
+  var rail = document.getElementById("rail");
+  if (!rail) return;
+  var ids = ["about-card", "habits-card", "projects-card", "keepsakes-card"];
+  var cards = ids.map(function (id) { return document.getElementById(id); }).filter(Boolean);
+  document.documentElement.classList.add("book");
+  rail.hidden = false;
+  function show(id) {
+    cards.forEach(function (c) { c.hidden = c.id !== id; });
+    rail.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.panel === id)); });
+  }
+  rail.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button") : null;
+    if (b) show(b.dataset.panel);
+  });
+  show(ids[0]);
+})();

@@ -210,3 +210,42 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outlin
 body.state-asleep .nit-awake { display: none; }
 body.state-asleep .nit-asleep { display: block; }
 body.state-dozing .nit-awake { filter: saturate(.4) brightness(1.2); }
+
+/* ---- The Book layout: a band of how it is, one page of diary, side panels on a tab rail ---- */
+.layout { display: block; max-width: 1100px; padding: 22px 24px 80px; }
+.col-left { position: static; max-height: none; overflow: visible; display: grid; grid-template-columns: 150px 1fr; gap: 16px; margin-bottom: 26px; }
+.col-left .portrait-card { grid-row: 1 / span 2; align-self: start; padding: 12px 10px 8px; }
+.col-left .section-title { justify-self: start; }
+.col-left .frame { width: 118px; }
+.col-left #mood-card { display: grid; grid-template-columns: auto 1fr 1fr; gap: 2px 28px; align-items: center; padding: 14px 20px; }
+.col-left #mood-card .section-title { grid-column: 1 / -1; margin-bottom: 6px; }
+.col-left #mood-card .mood-word { grid-column: 1; grid-row: 2; }
+.col-left #mood-card .mood-desc { grid-column: 1; grid-row: 3; margin: 2px 0 0; }
+.col-left #mood-card .mood-slider { grid-column: 2; grid-row: 2 / span 2; margin: 0; }
+.col-left #mood-card .energy.anxiety { grid-column: 3; grid-row: 2; }
+.col-left #mood-card .energy:not(.anxiety) { grid-column: 3; grid-row: 3; }
+.col-left #needs-card { display: flex; flex-direction: column; padding: 16px 22px 18px; }
+.col-centre { max-width: 700px; margin: 0 auto; }
+.diary-card { padding: 30px 40px; box-shadow: 0 0 0 7px var(--card), 0 0 0 8px var(--rule), 0 18px 40px #5b3d1f22; }
+.col-right { position: static; max-height: none; overflow: visible; }
+
+/* needs: large and readable, one column per need */
+.needs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 22px; }
+.need { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.need .n-label { font: 600 19px/1.2 var(--f-body); }
+.need .n-word { font: italic 17px var(--f-body); color: var(--ink-soft); }
+.need .bar { height: 14px; border-radius: 7px; }
+.need .bar > i { border-radius: 7px; }
+.need .n-trend { position: absolute; right: 0; top: 2px; font-size: 16px; }
+.need.critical .n-word, .need.low .n-word { color: var(--accent); font-weight: 600; }
+.need.critical .bar > i { background: var(--accent); }
+
+html.book .col-right { position: fixed; right: 44px; top: 380px; width: 330px; max-height: calc(100vh - 410px); overflow-y: auto; z-index: 20; box-shadow: -10px 14px 40px #0003; border-radius: 14px; }
+html.book .col-right .card[hidden] { display: none; }
+.rail { position: fixed; right: 0; top: 390px; display: flex; flex-direction: column; gap: 6px; z-index: 21; }
+.rail[hidden] { display: none; }
+.rail button, .rail a { writing-mode: vertical-rl; background: var(--card); border: 1px solid var(--rule); border-right: 0; border-radius: 10px 0 0 10px;
+  padding: 12px 7px; font: 500 13px var(--f-head); letter-spacing: .1em; color: var(--ink-soft); cursor: pointer; text-decoration: none; }
+.rail button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+@media (max-width: 1250px) { html.book .col-right { position: static; width: auto; max-height: none; box-shadow: none; margin-top: 20px; } .rail { display: none; } }
+@media (max-width: 1000px) { .col-left { grid-template-columns: 1fr; } .col-left .portrait-card { grid-row: auto; } .col-left #mood-card { grid-template-columns: 1fr; } .needs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
