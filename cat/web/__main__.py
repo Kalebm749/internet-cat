@@ -15,7 +15,7 @@ def main() -> None:
     a = ap.parse_args()
     if a.db:
         os.environ["CAT_DB"] = a.db
-    port = a.port or load_config().settings["web_port"]
+    port = a.port or load_config().settings["web"]["port"]
     uvicorn.run("cat.web.app:app", host=a.host, port=port)
 
 

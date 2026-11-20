@@ -54,8 +54,8 @@ class LLMBackend(ABC):
 
     @abstractmethod
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
-        """Return a dict matching `schema`. `task` is one of brain|journal|consolidate|
-        tendencies|preferences|self_image|projects. Raises BackendError on failure."""
+        """Return a dict matching `schema`. `task` is decide, sleep_<stage> or a capability's name.
+        Raises BackendError on failure."""
 
     @abstractmethod
     def embed(self, model: str, texts: list[str]) -> list[list[float]]:
@@ -115,6 +115,15 @@ def extract_json(text: str) -> dict:
     return v
 
 
+def wanted_models(settings: dict) -> list[str]:
+    """The models the engine uses (settings `nit.models`), each once."""
+    out: list[str] = []
+    for m in (settings.get("nit") or {}).get("models", {}).values():
+        if m not in out:
+            out.append(m)
+    return out
+
+
 def model_present(wanted: str, have: list[str]) -> bool:
     """Ollama lists 'name:tag'; a bare name means ':latest'."""
     norm = lambda m: m if ":" in m else m + ":latest"
@@ -144,16 +153,16 @@ class OllamaBackend(LLMBackend):
             have = [m.get("name", "") for m in r.json().get("models", [])]
         except (httpx.HTTPError, ValueError):
             return None
-        wanted = {self.s[k] for k in ("brain_model", "narrator_model", "sleep_model", "embed_model")}
+        wanted = set(wanted_models(self.s))
         return sorted(m for m in wanted if not model_present(m, have))
 
     def is_online(self) -> bool:
-        """Reachable and (if `health_require_models`) every configured model is pulled. A fresh
+        """Reachable and every configured model is pulled. A fresh
         install before the model pull is therefore a clean doze, not a stream of failed calls."""
         missing = self.missing_models()
         if missing is None:
             return False
-        if missing and self.s.get("health_require_models", True):
+        if missing:
             if missing != self._warned_missing:
                 log.warning("Ollama is up but models are missing: %s (run deploy/pull-models.sh)", missing)
                 self._warned_missing = missing
@@ -175,8 +184,7 @@ class OllamaBackend(LLMBackend):
             raise BackendError(f"{path} failed: {e}") from e
 
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
-        options = {"temperature": self.s["llm_temperature"].get(
-            "sleep" if task in ("consolidate", "tendencies", "preferences", "self_image", "projects", "habits") else task, 0.7),
+        options = {"temperature": self.s["llm_temperature"].get("sleep" if task.startswith("sleep_") else task, 0.7),
             "num_ctx": self.s["llm_num_ctx"]}
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False,
                                    "format": schema, "options": options}
@@ -243,8 +251,6 @@ class MockBackend(LLMBackend):
         self.fail_next = 0
         self.handlers: dict[str, Callable[[list[dict], dict], dict]] = {}
         self.calls: list[tuple[str, str]] = []  # (task, model)
-        self.tendency_names: list[str] = []  # set by the engine so mock sleep output names real tendencies
-        self.need_ids: list[str] = []  # set by the engine so mock gains name real needs
 
     def is_online(self) -> bool:
         return self.online
@@ -267,7 +273,7 @@ class MockBackend(LLMBackend):
         try:
             self._check()
             self.calls.append((task, model))
-            out = self.handlers[task](messages, schema) if task in self.handlers else self._default(task, messages)
+            out = self.handlers[task](messages, schema) if task in self.handlers else self._default(task, messages, schema)
             info["raw_response"] = json.dumps(out)
             info["valid_json"] = 1
             # rough token counts (4 chars/token) so the dashboard has something to chart
@@ -286,89 +292,47 @@ class MockBackend(LLMBackend):
         self.calls.append(("embed", model))
         return [hash_embed(t) for t in texts]
 
-    def _default(self, task: str, messages: list[dict]) -> dict[str, Any]:
+    def _default(self, task: str, messages: list[dict], schema: dict | None = None) -> dict[str, Any]:
         r = self.rng
-        if task == "brain":
+        if task.startswith("sleep_"):      # the rewrite's sleep cycle (cat/sleepcycle.py): cite what the prompt shows
             text = messages[-1]["content"] if messages else ""
-            ids = re.findall(r"^- \[(m\d+)\] (.+)$", text, re.M)
-            tired = any(w in text for w in ("Energy: tired", "Energy: exhausted"))
-            sleepy = [i for i, lab in ids if lab == "go to sleep"]
-            others = [i for i, lab in ids if lab != "go to sleep"]
-            pick = (sleepy[0] if sleepy and (tired or not others) and r.random() < 0.6 else
-                    r.choice(others or [i for i, _ in ids])) if ids else "m1"
-            return {"reaction": "hm, ok.", "thought": "what next?", "move": pick,
-                    "why": "feeling idle", "feeling": r.choice(["negative", "neutral", "positive"])}
-        if task == "sketch":
-            r2 = random.Random(len(messages[-1]["content"]) if messages else 0)   # own stream: ticks untouched
-            text = messages[-1]["content"] if messages else ""
-            m = re.search(r"You have to draw with: (.+)\.", text)
-            cols = [c.strip() for c in m.group(1).split(",")] if m else ["black"]
-            shapes = ["line", "curve", "circle", "scribble", "spiral", "wave", "dots", "blot", "wash", "rect"]
-            return {"marks": [{"shape": r2.choice(shapes), "x": r2.uniform(10, 90), "y": r2.uniform(10, 90),
-                               "size": r2.uniform(5, 40), "angle": r2.uniform(0, 360),
-                               "weight": r2.choice(["light", "medium", "heavy"]), "colour": r2.choice(cols),
-                               "about": "part of it"} for _ in range(6)], "going_for": "how it sits there"}
-        if task == "journal":
-            text = messages[-1]["content"] if messages else ""
-            m = re.search(r"^You chose to (.+)\.$", text, re.M)
-            return {"entry": f"I chose to {m.group(1)}." if m else "Not much happened."}
-        if task == "consolidate":
-            first = re.search(r"^- (.+)$", messages[-1]["content"] if messages else "", re.M)
-            text = first.group(1)[:120] if first else "A quiet day at home."
-            return {"memories": [{"text": text, "importance": r.choice(["low", "medium", "high"])}],
-                    "summary": "A day like any other."}
-        if task == "tendencies":
-            # deliberately over-eager (+-1) so the engine's clamp is exercised
-            out = {t: r.choice([-1, 0, 1, 5]) for t in self.tendency_names}
-            # the creature also names new ways it tends to be (own stream: the seeded tick sequence is untouched)
-            r2 = random.Random(len(messages[-1]["content"]) if messages else 0)
-            if r2.random() < 0.5:
-                out[r2.choice(["drawn to quiet corners", "restless when nothing happens", "curious about small things",
-                               "wary of loud noises"])] = 1
-            return {"changes": out}
-        if task == "preferences":
-            if r.random() < 0.5:
-                return {"preferences": []}
-            return {"preferences": [{"subject": r.choice(["the old tree", "the sofa", "rain"]),
-                                     "valence": r.choice([-0.8, 0.6, 0.9]), "reason": "mock"}]}
-        if task == "self_image":
-            text = messages[-1]["content"] if messages else ""
-            ids = [int(i) for i in re.findall(r"^- \[(\d+)\] ", text, re.M)]
-            r = random.Random(len(text))        # own stream: leaves the seeded tick sequence untouched
-            if r.random() < 0.5:
-                return {"self_image": []}
-            line = r.choice(["I seem to get tired when I do a lot.", "I notice I keep coming back to the window.",
-                             "I am not sure what I am.", "I seem to like quiet places."])
-            return {"self_image": [{"text": line, "confidence": r.choice([0.3, 0.5, 0.8]),
-                                    "replaces": r.choice(ids) if ids and r.random() < 0.4 else 0}]}
-        if task == "create":
-            r = random.Random(len(messages[-1]["content"]) if messages else 0)
-            return {"kind": r.choice(["sketch", "passage", "melody"]), "title": "Something small",
-                    "text": r.choice(["A few quiet lines about the old tree and the light on it.",
-                                      "The shape of the garden, drawn from memory, a little crooked."])}
-        if task == "director":
-            text = messages[-1]["content"] if messages else ""
-            r = random.Random(len(text))        # own stream: leaves the seeded tick sequence untouched
-            if r.random() < 0.5:
-                return {"happening": {}}
-            line = r.choice(["A distant bell rings twice.", "The light shifts and long shadows slide across the floor.",
-                             "Something small scratches at the wall and goes quiet.", "A faint smell of rain drifts in."])
-            out: dict[str, Any] = {"text": line, "mood": r.choice([-0.3, 0.0, 0.2])}
-            if r.random() < 0.25:
-                out["spawn"] = {"name": "a smooth pebble", "tags": ["movable"]}
-            return {"happening": out}
-        if task == "habits":
-            text = messages[-1]["content"] if messages else ""
-            ids = [int(m) for m in re.findall(r"^- \[(\d+)\] ", text, re.M)]
-            return {"habits": [{"id": i, "text": "Tends to come back to this around the same time."} for i in ids]}
-        if task == "projects":
-            text = messages[-1]["content"] if messages else ""
-            r = random.Random(len(text))        # own stream: leaves the seeded tick sequence untouched
-            has_open = bool(re.search(r"^- \[\d+\] ", text, re.M))
-            if has_open or r.random() < 0.7:
-                return {"projects": []}
-            return {"projects": [{"op": "start", "title": r.choice(["keeping a notebook of the garden", "learning the old tree"]),
-                                  "activity": "looking closely", "why": "it keeps returning to it"}]}
+            ids = [int(i) for i in re.findall(r"\[e(\d+)\]", text)]
+            if task == "sleep_consolidate":
+                return {"summary": "I went about my day and noticed what I could.",
+                        "mattered": [{"id": i, "why": "it stayed with me"} for i in ids[:3]]}
+            if task == "sleep_core":
+                return {"keep": [{"id": i, "text": ""} for i in ids[:1]]}
+            if task == "sleep_long_term":
+                return {"memories": [{"text": f"I remember this moment ({i}).", "importance": 0.6, "sources": [i]}
+                                     for i in ids[:2]]}
+            if task == "sleep_learned":
+                return {"words": [{"action": a, "words": f"I can {a.replace('_', ' ')}."}
+                                  for a in re.findall(r"\[a:([a-z0-9_]+)\]", text)]}
+            if task == "sleep_preferences":
+                return {"verdicts": [{"subject": s, "keep": True, "words": ""}
+                                     for s in re.findall(r"\[p:([a-z_]+:[a-z0-9_]+)\]", text)]}
+            if task == "sleep_develop":
+                return {"change": False, "kind": "background_note", "target": "", "value": "", "rationale": "",
+                        "evidence": []}
+            if task == "sleep_conflict":
+                return {"conflict": False, "why": "it fits"}
+        if task == "decide":       # the rewrite's waking decision (cat/decision.py): pick from the schema
+            props = (schema or {}).get("properties", {})
+            ids = props.get("action", {}).get("enum") or ["idle"]
+            action = "continue" if "continue" in ids and r.random() < 0.7 else r.choice(ids)
+            inputs = {}
+            for name, spec in props.get("inputs", {}).get("properties", {}).items():
+                if "enum" in spec:
+                    inputs[name] = r.choice(spec["enum"])
+                elif spec.get("type") == "integer":
+                    inputs[name] = spec.get("minimum", 0)
+                else:
+                    inputs[name] = "something small and true"
+            thought = r.choice(["The water keeps moving, even with no wind.", "I wonder who left the coins here.",
+                                "Something about this place feels familiar.", "I am not sure what I am looking for.",
+                                "The light has changed since this morning.", "I want to know what comes next."])
+            return {"thought": thought, "reasoning": "I want to see what happens.",
+                    "action": action, "inputs": inputs, "preserve": False, "letter": None}
         raise BackendError(f"mock: unknown task '{task}'")
 
 

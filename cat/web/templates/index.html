@@ -3,307 +3,101 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ s.creature.name }}’s journal</title>
-  <link rel="preload" href="/static/fonts/Lora-400.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/static/fonts/Fraunces-500.woff2" as="font" type="font/woff2" crossorigin>
+  <title>{{ now.name if now else "Nit" }}</title>
   <link rel="stylesheet" href="/static/css/site.css">
-  <script src="/static/js/journal.js" defer></script>
+  <link rel="icon" href="/static/img/nit/nit.svg">
 </head>
-<body class="{{ s.time.phase }} state-{{ s.status.state }}" data-poll="{{ s.poll_seconds }}"
-      data-latest="{{ s.latest_tick_id }}">
-<div id="banner" class="banner" role="status" hidden>can’t reach the journal right now, retrying…</div>
-
-<header class="site-header">
-  <div class="header-inner">
-    <h1 class="creature-name" data-f="creature.name">{{ s.creature.name }}</h1>
-    <a class="bio-link" href="/biography">Biography</a>
-    <p class="header-mid">
-      <span data-f="location.name">{{ s.location.name }}</span> ·
-      <time data-f="time.label">{{ s.time.label }}</time>
-      (<span data-f="time.part">{{ s.time.part }}</span>)
-    </p>
-    <p class="header-status">
-      <span class="pill" id="pill"><i class="dot" aria-hidden="true"></i><span data-f="status.pill">{{ s.status.pill }}</span></span>
-      <span class="brain" id="brain" title="model: {{ s.status.model }}" data-f="status.brain_text" data-f-attr="title:status.model_title">{{ s.status.brain_text }}</span>
-    </p>
+<body class="{{ 'night' if now and now.part_of_day == 'night' else '' }} {{ 'asleep' if now and now.asleep else '' }}"
+      data-refresh="{{ refresh_s }}" data-latest="{{ diary[0].time if diary else '' }}">
+<header class="top">
+  <img class="portrait" id="portrait" src="/static/img/nit/{{ 'nit-asleep' if now and now.asleep else 'nit' }}.svg" alt="">
+  <div>
+    <h1>{{ now.name if now else "Nit" }}</h1>
+    {% if now %}
+    <p class="where" id="where">Day {{ now.day }}, {{ now.part_of_day }} ({{ now.clock }}), {{ now.weather or "" }}. At {{ now.place }}.</p>
+    {% else %}
+    <p class="where">Nit has not woken yet.</p>
+    {% endif %}
   </div>
+  <nav class="tabs"><a href="/" class="on">Now &amp; diary</a> <a href="/places">Places &amp; wishes</a></nav>
+  {% if now and now.engine_alive == false %}<p class="banner">Nit's world is paused right now.</p>{% endif %}
 </header>
 
 <main class="layout">
-
-  <aside class="col col-left" aria-label="How {{ s.creature.name }} is">
-    <section class="card portrait-card">
-      <figure class="portrait">
-        <div class="frame">
-          <svg id="presence" class="presence" viewBox="-100 -100 200 200" role="img"
-               style="{{ s.presence.style }}" aria-label="{{ s.presence.aria }}"
-               data-f-attr="style:presence.style;aria-label:presence.aria">
-            <circle class="pv-ring r3" r="88"/><circle class="pv-ring r2" r="66"/>
-            <circle class="pv-ring r1" r="46"/><circle class="pv-core" r="26"/>
-          </svg>
-          <img class="nit nit-awake" src="/static/img/nit/nit.svg" alt="" width="400" height="560">
-          <img class="nit nit-asleep" src="/static/img/nit/nit-asleep.svg" alt="" width="400" height="560">
-          <span class="zzz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
+  <section class="col">
+    <article class="card now" id="now">
+      {% if now %}
+        <h2>Now</h2>
+        <p class="doing" id="doing">
+          {% if now.asleep %}Asleep.{% elif now.doing %}{{ now.doing.name | capitalize }}.{% else %}Between things.{% endif %}
+        </p>
+        {% if now.thought and not now.asleep %}<blockquote class="thought" id="thought">{{ now.thought.text }}</blockquote>{% endif %}
+        <div class="meters" id="meters">
+          <label>Mood <meter id="m-mood" min="-1" max="1" low="-0.2" high="0.3" optimum="1" value="{{ now.body.mood }}"></meter></label>
+          <label>Energy <meter id="m-energy" min="0" max="1" low="0.3" high="0.6" optimum="1" value="{{ now.body.energy }}"></meter></label>
+          <label>Hunger <meter id="m-hunger" min="0" max="1" low="0.4" high="0.65" optimum="0" value="{{ now.body.hunger }}"></meter></label>
         </div>
-        <figcaption>
-          <span id="portrait-caption" data-f="presence.caption">{{ s.presence.caption }}</span>
-          <span class="doze-caption">dozing… (brain offline)</span>
-        </figcaption>
-      </figure>
-    </section>
+        <ul class="body" id="body">
+          {% for w in now.body.words %}<li>{{ w }}</li>{% endfor %}
+          {% if now.body.derived_words %}<li>{{ now.body.derived_words }}</li>{% endif %}
+        </ul>
+      {% else %}
+        <p>There is nothing to see yet.</p>
+      {% endif %}
+    </article>
 
-    <section class="card" id="mood-card">
-      <h2 class="section-title">Mood, anxiety &amp; energy</h2>
-      <p class="mood-word" data-f="mood.word">{{ s.mood.word }}</p>
-      <p class="mood-desc" data-f="mood.description">{{ s.mood.description }}</p>
-      <div class="mood-slider" id="mood-slider" role="img" aria-label="{{ s.mood.aria }}" data-f-attr="aria-label:mood.aria">
-        <span class="ms-end">negative</span>
-        <div class="ms-track"><i class="ms-dot" id="mood-dot" style="left: {{ s.mood.slider_pct }}%"></i></div>
-        <span class="ms-end">positive</span>
-      </div>
-      {% if s.anxiety.enabled %}<div class="energy anxiety">
-        <span class="n-label">anxiety</span>
-        <span class="n-word" data-f="anxiety.word">{{ s.anxiety.word }}</span>
-        <div class="bar dusk" id="anxiety-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
-             aria-valuenow="{{ s.anxiety.value }}" aria-label="{{ s.anxiety.aria }}"><i style="width: {{ s.anxiety.pct }}%"></i></div>
-      </div>{% endif %}
-      <div class="energy">
-        <span class="n-label">energy</span>
-        <span class="n-word" data-f="energy.word">{{ s.energy.word }}</span>
-        <div class="bar dusk" id="energy-bar" role="progressbar" aria-valuemin="-50" aria-valuemax="50"
-             aria-valuenow="{{ s.energy.value }}" aria-label="{{ s.energy.aria }}"><i style="width: {{ s.energy.pct }}%"></i></div>
-      </div>
-    </section>
-
-    <section class="card" id="needs-card">
-      <h2 class="section-title">Needs</h2>
-      <ul class="needs" id="needs">
-        {% for n in s.needs %}
-        <li class="need {{ n.cls }}" title="{{ n.title }}">
-          <span class="n-label">{{ n.label }}</span>
-          <span class="n-word">{{ n.word }}</span>
-          <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ n.value }}" aria-label="{{ n.aria }}"><i style="width: {{ n.value }}%"></i></div>
-          <span class="n-trend {{ n.trend }}" aria-hidden="true">{{ n.trend_symbol }}</span>
-        </li>
-        {% endfor %}
-      </ul>
-    </section>
-  </aside>
-
-  <section class="col col-centre" aria-label="Diary">
-    <div class="card diary-card">
-      <h2 class="section-title">Diary</h2>
-      <button type="button" id="new-pill" class="new-pill" hidden></button>
-      <p id="diary-empty" class="empty" {% if s.diary %}hidden{% endif %}>the journal is empty. {{ s.creature.name | lower }} hasn’t woken up yet.</p>
-      {% if before %}<p class="newer"><a href="/">← back to the newest pages</a></p>{% endif %}
-      <ol id="diary" class="diary" data-next-before="{{ s.diary_next_before or '' }}">
-        {% set ns = namespace(day=None) %}
-        {% for e in s.diary %}
-          {% if e.day_number != ns.day %}
-            {% set ns.day = e.day_number %}
-            <li class="day-header" data-day="{{ e.day_number }}"><h3>{{ e.day_label }}</h3></li>
-          {% endif %}
-          {% include "_diary_entry.html" %}
-        {% endfor %}
-      </ol>
-      <p class="older-wrap" id="older-wrap" {% if not s.diary_next_before %}hidden{% endif %}>
-        <a id="older" class="older" href="/?before={{ s.diary_next_before }}">read older pages</a>
-      </p>
-    </div>
+    <article class="card letter" id="letter">
+      <h2>Write to Nit</h2>
+      <p class="hint">Your letter goes into the mailbox at the market stall. Nit reads it when it chooses to, and may
+        write back. Ask it anything; it will weigh your words as its own choice.</p>
+      {% if letter_message %}<p class="notice {{ 'ok' if letter_ok else 'err' }}" role="status">{{ letter_message }}</p>{% endif %}
+      <form method="post" action="/letters">
+        <label>Your name (optional) <input name="sender" maxlength="{{ name_max }}" autocomplete="nickname"></label>
+        <label>Your letter <textarea name="text" maxlength="{{ max_chars }}" rows="5" required></textarea></label>
+        <label class="hp" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off"></label>
+        <button type="submit">Put it in the mailbox</button>
+      </form>
+    </article>
   </section>
 
-  <aside class="col col-right" aria-label="About {{ s.creature.name }}">
-    <nav class="rail" id="rail" aria-label="Sections" hidden>
-      <button type="button" data-panel="about-card" aria-pressed="true">About</button>
-      <button type="button" data-panel="habits-card" aria-pressed="false">Habits</button>
-      <button type="button" data-panel="projects-card" aria-pressed="false">Projects</button>
-      <button type="button" data-panel="art-card" aria-pressed="false">Art</button>
-      <button type="button" data-panel="keepsakes-card" aria-pressed="false">Keepsakes</button>
-      <a href="/biography">Biography</a>
-    </nav>
-    <section class="card" id="about-card">
-      <h2 class="section-title">About {{ s.creature.name }}</h2>
-      <ul class="chips" id="traits">
-        {% for t in s.creature.core_traits %}<li class="chip-trait">{{ t }}</li>{% endfor %}
-      </ul>
-      <h3 class="sub-title">What it thinks it is</h3>
-      <ul class="self-image" id="self-image">
-        {% for l in s.self_image.lines %}<li title="{{ l.title }}">{{ l.text }}</li>{% endfor %}
-      </ul>
-      <p class="empty small" id="self-image-empty" {% if not s.self_image.empty %}hidden{% endif %}>{{ s.self_image.empty_text }}</p>
-      <h3 class="sub-title">Tendencies</h3>
-      <ul class="tendencies" id="tendencies">
-        {% for t in s.tendencies %}
-        <li class="tendency {{ t.dir }}" role="img" aria-label="{{ t.aria }}">
-          <span class="t-name">{{ t.label }}</span>
-          <div class="slider">
-            <span class="t-end">{{ t.low_label }}</span>
-            <div class="track"><i class="ghost" style="left: {{ t.prev_pct }}%"></i><i class="dot" style="left: {{ t.pct }}%"></i></div>
-            <span class="t-end">{{ t.high_label }}</span>
-          </div>
-          <span class="t-delta" aria-hidden="true">{{ t.symbol }}</span>
-        </li>
-        {% endfor %}
-      </ul>
-      <div class="prefs" id="prefs">
-        <div>
-          <h3 class="sub-title">Loves</h3>
-          <ul class="pref-list loves" id="loves">
-            {% for p in s.preferences.loves %}<li title="{{ p.reason }}"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5S2 9.6 2 5.8C2 3.9 3.4 2.6 5 2.6c1.2 0 2.3.7 3 1.8.7-1.1 1.8-1.8 3-1.8 1.6 0 3 1.3 3 3.2 0 3.8-6 7.7-6 7.7z"/></svg>{{ p.subject }}</li>{% endfor %}
-          </ul>
-          <p class="empty small" id="loves-empty" {% if s.preferences.loves %}hidden{% endif %}>nothing yet.</p>
-        </div>
-        <div>
-          <h3 class="sub-title">Dislikes</h3>
-          <ul class="pref-list dislikes" id="dislikes">
-            {% for p in s.preferences.dislikes %}<li title="{{ p.reason }}"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>{{ p.subject }}</li>{% endfor %}
-          </ul>
-          <p class="empty small" id="dislikes-empty" {% if s.preferences.dislikes %}hidden{% endif %}>nothing yet.</p>
-        </div>
-      </div>
-    </section>
+  <section class="col col-diary">
+    <article class="card">
+      <h2>Diary</h2>
+      <ol class="diary" id="diary">
+        {% for e in diary %}{% include "_entry.html" %}{% endfor %}
+      </ol>
+      {% if next %}<p class="more"><a href="/?before={{ next | urlencode }}#diary" id="older" data-next="{{ next }}">Older</a></p>{% endif %}
+      {% if not diary %}<p class="hint">Nothing has happened yet.</p>{% endif %}
+    </article>
+  </section>
 
-    <section class="card" id="habits-card">
-      <h2 class="section-title">Habits</h2>
-      <p id="habits-empty" class="empty" {% if not s.habits.empty %}hidden{% endif %}>{{ s.habits.empty_text }}</p>
-      <ul class="pref-list habits" id="habits">
-        {% for h in s.habits.rows %}<li title="{{ h.title }}">{{ h.text }}</li>{% endfor %}
+  <section class="col">
+    {% if who %}
+    <article class="card who">
+      <h2>Who {{ who.name }} is</h2>
+      <p>{{ who.nature }}</p>
+      {% if who.traits %}<p>{{ who.name }} is {{ who.traits | join(", ") }}.</p>{% endif %}
+      {% if who.tendencies %}<p>It tends to: {{ who.tendencies.keys() | join("; ") }}.</p>{% endif %}
+      {% if who.likes %}<p>It likes: {{ who.likes | join("; ") }}</p>{% endif %}
+      {% if who.dislikes %}<p>It does not like: {{ who.dislikes | join("; ") }}</p>{% endif %}
+      {% if who.core_memories %}
+        <h3>What it keeps</h3>
+        <ul>{% for c in who.core_memories %}<li>{{ c }}</li>{% endfor %}</ul>
+      {% endif %}
+      <p class="hint">Version {{ who.version }} of who it is: it changes slowly, from what it does.</p>
+    </article>
+    {% endif %}
+    {% if knows %}
+    <article class="card">
+      <h2>What it knows it can do</h2>
+      <ul class="knows">
+        {% for k in knows %}<li>{{ k.own_words or (k.name | capitalize) }}{% if k.place and not k.own_words %} <span class="hint">({{ k.place }})</span>{% endif %}</li>{% endfor %}
       </ul>
-    </section>
-
-    <section class="card" id="projects-card">
-      <h2 class="section-title">Projects</h2>
-      <p id="projects-empty" class="empty" {% if not s.projects.empty %}hidden{% endif %}>{{ s.projects.empty_text }}</p>
-      <ul class="projects" id="projects">
-        {% for p in s.projects.rows %}
-        <li class="project {{ p.cls }}" title="{{ p.title_attr }}">
-          <span class="pj-title">{{ p.title }}</span>
-          <span class="pj-stage">{{ p.status_label }} · {{ p.stage }}</span>
-          {% if p.note %}<span class="pj-note">{{ p.note }}</span>{% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-      <h3 class="sub-title">Made so far</h3>
-      <p id="artifacts-empty" class="empty small" {% if not s.projects.artifacts_empty %}hidden{% endif %}>{{ s.projects.artifacts_empty_text }}</p>
-      <ul class="artifacts" id="artifacts">
-        {% for a in s.projects.artifacts %}
-        <li class="artifact">
-          <p class="af-head"><b>{{ a.title }}</b> <span class="af-meta">{{ a.kind }}{% if a.project %} · {{ a.project }}{% endif %} · {{ a.day_text }}</span></p>
-          <img class="af-img" src="{{ a.img }}" alt="{{ a.title }}" loading="lazy" {% if not a.img %}hidden{% endif %}>
-          <p class="af-text">{{ a.text }}</p>
-        </li>
-        {% endfor %}
-      </ul>
-    </section>
-
-    <section class="card" id="art-card">
-      <h2 class="section-title">Art</h2>
-      <p id="art-empty" class="empty" {% if not s.art.empty %}hidden{% endif %}>{{ s.art.empty_text }}</p>
-      <h3 class="sub-title" id="board-title" {% if s.art.pinned_empty %}hidden{% endif %}>On the board</h3>
-      <ul class="drawings" id="board">
-        {% for d in s.art.pinned %}
-        <li class="drawing"><img src="{{ d.img }}" alt="{{ d.alt }}" loading="lazy"><p class="dw-head"><b>{{ d.title }}</b> <span class="dw-meta">{{ d.meta }}</span></p></li>
-        {% endfor %}
-      </ul>
-      <h3 class="sub-title" id="table-title" {% if s.art.table_empty %}hidden{% endif %}>On the table</h3>
-      <ul class="drawings" id="drawing-table">
-        {% for d in s.art.table %}
-        <li class="drawing"><img src="{{ d.img }}" alt="{{ d.alt }}" loading="lazy"><p class="dw-head"><b>{{ d.title }}</b> <span class="dw-meta">{{ d.status_label }} · {{ d.meta }}</span></p></li>
-        {% endfor %}
-      </ul>
-    </section>
-
-    <section class="card" id="keepsakes-card">
-      <h2 class="section-title">Keepsakes</h2>
-      <p id="keepsakes-empty" class="empty" {% if s.keepsakes %}hidden{% endif %}>no keepsakes yet.</p>
-      <ul class="keepsakes" id="keepsakes">
-        {% for k in s.keepsakes %}
-        <li class="keepsake" data-id="{{ k.id }}">
-          <p class="k-text">{{ k.text }}</p>
-          <p class="k-meta"><span>Day {{ k.day_number }}</span><span class="dots" role="img" aria-label="importance {{ k.dots }} of 3">{% for i in range(3) %}<i class="{{ 'on' if i < k.dots else '' }}"></i>{% endfor %}</span></p>
-        </li>
-        {% endfor %}
-      </ul>
-      <p class="more-wrap" id="more-wrap" {% if not s.keepsakes_has_more %}hidden{% endif %}>
-        <a id="more-keepsakes" class="older" href="/?all_keepsakes=1">more keepsakes</a>
-      </p>
-    </section>
-  </aside>
+    </article>
+    {% endif %}
+  </section>
 </main>
 
-<noscript><p class="noscript">This page is a snapshot. Turn on JavaScript for live updates.</p></noscript>
-
-{# ---- templates cloned by journal.js (same markup as the server-rendered pieces) ---- #}
-<template id="tpl-day-header"><li class="day-header" data-f-attr="data-day:day_number"><h3 data-f="day_label"></h3></li></template>
-
-<template id="tpl-entry-tick">
-  <li class="entry entry-tick" data-f-attr="data-key:key;data-id:id;data-day:day_number">
-    <template data-each="events"><p class="margin-note"><span class="leaf" aria-hidden="true"></span><span data-f="$"></span></p></template>
-    <p class="entry-meta"><span class="time" data-f="time_label"></span> · <span class="area" data-f="area"></span><span data-show="span"> · <span class="span" data-f="span"></span></span></p>
-    <p class="entry-doing" data-f="doing"></p>
-    <p class="entry-journal" data-f="entry" data-show="entry"></p>
-    <p class="entry-why" data-f="why_text" data-show="why_text"></p>
-    <p class="entry-carried" data-f="carried_text" data-show="carried_text"></p>
-    <p class="entry-reaction" data-f="reaction_quoted" data-show="reaction_only"></p>
-    <p class="entry-tags" data-show-any="need_changes,world_changes">
-      <template data-each="need_changes"><span class="chip chip-need" data-f-class="dir"><span data-f="label"></span> <span aria-hidden="true" data-f="symbol"></span><span class="sr" data-f="dir"></span></span></template>
-      <template data-each="world_changes"><span class="chip chip-world" data-f="text"></span></template>
-    </p>
-  </li>
-</template>
-
-<template id="tpl-entry-doze">
-  <li class="entry entry-doze" data-f-attr="data-key:key;data-id:id;data-day:day_number"><p class="doze-line" data-f="text"></p></li>
-</template>
-
-<template id="tpl-entry-sleep">
-  <li class="entry entry-sleep" data-f-attr="data-key:key;data-id:id;data-day:day_number">
-    <h4 class="sleep-title">Last night…</h4>
-    <p class="sleep-summary" data-f="summary"></p>
-    <ul class="sleep-list" data-show="tendency_changes"><template data-each="tendency_changes"><li><span data-f="text"></span> <span aria-hidden="true" data-f="symbol"></span><span class="sr" data-f="dir"></span></li></template></ul>
-    <ul class="sleep-list" data-show="new_preferences"><template data-each="new_preferences"><li data-f="text"></li></template></ul>
-  </li>
-</template>
-
-<template id="tpl-project"><li class="project" data-f-class="cls" data-f-attr="title:title_attr"><span class="pj-title" data-f="title"></span><span class="pj-stage"><span data-f="status_label"></span> · <span data-f="stage"></span></span><span class="pj-note" data-f="note" data-show="note"></span></li></template>
-
-<template id="tpl-artifact"><li class="artifact"><p class="af-head"><b data-f="title"></b> <span class="af-meta"><span data-f="kind"></span> · <span data-f="project"></span> · <span data-f="day_text"></span></span></p><img class="af-img" loading="lazy" data-f-attr="src:img;alt:title" data-show="img"><p class="af-text" data-f="text"></p></li></template>
-
-<template id="tpl-drawing"><li class="drawing"><img loading="lazy" data-f-attr="src:img;alt:alt"><p class="dw-head"><b data-f="title"></b> <span class="dw-meta" data-f="meta"></span></p></li></template>
-
-<template id="tpl-drawing-table"><li class="drawing"><img loading="lazy" data-f-attr="src:img;alt:alt"><p class="dw-head"><b data-f="title"></b> <span class="dw-meta"><span data-f="status_label"></span> · <span data-f="meta"></span></span></p></li></template>
-
-<template id="tpl-habit"><li data-f="text" data-f-attr="title:title"></li></template>
-
-<template id="tpl-self-image"><li data-f="text" data-f-attr="title:title"></li></template>
-
-<template id="tpl-need">
-  <li class="need" data-f-class="cls" data-f-attr="title:title">
-    <span class="n-label" data-f="label"></span><span class="n-word" data-f="word"></span>
-    <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-f-attr="aria-valuenow:value;aria-label:aria"><i data-f-style="width:value%"></i></div>
-    <span class="n-trend" aria-hidden="true" data-f-class="trend" data-f="trend_symbol"></span>
-  </li>
-</template>
-
-<template id="tpl-tendency">
-  <li class="tendency" role="img" data-f-class="dir" data-f-attr="aria-label:aria">
-    <span class="t-name" data-f="label"></span>
-    <div class="slider"><span class="t-end" data-f="low_label"></span>
-      <div class="track"><i class="ghost" data-f-style="left:prev_pct%"></i><i class="dot" data-f-style="left:pct%"></i></div>
-      <span class="t-end" data-f="high_label"></span></div>
-    <span class="t-delta" aria-hidden="true" data-f="symbol"></span>
-  </li>
-</template>
-
-<template id="tpl-love"><li data-f-attr="title:reason"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5S2 9.6 2 5.8C2 3.9 3.4 2.6 5 2.6c1.2 0 2.3.7 3 1.8.7-1.1 1.8-1.8 3-1.8 1.6 0 3 1.3 3 3.2 0 3.8-6 7.7-6 7.7z"/></svg><span data-f="subject"></span></li></template>
-<template id="tpl-dislike"><li data-f-attr="title:reason"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg><span data-f="subject"></span></li></template>
-<template id="tpl-trait"><li class="chip-trait" data-f="$"></li></template>
-
-<template id="tpl-keepsake">
-  <li class="keepsake" data-f-attr="data-id:id">
-    <p class="k-text" data-f="text"></p>
-    <p class="k-meta"><span data-f="day_text"></span><span class="dots" role="img" data-f-attr="aria-label:dots_aria"><i data-f-class="dot1"></i><i data-f-class="dot2"></i><i data-f-class="dot3"></i></span></p>
-  </li>
-</template>
+<script src="/static/js/live.js" defer></script>
 </body>
 </html>

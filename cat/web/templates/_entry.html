@@ -1,0 +1,14 @@
+{% if e %}<li class="entry {{ e.kind }} {{ e.status or '' }}" data-id="{{ e.id }}" data-time="{{ e.time }}">
+  {% if e.kind == "activity" %}
+  <p class="when"><time datetime="{{ e.started }}">Day {{ e.start_day }}, {{ e.start_clock }}</time>
+    {%- if e.status == "rejected" %} · tried to <b>{{ e.name }}</b>, but could not
+    {%- else %} → {{ e.end_clock }} ({{ e.minutes }} min{{ ", stopped early" if e.status == "interrupted" }}) · <b>{{ e.name }}</b>{% endif %}
+    {%- if e.decided_real %} <span class="real">decided at {{ e.decided_real }} your time</span>{% endif %}</p>
+  {% else %}<p class="when"><time datetime="{{ e.time }}">Day {{ e.day }}, {{ e.clock }}</time></p>{% endif %}
+  {% if e.kind == "night" %}<p class="night-entry">{{ e.text }}</p>
+  {% elif e.kind == "event" %}<p class="event-entry">{{ e.text }}</p>
+  {% else %}
+    {% if e.thought %}<p class="thought">{{ e.thought }}</p>{% endif %}
+    <p class="what"><b>{{ e.line }}.</b> <span class="hint">{{ e.text }}</span>{% if e.answered_letter %} <span class="tag">because of a letter</span>{% endif %}</p>
+  {% endif %}
+</li>{% endif %}

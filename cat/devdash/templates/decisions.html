@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="card">
+  <h2>Decisions</h2>
+  <table class="data">
+    <tr><th>#</th><th>sim</th><th>real</th><th>kind</th><th>triggers</th><th>action</th><th>inputs</th><th>thought</th><th>ms</th></tr>
+    {% for x in d.decisions %}<tr><td><a href="/decisions/{{ x.id }}">{{ x.id }}</a></td><td class="nowrap">{{ x.sim_time }}</td>
+      <td class="nowrap dim">{{ x.real_time[11:] }}</td><td>{{ x.kind }}</td><td>{{ x.triggers | join(", ") }}</td>
+      <td>{{ x.action }}{% if x.fallback %} <span class="pill bad">fallback</span>{% endif %}{% if x.letter %} <span class="pill">letter {{ x.letter }}</span>{% endif %}</td>
+      <td class="mono small">{{ x.inputs | tojson if x.inputs else "" }}</td><td>{{ x.thought }}</td><td>{{ x.ms }}</td></tr>{% endfor %}
+  </table>
+  {% if d.decisions | length == d.page_size %}<p class="pager"><a href="/decisions?before={{ d.decisions[-1].id }}">older</a></p>{% endif %}
+</div>
+{% endblock %}

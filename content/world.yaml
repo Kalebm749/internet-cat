@@ -1,0 +1,59 @@
+# The world as a whole (docs/rewrite-contracts.md §2.3, §4.2). Locations live in locations/*.yaml.
+name: the square
+sim_start: "2026-11-21T07:00"            # the sim clock at the creature's first moment
+
+# Every sense an event can use. The creature perceives only those in character.yaml core.senses.
+senses: [sight, sound, smell, touch, taste]
+
+# The list fact that holds visitor letters (§4.8). Read, unanswered letters stay on the creature's mind.
+mailbox: market.mailbox
+
+# The list fact that holds the creature's wishes (each has an id, shown on the website and the dashboard).
+wishes: fountain.wishes
+
+# Wishes YOU have granted: build what was wished for (a new place or action in content/, or a capability in code),
+# then add the wish here and restart the engine. The wish is marked granted, the creature perceives that it came
+# true, and it becomes a remembered moment. Only you grant wishes; nothing in the world does.
+#   granted_wishes:
+#     - {wish: "1", note: "A ladder now leads up the clock tower."}
+granted_wishes: []
+
+facts:                                   # global facts, addressed as world.<name>
+  weather: {type: text, default: clear, choices: [clear, cloudy, rain], visible: full}
+
+events:                                  # things that can happen anywhere
+  - {id: clouds_gather, text: "Clouds slide over the sun.", sense: sight, chance_per_hour: 0.06,
+     weather_in: [clear], world: [{op: set, fact: world.weather, value: cloudy}]}
+  - {id: rain_starts, text: "Cold drops of rain start to fall on you.", sense: touch, chance_per_hour: 0.08,
+     weather_in: [cloudy], salience: 0.7, world: [{op: set, fact: world.weather, value: rain}]}
+  - {id: rain_stops, text: "The rain stops, and the stones begin to steam.", sense: sight, chance_per_hour: 0.2,
+     weather_in: [rain], world: [{op: set, fact: world.weather, value: cloudy}]}
+  - {id: clouds_part, text: "The clouds part and the light comes back.", sense: sight, chance_per_hour: 0.1,
+     weather_in: [cloudy], world: [{op: set, fact: world.weather, value: clear}]}
+
+# Energy spent per sim minute, by effort level; an action may name a level or give a number.
+effort: {none: 0.0, low: 0.0005, medium: 0.0012, high: 0.0025}
+
+# How the body feels, in words, by band (the highest `from` at or below the value applies).
+body_words:
+  hunger:
+    - {from: 0.0, words: ""}
+    - {from: 0.4, words: "Something in you would like to be fed."}
+    - {from: 0.65, words: "Your stomach is a small, insistent knot."}
+    - {from: 0.85, words: "Hunger fills everything; it is hard to think of anything else."}
+  energy:
+    - {from: 0.0, words: "You can barely keep your eyes open."}
+    - {from: 0.2, words: "You feel heavy and slow."}
+    - {from: 0.45, words: ""}
+    - {from: 0.8, words: "You feel light and quick."}
+
+# Boredom, restlessness and the like are derived, never stored (first match wins; ranges inclusive).
+derived_conditions:
+  - {name: restless, mood: [-0.3, 0.2], energy: [0.6, 1.0], repetition: [0.5, 1.0],
+     words: "You feel itchy, as if you have done all this already."}
+  - {name: buoyant, mood: [0.5, 1.0], energy: [0.6, 1.0],
+     words: "Everything seems possible; ideas come quickly."}
+  - {name: drained, mood: [-1.0, 0.0], energy: [0.0, 0.3],
+     words: "Everything feels heavy."}
+  - {name: content, mood: [0.2, 1.0], energy: [0.2, 0.7],
+     words: "You feel settled."}

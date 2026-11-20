@@ -1,0 +1,37 @@
+# Actions available everywhere (docs/rewrite-contracts.md §4.5). Their behaviour is built into the engine
+# (`builtin`); their names, words, durations and requirements are content.
+- id: move
+  builtin: move
+  diary: "{name} is walking to {inputs.to}"
+  name: go somewhere else
+  description: "Walk to a neighbouring place."
+  family: move
+  discovery: innate
+  inputs:
+    to: {type: choice, options: "{exits}"}
+  duration: {minutes: [3, 8]}
+  effort: low
+
+- id: inspect
+  builtin: inspect
+  diary: "{name} is looking around {location.name} carefully"
+  name: look around carefully
+  description: "Look carefully around here for something you have not noticed."
+  family: inspect
+  discovery: innate
+  duration: {minutes: [5, 15]}
+  effort: low
+
+- id: sleep
+  builtin: sleep
+  diary: "{name} is sleeping at {location.name}"
+  name: go to sleep
+  description: "Lie down and sleep."
+  family: sleep
+  discovery: innate
+  requires:
+    - any_of:
+        - {energy_lte: 0.35}
+        - {hours: [21, 6]}
+  duration: {minutes: [2, 5]}
+  effort: none

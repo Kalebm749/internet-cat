@@ -3,24 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title }} · devdash · {{ creature }}</title>
+  <title>{{ title }} · devdash</title>
   <link rel="stylesheet" href="/static/devdash.css">
-  {% block head %}{% endblock %}
+  {% if refresh_s %}<meta http-equiv="refresh" content="{{ refresh_s }}">{% endif %}
+  <style>.spark { color: var(--accent); display: block; } pre.box { white-space: pre-wrap; word-break: break-word;
+    max-height: 520px; overflow: auto; font-size: 12px; background: var(--bg); padding: 8px; border-radius: 4px; }</style>
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="/">devdash</a><span class="who">{{ creature }}</span>
-  <nav>
-    {% for key, label, href in nav %}<a href="{{ href }}" class="{{ 'active' if active == key else '' }}">{{ label }}</a>{% endfor %}
-  </nav>
-  <span class="spacer"></span>
-  {% if refresh_s %}<label class="refresh" title="auto-refresh this page every {{ refresh_s }}s"><input type="checkbox" id="auto-refresh" checked> auto-refresh <span id="refresh-state" class="dim"></span></label>{% endif %}
+  <a class="brand" href="/">Nit · devdash</a>
+  <nav>{% for key, label, href in nav %}<a href="{{ href }}" class="{{ 'active' if key == active }}">{{ label }}</a>{% endfor %}</nav>
+  <span class="spacer"></span><span class="dim small">read-only · <a href="/api/dev/{{ active if active != 'decision' else 'decisions' }}">JSON</a></span>
 </header>
-<main id="content" data-refresh="{{ refresh_s }}">
-{% block content %}{% endblock %}
+<main>
+{% if d.empty %}<div class="card"><p>No life to show yet: <code>nit.db</code> does not exist, or the engine has not yet updated it to this version (start the engine).</p></div>
+{% else %}{% block main %}{% endblock %}{% endif %}
 </main>
-<div id="toast" class="toast" hidden></div>
-<script src="/static/devdash.js" defer></script>
-{% block scripts %}{% endblock %}
 </body>
 </html>

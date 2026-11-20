@@ -23,4 +23,3 @@ Dockerfile
 .dockerignore
 README.md
 CLAUDE.md
-tests/js/

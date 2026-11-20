@@ -1,86 +1,46 @@
 {% extends "base.html" %}
-{% from "_macros.html" import pill, ms %}
-{% block content %}
-{% set e = o.engine %}
-<section class="grid2">
+{% block main %}
+{% set n = d.now %}
+<div class="grid2">
   <div class="card">
-    <h2>Engine {% if e.state == 'running' %}{{ pill('running','ok') }}{% elif e.state == 'paused' %}{{ pill('paused','warn') }}{% elif e.state in ('dozing','asleep') %}{{ pill(e.state,'warn') }}{% else %}{{ pill(e.state,'bad') }}{% endif %}</h2>
+    <h2>Now</h2>
     <table class="kv">
-      <tr><th>current tick</th><td>{% if e.current_tick %}<a href="/ticks/{{ e.current_tick }}">#{{ e.current_tick }}</a>{% else %}–{% endif %}</td></tr>
-      <tr><th>sim time</th><td>{{ e.sim_label or '–' }}{% if e.area %} <span class="dim">in {{ e.area }}</span>{% endif %}</td></tr>
-      <tr><th>tick interval</th><td>{{ e.interval_s }} s{% if e.interval_override is not none %} {{ pill('override' ~ (' for ' ~ e.interval_override_ticks ~ ' ticks' if e.interval_override_ticks else ''),'warn') }}{% endif %}</td></tr>
-      <tr><th>last tick took</th><td>{{ ms(e.last_tick_ms) }}</td></tr>
-      <tr><th>brain online</th><td>{% if e.brain_online is none %}–{% elif e.brain_online %}{{ pill('yes','ok') }}{% else %}{{ pill('no (dozing)','bad') }}{% endif %}</td></tr>
-      <tr><th>heartbeat</th><td>{% if e.heartbeat_age_s is none %}never{% else %}{{ e.heartbeat_age_s }} s ago{% endif %}</td></tr>
-      <tr><th>trace level</th><td>{{ e.trace_level }}</td></tr>
-      <tr><th>downtime policy</th><td>{{ e.downtime_policy }}</td></tr>
-      {% if e.injected_queued %}<tr><th>injected events</th><td>{{ e.injected_queued }} queued</td></tr>{% endif %}
+      <tr><th>sim time</th><td>day {{ n.day }}, {{ n.sim_time }} ({{ n.part_of_day }}), {{ n.weather }}</td></tr>
+      <tr><th>where</th><td>{{ n.place }} <span class="dim">({{ n.location }})</span></td></tr>
+      <tr><th>doing</th><td>{% if n.asleep %}<span class="pill">asleep</span>{% endif %}
+        {% if n.doing %}{{ n.doing.name }} <span class="dim">since {{ n.doing.since }}</span>{% else %}<span class="dim">nothing running</span>{% endif %}</td></tr>
+      <tr><th>last thought</th><td>{{ n.thought.text if n.thought else "" }}</td></tr>
+      <tr><th>body words</th><td>{{ n.body.words | join(" / ") }}</td></tr>
+      <tr><th>derived</th><td>{{ n.body.derived or "none" }} <span class="dim">(repetition {{ d.repetition }})</span></td></tr>
+      <tr><th>engine</th><td>{% if d.heartbeat_age is none %}<span class="pill warn">no heartbeat</span>
+        {% elif n.engine_alive %}<span class="pill ok">alive</span>{% else %}<span class="pill bad">stalled</span>{% endif %}
+        <span class="dim">{{ '%.0f' % d.heartbeat_age if d.heartbeat_age is not none else '' }} s</span></td></tr>
+      <tr><th>models</th><td class="mono">{{ d.models.decision_model }} · {{ d.models.sleep_model }} · {{ d.models.embed_model }}</td></tr>
     </table>
   </div>
-
   <div class="card">
-    <h2>Dev controls <span class="dim small">(each asks for confirmation)</span></h2>
-    <div class="buttons" id="controls">
-      <button data-command="pause" data-confirm="Pause the tick loop?" {{ 'disabled' if e.paused }}>Pause</button>
-      <button data-command="resume" data-confirm="Resume the tick loop?" {{ 'disabled' if not e.paused }}>Resume</button>
-      <button data-command="step" data-confirm="Run exactly one tick?" {{ 'disabled' if not e.paused }}>Step</button>
-      <button data-command="set_interval" data-ask="interval">Set interval…</button>
-      <button data-command="force_sleep" data-confirm="Run the sleep cycle now? (3 LLM calls; consolidates today's memories)">Force sleep cycle</button>
-      <button data-command="reload_settings" data-confirm="Re-read settings.yaml and apply it live?">Reload settings</button>
-      <button data-command="inject_event" data-ask="event">Inject event…</button>
-      <button data-command="snapshot" data-confirm="Back up the database now?">Snapshot DB</button>
-    </div>
-    <p class="dim small">The dashboard never writes game state: these are queued in <code>devdash.db</code> and run by the engine at the next poll (≤ {{ cfg.settings.dev_poll_seconds }}s).</p>
-    <h3>Recent commands</h3>
-    <table class="data" id="commands">
-      <tr><th>#</th><th>when</th><th>command</th><th>status</th><th>result</th></tr>
-      {% for c in o.commands %}
-      <tr><td>{{ c.id }}</td><td class="nowrap">{{ c.created_at[11:] }}</td><td>{{ c.command }} <span class="dim">{{ c.args if c.args != '{}' else '' }}</span></td>
-          <td>{{ pill(c.status, {'done':'ok','failed':'bad','rejected':'bad','running':'warn','pending':'warn'}.get(c.status,'')) }}</td><td>{{ c.result or '' }}</td></tr>
-      {% else %}<tr><td colspan="5" class="dim">no commands yet</td></tr>{% endfor %}
-    </table>
+    <h2>Body, last 24 sim hours</h2>
+    {% for v in ("mood", "energy", "hunger") %}
+      <h3>{{ v }} <span class="dim">{{ n.body[v] }}</span></h3>{{ d.sparks[v] | safe }}
+    {% endfor %}
   </div>
-</section>
-
-<section class="grid2">
+</div>
+<div class="grid2" style="margin-top:14px">
   <div class="card">
-    <h2>Ollama {% if o.ollama.reachable %}{{ pill('reachable','ok') }}{% else %}{{ pill('unreachable','bad') }}{% endif %} <span class="dim small">{{ o.ollama.host }}</span></h2>
-    {% if o.ollama.error %}<p class="bad">{{ o.ollama.error }}</p>{% endif %}
-    <h3>Loaded now (/api/ps)</h3>
+    <h2>Recent decisions</h2>
     <table class="data">
-      <tr><th>model</th><th>size</th><th>VRAM</th><th>on GPU</th><th>unloads</th></tr>
-      {% for m in o.ollama.loaded %}<tr><td>{{ m.name }}</td><td>{{ m.size_mb }} MB</td><td>{{ m.vram_mb }} MB</td><td>{{ m.gpu_pct }}%</td><td class="dim">{{ (m.expires or '')[:19] }}</td></tr>
-      {% else %}<tr><td colspan="5" class="dim">nothing loaded</td></tr>{% endfor %}
+      <tr><th>#</th><th>sim</th><th>kind</th><th>action</th><th>thought</th><th>ms</th></tr>
+      {% for x in d.decisions %}<tr><td><a href="/decisions/{{ x.id }}">{{ x.id }}</a></td><td class="nowrap">{{ x.sim_time[-5:] }}</td>
+        <td>{{ x.kind }}</td><td>{{ x.action }}{% if x.fallback %} <span class="pill bad">fallback</span>{% endif %}</td>
+        <td>{{ x.thought }}</td><td>{{ x.ms }}</td></tr>{% endfor %}
     </table>
-    <h3>Installed (/api/tags)</h3>
-    <table class="data">
-      <tr><th>model</th><th>version (digest)</th><th>params</th><th>quant</th><th>size</th></tr>
-      {% for m in o.ollama.installed %}<tr><td>{{ m.name }}{% if m.name in o.models.values() or (m.name ~ ':latest') in o.models.values() %} <span class="pill ok">in use</span>{% endif %}</td><td class="mono">{{ m.digest }}</td><td>{{ m.parameters or '' }}</td><td>{{ m.quantization or '' }}</td><td>{{ m.size_mb }} MB</td></tr>
-      {% else %}<tr><td colspan="5" class="dim">none</td></tr>{% endfor %}
-    </table>
-    <p class="dim small">configured: brain <code>{{ o.models.brain_model }}</code> · director <code>{{ o.models.narrator_model }}</code> · sleep <code>{{ o.models.sleep_model }}</code> · embed <code>{{ o.models.embed_model }}</code></p>
   </div>
-
   <div class="card">
-    <h2>Services</h2>
-    <table class="data">
-      {% for s in o.services %}<tr><td>{{ s.name }}</td><td>{{ pill('healthy','ok') if s.ok else pill('unhealthy','bad') }}</td><td class="dim">{{ s.detail }}</td></tr>{% endfor %}
-    </table>
-    {% set s = o.stats %}
-    <h2>Last {{ s.hours|int }} hours</h2>
-    <table class="kv">
-      <tr><th>ticks run</th><td>{{ s.ticks }}</td></tr>
-      <tr><th>doze ticks</th><td>{{ s.doze }}</td></tr>
-      <tr><th>errors</th><td>{% if s.errors %}<a class="bad" href="/ticks?status=error">{{ s.errors }}</a>{% else %}0{% endif %}</td></tr>
-      <tr><th>invalid-JSON rate</th><td>{% if s.invalid_json_rate is none %}–{% else %}{{ '%.1f'|format(s.invalid_json_rate*100) }}% <span class="dim">of {{ s.llm_attempts }} LLM attempts</span>{% endif %}</td></tr>
-      <tr><th>rejected-effect rate</th><td>{% if s.rejected_rate is none %}–{% else %}{{ '%.1f'|format(s.rejected_rate*100) }}% <span class="dim">of {{ s.effects }} proposed changes</span>{% endif %}</td></tr>
-      <tr><th>brain latency</th><td>mean {{ ms(s.brain.mean_ms) }} · p95 {{ ms(s.brain.p95_ms) }} <span class="dim">({{ s.brain.n }} calls)</span></td></tr>
-      <tr><th>journal latency</th><td>mean {{ ms(s.journal.mean_ms) }} · p95 {{ ms(s.journal.p95_ms) }} <span class="dim">({{ s.journal.n }} calls)</span></td></tr>
-      <tr><th>model decisions vs carried on</th><td>{{ s.decisions }} decided · {{ s.carried }} carried on{% if s.carried_share is not none %} <span class="dim">({{ '%.0f'|format(s.carried_share*100) }}% without a model call)</span>{% endif %}</td></tr>
-      <tr><th>avg tokens per call</th><td>{{ s.avg_tokens_per_call if s.avg_tokens_per_call is not none else '–' }}</td></tr>
-      {% for d in s.per_day %}<tr><th>{{ d.day }}</th><td>{{ d.calls }} calls · {{ d.tokens }} tokens</td></tr>{% endfor %}
-      <tr><th>tokens per tick</th><td>{{ s.tokens_per_tick if s.tokens_per_tick is not none else '–' }}</td></tr>
-    </table>
+    <h2>Counts</h2>
+    <table class="kv">{% for k, v in d.counts.items() %}<tr><th>{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}</table>
+    {% if d.last_night %}<h3>last night</h3>
+      <p>{{ d.last_night.started_at }} → {{ d.last_night.finished_at }} <span class="pill {{ 'ok' if d.last_night.status == 'ok' else 'bad' }}">{{ d.last_night.status }}</span></p>
+      <p class="dim">{{ d.last_night.summary }}</p>{% endif %}
   </div>
-</section>
+</div>
 {% endblock %}

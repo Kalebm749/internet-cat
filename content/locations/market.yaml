@@ -1,0 +1,81 @@
+id: market
+name: the market stall
+description: >
+  A single canvas-roofed stall at the edge of the square. Small offerings of food are left on its
+  counter, and a wooden mailbox is nailed to its post.
+exits: [fountain]
+sheltered: true
+
+facts:
+  offerings: {type: int, default: 2, min: 0, max: 3, visible: full, regrow: {amount: 1, at_hours: [6, 12, 18]}}
+  mailbox: {type: list, default: [], max_len: 50, visible: summary}     # visitor letters: unread / read. Open-ended:
+                                                                        # read, unanswered ones stay on Nit's mind (§4.8)
+  answered: {type: list, default: [], max_len: 200, visible: summary}   # the answered pile (§4.8)
+
+events:
+  - {id: bread_smell, text: "The smell of warm bread drifts from the stall.", sense: smell,
+     chance_per_hour: 0.5, hours: [6, 11], salience: 0.5}
+  - {id: stallholder_calls, text: "A stallholder calls out a price.", sense: sound,
+     chance_per_hour: 0.4, hours: [8, 17]}
+  - {id: canvas_flaps, text: "The canvas roof snaps and billows in a gust.", sense: sight, chance_per_hour: 0.2}
+
+actions:
+  - id: eat_offering
+    diary: "{name} is eating an offering at {location.name}"
+    name: eat an offering
+    description: "Take one of the small offerings left on the counter, and eat it."
+    family: eat
+    discovery: known_on_arrival
+    requires:
+      - {fact_gte: [market.offerings, 1]}
+    duration: {minutes: [5, 10]}
+    effort: low
+    outcomes:                         # food is better when it is needed
+      - when: {hunger_gte: 0.5}
+        world: [{op: add, fact: market.offerings, value: -1}]
+        creature: {hunger: -0.45, energy: 0.05, mood: 0.12}
+        text: "You eat it slowly. When you are this hungry it tastes wonderful."
+      - world: [{op: add, fact: market.offerings, value: -1}]
+        creature: {hunger: -0.45, energy: 0.05, mood: 0.02}
+        text: "You eat it."
+
+  - id: read_messages
+    diary: "{name} is reading a letter"
+    name: read messages
+    description: "Open the mailbox on the stall post and read a message."
+    family: mail
+    discovery: known_on_arrival
+    requires:
+      - {fact_count_where: [market.mailbox, {status: [unread, read]}, 1]}
+    inputs:
+      which: {type: choice, options: "{fact:market.mailbox.labels}"}    # unread first, then read (the Mind builder)
+    duration: {minutes: [5, 15]}
+    effort: low
+    capability: read_message
+    on_finish:
+      world:
+        - {op: update_where, fact: market.mailbox, match: {id: "{inputs.which}", status: unread},
+           set: {status: read, read_at: "{now}"}}
+      discover: [reply_message]
+      remember: {importance: 0.7, text: "I read a message from {capability.sender}: {capability.summary}"}
+
+  - id: reply_message
+    diary: "{name} is writing a reply"
+    name: write a reply
+    description: "Write a reply to a message you have read."
+    family: mail
+    discovery: hidden
+    requires:
+      - {fact_count_where: [market.mailbox, {status: read}, 1]}
+      - {energy_gte: 0.1}
+    inputs:
+      which: {type: choice, options: "{fact:market.mailbox.read.labels}"}
+      reply: {type: text, max_chars: 800, prompt: "What do you write back?"}
+    duration: {minutes: [10, 25]}
+    effort: medium
+    on_finish:
+      world:
+        - {op: move_where, from: market.mailbox, to: market.answered, match: {id: "{inputs.which}"},
+           set: {status: answered, reply: "{inputs.reply}", answered_at: "{now}"}}
+      creature: {mood: 0.05}
+      remember: {importance: 0.6, text: "I wrote a reply to a message: {inputs.reply}"}

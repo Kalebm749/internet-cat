@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="grid2">
+  <div class="card">
+    <h2>Freshness by action <span class="dim small">(repetition score now {{ d.score }})</span></h2>
+    <table class="data num"><tr><th>action</th><th>count</th><th>mean</th><th>min</th><th>restarts</th></tr>
+      {% for r in d.by_action %}<tr><td>{{ r.action }}</td><td>{{ r.count }}</td><td>{{ r.mean_freshness }}</td><td>{{ r.min_freshness }}</td><td>{{ r.restarts }}</td></tr>{% endfor %}
+    </table>
+    <h2>Repeated thoughts <span class="dim small">{{ d.thoughts.repeated }} of {{ d.thoughts.total }}</span></h2>
+    <ul>{% for t in d.repeated_thoughts %}<li><span class="dim">{{ t.sim_time }}</span> {{ t.text }}</li>{% endfor %}</ul>
+  </div>
+  <div class="card">
+    <h2>Recent activities</h2>
+    <table class="data"><tr><th>#</th><th>started</th><th>action</th><th>freshness</th><th>what lowered it</th></tr>
+      {% for r in d.recent %}<tr><td>{{ r.id }}</td><td class="nowrap">{{ r.started_at }}</td><td>{{ r.action }}</td><td>{{ r.freshness }}</td>
+        <td class="mono small">{{ r.parts | tojson }}{% if r.restart_of %} restart of {{ r.restart_of }}{% endif %}</td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,71 @@
+id: fountain
+name: the fountain
+description: >
+  The heart of the square. An old stone fountain stands in a wide basin, its water always
+  faintly moving even when there is no wind. Coins lie scattered on the bottom.
+exits: [market]
+
+facts:
+  wishes: {type: list, default: [], max_len: 100, visible: summary}
+
+events:
+  - {id: glint, text: "Something glints for a moment deep in the water.", sense: sight,
+     chance_per_hour: 0.4, salience: 0.6}
+  - {id: spray, text: "A fine cold spray drifts off the water onto your skin.", sense: touch,
+     chance_per_hour: 0.3, salience: 0.3}
+  - {id: splash, text: "Something splashes in the basin.", sense: sound, chance_per_hour: 0.2}
+
+actions:
+  - id: sit_and_reflect
+    diary: "{name} is sitting and reflecting at {location.name}"
+    name: sit and reflect
+    description: "Sit on the rim of the basin and let your thoughts settle."
+    family: rest
+    discovery: known_on_arrival
+    duration: {minutes: [10, 30]}
+    continuous: true
+    effort: none
+    per_minute: {energy: 0.002}
+    on_finish:
+      creature: {mood: 0.05}
+      reflection: true
+
+  - id: make_wish
+    diary: "{name} is making a wish at {location.name}: {inputs.kind} {inputs.what}"
+    name: make a wish
+    description: "Wish at the moving water for a place you do not have, or something you cannot yet do."
+    family: wish
+    discovery: hidden
+    inspect_hint: "Coins glint in the basin, as if people have wished here before."
+    requires:
+      - {energy_gte: 0.1}
+      - {done_fewer_than: {action: make_wish, times: 2, real_hours: 24}}   # at most 2 wishes a real day
+    inputs:
+      kind: {type: choice, options: ["I want a place where I can", "I wish I could"]}
+      what: {type: text, max_chars: 80,
+             prompt: "something to do, e.g. 'climb up high and look around'; not the weather, luck or other people"}
+    duration: {minutes: [2, 5]}
+    effort: low
+    on_finish:
+      world:
+        - {op: append, fact: fountain.wishes,
+           value: {text: "{inputs.kind} {inputs.what}", made: "{now}", status: open}}
+      creature: {mood: 0.08}
+      discover: [assess_wishes]
+      remember: {importance: 0.6, text: "I wished at the fountain: {inputs.kind} {inputs.what}."}
+
+  # Wishes are granted only by the world's author: build what was wished for, then add the wish to
+  # content/world.yaml `granted_wishes`. Nothing here grants them.
+  - id: assess_wishes
+    diary: "{name} is looking over its wishes"
+    name: look over your wishes
+    description: "Think back over what you have wished for here, and which have come true."
+    family: wish
+    discovery: hidden
+    requires:
+      - {fact_count_gte: [fountain.wishes, 1]}
+    duration: {minutes: [5, 15]}
+    effort: none
+    revisit_key: [fountain.wishes]
+    on_finish:
+      creature: {mood: 0.02}

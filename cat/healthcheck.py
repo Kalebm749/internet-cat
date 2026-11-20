@@ -4,7 +4,7 @@
   python -m cat.healthcheck http <url>      # does the URL answer 2xx? (used for web)
 
 The heartbeat is a small file the engine rewrites every loop iteration (not a DB write), so the
-engine stays the only writer of game state and the check works while it is paused or dozing."""
+engine stays the only writer of the life and the check works while it dozes or sleeps."""
 from __future__ import annotations
 
 import os
@@ -37,8 +37,7 @@ def heartbeat_age(path: Path) -> float | None:
 
 
 def engine_limit(cfg: Config) -> float:
-    return max(cfg.settings["healthcheck"]["engine_max_age_seconds"],
-               3 * cfg.settings["tick_interval_seconds"])
+    return float(cfg.settings["healthcheck"]["engine_max_age_seconds"])
 
 
 def check_engine(cfg: Config) -> tuple[bool, str]:

@@ -1,41 +1,14 @@
-import shutil
-from pathlib import Path
-
 import pytest
 
-from cat import db
-from cat.config import CONFIG_DIR, load_config
-
-FIXTURES = Path(__file__).parent / "fixtures"
+from cat.config import load_config
 
 
 @pytest.fixture
 def cfg(tmp_path):
-    d = tmp_path / "config"
-    shutil.copytree(CONFIG_DIR, d)
-    # tests use a fixed world (the old house), so they do not depend on the default content of config/world.yaml
-    shutil.copy(FIXTURES / "world_house.yaml", d / "world.yaml")
-    shutil.copy(FIXTURES / "moves_core.yaml", d / "moves.yaml")     # the 12 original verbs; the default file has about 100
-    shutil.copy(FIXTURES / "character_house.yaml", d / "character.yaml")   # with the three predefined tendencies
-    c = load_config(d)
-    c.settings["gain_values"] = {"0": 0, "+": 15, "++": 30}      # tests keep the original bucket sizes
-    c.settings["db_path"] = str(tmp_path / "cat.db")
-    c.settings["anxiety"]["enabled"] = False       # test_anxiety turns it on
-    c.settings["activity"]["enabled"] = False       # most tests want one decision per tick; test_activity turns it on
-    c.settings["moves"]["shuffle"] = False          # most tests read the menu in file order; test_moves checks the shuffle
-    c.settings["drives"]["enabled"] = False         # test_reflex turns them on
-    c.settings["director"]["allow_spawn"] = True    # the house tests (and test_director) keep the director's spawns
-    # the body's rules and earned likes are off for the older tests; test_body turns them on
-    c.settings["exhaustion"].update(rest_chance=0.0, blocks_effort=[], blocks_does=[])
-    c.settings["empty_blocks_does"] = []
-    c.settings["mood_menu"] = {}
-    c.settings["activity"]["interrupt_while_empty"] = False
-    c.settings["experience"].update(min_count=10 ** 6, opinion_cap=1.0)
-    return c
-
-
-@pytest.fixture
-def conn(tmp_path):
-    c = db.connect(tmp_path / "t.db")
-    db.init_db(c)
+    """Engine-wide settings with every file pointed into the test's own directory."""
+    c = load_config()
+    c.settings["nit"]["db_path"] = str(tmp_path / "nit.db")
+    c.settings["web"]["mail_db"] = str(tmp_path / "mail.db")
+    c.settings["heartbeat_file"] = str(tmp_path / "engine.heartbeat")
+    c.settings["log_dir"] = str(tmp_path / "logs")
     return c

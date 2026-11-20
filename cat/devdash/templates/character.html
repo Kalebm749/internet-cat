@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="grid2">
+  <div class="card">
+    <h2>Who it is now (version {{ d.who.version }})</h2>
+    <table class="kv">
+      <tr><th>nature</th><td>{{ d.who.nature }}</td></tr>
+      <tr><th>senses</th><td>{{ d.who.senses | join(", ") }}</td></tr>
+      <tr><th>traits</th><td>{% for k, v in d.who.traits_raw.items() %}{{ k }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+      <tr><th>tendencies</th><td>{% for k, v in d.who.tendencies.items() %}{{ k }} {{ v }}{% if not loop.last %}; {% endif %}{% endfor %}</td></tr>
+      <tr><th>background</th><td>{{ d.who.background }}</td></tr>
+      <tr><th>boundaries</th><td>{{ d.who.boundaries | join(" · ") }}</td></tr>
+      <tr><th>core memories</th><td>{{ d.who.core_memories | join(" · ") }}</td></tr>
+    </table>
+    <h3>versions</h3>
+    <table class="data"><tr><th>v</th><th>when</th><th>reason</th><th>change</th><th>evidence</th></tr>
+      {% for v in d.versions %}<tr><td>{{ v.version }}</td><td class="nowrap">{{ v.created_at }}</td><td>{{ v.reason }}</td>
+        <td class="mono small">{{ v.change | tojson if v.change else "" }}</td><td class="small">{{ v.evidence | join(", ") }}</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>Development proposals</h2>
+    {% for p in d.proposals %}<div class="call {{ '' if p.accepted else 'call-bad' }}">
+      <div class="call-head">{{ p.sim_time }} <span class="pill {{ 'ok' if p.accepted else 'bad' }}">{{ 'accepted → v' ~ p.version if p.accepted else 'rejected' }}</span>
+        <b>{{ p.proposal.kind }}</b> {{ p.proposal.target }} {{ p.proposal.value }}</div>
+      <p class="dim">{{ p.proposal.rationale }}</p>
+      <table class="data compact">{% for v in p.verdicts %}<tr><td>{{ v.check }}</td><td class="{{ 'ok' if v.ok else 'bad' }}">{{ 'ok' if v.ok else 'no' }}</td><td class="small">{{ v.detail }}</td></tr>{% endfor %}</table>
+    </div>{% else %}<p class="dim">No proposals yet.</p>{% endfor %}
+    <h2>Preferences</h2>
+    <table class="data num"><tr><th>subject</th><th>valence</th><th>confidence</th><th>strength</th><th>evidence</th></tr>
+      {% for p in d.preferences %}<tr><td>{{ p.subject }}{% if p.words %} <span class="dim">“{{ p.words }}”</span>{% endif %}</td>
+        <td>{{ p.valence }}</td><td>{{ p.confidence }}</td><td>{{ p.strength }}</td><td>{{ p.evidence }}</td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}
