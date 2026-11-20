@@ -1,0 +1,20 @@
+# Code capabilities that actions may use (docs/rewrite-contracts.md §4.6). An action naming a capability that
+# is disabled, over its limit or missing a permission is not offered. Limits are per sim day.
+read_message:
+  enabled: true
+  handler: cat.capabilities.read_message    # gives the chosen visitor message to the creature as perception
+  limits: {per_day: 50}
+draw:
+  enabled: true
+  handler: cat.capabilities.draw            # reuses cat/drawings.py + cat/art.py (step 4)
+  permissions: {writes_artifacts: true}
+  limits: {per_day: 6, llm_calls_per_use: 1}
+write:
+  enabled: true
+  handler: cat.capabilities.write
+  permissions: {writes_artifacts: true}
+  limits: {per_day: 10, max_chars: 2000}
+web_search:
+  enabled: false                            # off at start; enabling it later needs an API key and an allowed host
+  handler: cat.capabilities.web_search
+  limits: {per_day: 5, max_results: 3}

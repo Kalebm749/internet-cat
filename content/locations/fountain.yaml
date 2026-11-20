@@ -1,0 +1,70 @@
+id: fountain
+name: the fountain
+description: >
+  The heart of the square. An old stone fountain stands in a wide basin, its water always
+  faintly moving even when there is no wind. Coins lie scattered on the bottom.
+exits: [market]
+
+facts:
+  wishes: {type: list, default: [], max_len: 100, visible: summary}
+
+events:
+  - {id: glint, text: "Something glints for a moment deep in the water.", sense: sight,
+     chance_per_hour: 0.4, salience: 0.6}
+  - {id: spray, text: "A fine cold spray drifts off the water onto your skin.", sense: touch,
+     chance_per_hour: 0.3, salience: 0.3}
+  - {id: splash, text: "Something splashes in the basin.", sense: sound, chance_per_hour: 0.2}
+
+actions:
+  - id: sit_and_reflect
+    name: sit and reflect
+    description: "Sit on the rim of the basin and let your thoughts settle."
+    family: rest
+    discovery: known_on_arrival
+    duration: {minutes: [10, 30]}
+    continuous: true
+    effort: none
+    per_minute: {energy: 0.002}
+    on_finish:
+      creature: {mood: 0.05}
+      reflection: true
+
+  - id: make_wish
+    name: make a wish
+    description: "Say a wish to the moving water."
+    family: wish
+    discovery: hidden
+    inspect_hint: "Coins glint in the basin, as if people have wished here before."
+    requires:
+      - {energy_gte: 0.1}
+    inputs:
+      wish: {type: text, max_chars: 200, prompt: "What do you wish for?"}
+    duration: {minutes: [2, 5]}
+    effort: low
+    on_finish:
+      world:
+        - {op: append, fact: fountain.wishes, value: {text: "{inputs.wish}", made: "{now}", status: open}}
+      creature: {mood: 0.08}
+      discover: [assess_wishes]
+      remember: {importance: 0.6, text: "I wished at the fountain: {inputs.wish}"}
+
+  - id: assess_wishes
+    name: look over your wishes
+    description: "Think back over what you have wished for here."
+    family: wish
+    discovery: hidden
+    requires:
+      - {fact_count_gte: [fountain.wishes, 1]}
+    duration: {minutes: [5, 15]}
+    effort: none
+    revisit_key: [fountain.wishes]
+    outcomes:
+      - when: {random_lt: 0.15}
+        world:
+          - {op: update_where, fact: fountain.wishes, match: {status: open}, set: {status: answered},
+             pick: random_one}
+        creature: {mood: 0.2}
+        text: "One wish feels lighter, as if something has answered it."
+        remember: {importance: 0.8}
+      - text: "The wishes are still there, waiting."
+        creature: {mood: 0.02}

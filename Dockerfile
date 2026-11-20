@@ -27,6 +27,7 @@ RUN pip install -r requirements.txt
 COPY cat ./cat
 COPY scripts ./scripts
 COPY config ./config
+COPY content ./content
 RUN mkdir -p /app/data && chown -R cat:cat /app/data
 
 

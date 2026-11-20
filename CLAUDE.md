@@ -9,7 +9,23 @@ Docker Compose: **ollama** (the brain), **engine** (tick loop, SQLite, the only 
 (read-only website). Plain code owns time, needs and rules; the LLM only describes.
 There is no Raspberry Pi any more: do not add Pi, systemd or SD-card concerns.
 
+## Rewrite in progress (`docs/rewrite-contracts.md` wins for new code)
+The engine is being rewritten in place, step by step (spec §10). Until the new engine replaces the old one,
+both live in `cat/`: the old modules keep running and their rules below still apply to them. New code follows
+the spec, which overturns these old rules for the new life (§11): Nit has a stated nature (`content/character.yaml`
+`core`), there are no innate drives or feeding reflex (code never picks the move), the new life starts in a new
+database (`data/nit.db`, the old `cat.db` kept as a backup), and world content lives in `content/`, not `config/`.
+- `content/` — the content pack: `character.yaml`, `world.yaml`, `locations/*.yaml` (one location with its facts,
+  events and actions), `actions/universal.yaml` (move, inspect, sleep), `capabilities.yaml`. Growing the world is a
+  content change; only new effect ops, condition types or capabilities need code.
+- Done (step 1): `cat/content.py` (load + validate, every problem with file:line), `cat/conditions.py`,
+  `cat/ops.py` (world ops, all-or-nothing), `cat/templating.py` (`{inputs.x}`, `{now}`, `{fact:loc.fact}` ...),
+  `cat/worldstate.py` (facts, touched flags, regrowth, sync with content), `cat/store.py` (`nit.db` schema +
+  numbered migrations). Tests: `tests/test_content.py`, `test_conditions.py`, `test_ops.py`, `test_worldstate.py`.
+- When adding to the content schema or the condition/op sets, update the spec, the validator and its tests together.
+
 ## Docs (in `docs/`)
+- `rewrite-contracts.md` — the contracts for the rewrite (identity, state, cycle, world, sleep, repetition); wins for new code
 - `creature-architecture.md` — concepts (background)
 - `behavior-guide.md` — how the whole simulation behaves (triggers, impacts), the tuning guide and how to reset
 - `server-architecture.md` — how it is built and deployed, incl. host setup (wins for implementation)
