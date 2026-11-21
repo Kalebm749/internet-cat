@@ -44,6 +44,8 @@ class Mind:
     inner: list[str] = field(default_factory=list)       # what is strong inside, in words (needs and affect)
     carry: dict | None = None                            # what it was doing, offered as "carry on" (inputs reused)
     menu_info: dict = field(default_factory=dict)        # how the menu was drawn (for the dashboard)
+    board: list[str] = field(default_factory=list)       # senders of the letters pinned on its board
+    carrying: list[str] = field(default_factory=list)    # what it has in its pocket
     projects: list[str] = field(default_factory=list)    # what it is making, and how it feels about it
     people: list[str] = field(default_factory=list)      # who it knows and how it feels about them
     beliefs: list[str] = field(default_factory=list)     # what it has come to think about where it is and the weather
@@ -194,6 +196,20 @@ def _visible(life: Life) -> list[str]:
     return lines
 
 
+def board_now(life: Life) -> list[str]:
+    """Who the letters pinned on its board are from (world.yaml `pinned`)."""
+    key = life.content.world.get("pinned")
+    if not key or life.location != key.split(".", 1)[0]:
+        return []
+    return [str(i.get("sender") or "someone") for i in life.world.get(key) if isinstance(i, dict) and i.get("status") == "answered"]
+
+
+def carrying_now(life: Life) -> list[str]:
+    """The names of what it carries (world.yaml `carrying` names the list fact)."""
+    key = life.content.world.get("carrying")
+    return [str(i.get("name", "something")) for i in life.world.get(key) if isinstance(i, dict)] if key else []
+
+
 def letters_on_mind(life: Life, tuning: dict) -> list[dict]:
     key = life.content.world.get("mailbox")
     if not key:
@@ -277,7 +293,8 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
           loops: list[str] | None = None, mulling: bool = False,
           inner: list[str] | None = None, temperament_words: list[str] | None = None,
           menu_size: int = 0, protected: set[str] | None = None, carry: dict | None = None,
-          beliefs: list[str] | None = None, projects: list[str] | None = None, people: list[str] | None = None) -> Mind:
+          beliefs: list[str] | None = None, projects: list[str] | None = None, people: list[str] | None = None,
+          carrying: list[str] | None = None, board: list[str] | None = None) -> Mind:
     rng = random.Random(f"{seed}|{life.sim_time}")
     now = clock.parse(life.sim_time)
     loc = life.content.locations[life.location]
@@ -307,5 +324,7 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
         inner=list(inner or []),
         beliefs=list(beliefs or []),
         projects=list(projects or []),
+        carrying=list(carrying or []),
+        board=list(board or []),
         people=list(people or []),
     )

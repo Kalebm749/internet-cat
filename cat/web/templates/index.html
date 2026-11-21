@@ -52,7 +52,11 @@
         write back. Ask it anything; it will weigh your words as its own choice.</p>
       {% if letter_message %}<p class="notice {{ 'ok' if letter_ok else 'err' }}" role="status">{{ letter_message }}</p>{% endif %}
       <form method="post" action="/letters">
-        <label>Your name (optional) <input name="sender" maxlength="{{ name_max }}" autocomplete="nickname"></label>
+        <p class="hint">Pick a name. It is yours: the first time you use it, the passphrase claims it, and Nit will
+          remember you by it. Use the same name and passphrase to write again.</p>
+        <label>Your name <input name="sender" required minlength="3" maxlength="{{ name_max }}" autocomplete="username"
+          pattern="[A-Za-z0-9][A-Za-z0-9_\-]*"></label>
+        <label>Passphrase <input name="secret" type="password" required minlength="6" autocomplete="current-password"></label>
         <label>Your letter <textarea name="text" maxlength="{{ max_chars }}" rows="5" required></textarea></label>
         <label class="hp" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off"></label>
         <button type="submit">Put it in the mailbox</button>

@@ -24,7 +24,8 @@ REQUIRED = {
     "pull_timeout_seconds": (int, float), "web": dict, "devdash": dict, "nit": dict,
 }
 WEB_KEYS = {"port", "refresh_seconds", "diary_page", "mail_db", "mail_max_chars", "mail_name_max",
-            "mail_per_ip_per_hour", "mail_per_hour", "mail_poll_seconds", "mail_blocklist"}
+            "mail_per_ip_per_hour", "mail_per_hour", "mail_poll_seconds", "mail_blocklist", "mail_name_min",
+            "mail_secret_min"}
 
 
 class ConfigError(ValueError):

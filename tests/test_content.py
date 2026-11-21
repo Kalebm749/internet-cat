@@ -113,7 +113,7 @@ def test_all_problems_are_reported_at_once_with_file_and_line(pack):
     # placeholders
     ("locations/fountain.yaml", 'text: "{inputs.kind} {inputs.what}", made', 'text: "{inputs.desire}", made',
      "- {op: append, fact: fountain.wishes", "declares no input 'desire'"),
-    ("locations/market.yaml", 'text: "I wrote a reply to a message: {inputs.reply}"',
+    ("locations/market.yaml", 'text: "I wrote back to a letter and pinned it on my board: {inputs.reply}"',
      'text: "I replied to {capability.sender}"', "I replied to", "uses no capability"),
     ("locations/fountain.yaml", 'made: "{now}"', 'made: "{later}"', "- {op: append, fact: fountain.wishes", "unknown placeholder {later}"),
     # actions

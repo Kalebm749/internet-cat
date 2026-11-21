@@ -1054,3 +1054,22 @@ The aim: behaviour that comes from a persistent inner life and accumulated exper
   tables start empty), but the intended path is a fresh start.
 - **Settings**: `nit.inner`, `nit.beliefs`, and in `nit.memory`, `nit.loops`, `nit.decisions` the keys named above; each is
   validated at start-up (`cat/tuning.py`).
+
+### 13.1 World variety, accounts and the letter decision (as built)
+
+- **Five new places** (`docs/world-map.md` lists each action with its purpose): the walled garden, the clock tower lookout, the
+  workshop, the lane, the fortune teller's booth, plus windy and foggy weather. The rule: every action serves a need (its
+  `inner:` effects), changes the world (a fact, an item, a keepsake) or opens something later. A test enforces it.
+- **Pocket** (`world.pocket`, `world.yaml carrying`): coins (earned by sweeping), seed packets (found in drawers). "You are
+  carrying: ..." is part of the Mind. Items are list items put in and taken out with ordinary ops.
+- **Outcome-level `inner:`** (a particular outcome moves needs or affect; used by the random fortunes).
+- **Accounts for visitors** (`cat/mail.py`): a letter needs a name (3-20 letters, numbers, `-`, `_`, unique ignoring case) and a
+  passphrase (>= 6). The first letter under a name claims it (a salted PBKDF2 hash is stored, never the passphrase); later letters
+  must match. Wrong guesses are slowed per visitor. The mailbox shows the name, so Nit can associate a name with a person
+  (`people`: it only *knows* someone once it wrote back to them).
+- **The letter decision**: a read letter must be decided before another is read, and while one waits, `reply_message` and
+  `discard_message` are always offered at the mailbox. Reading leaves no memory (the words are external). **Replying** keeps the
+  knowledge: the original letter is pinned on the board (`market.answered`, room for 8) with its reply, can be reread exactly as
+  written (`reread_pinned_letter`), and stays until it takes it down. **Setting a letter aside**, or taking a pinned one down
+  (`forgets: which`), deletes every memory made from the experiences that involved that letter.
+

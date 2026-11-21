@@ -17,7 +17,7 @@ def live(cfg, hours=6.0, letters=()):
     if letters:
         m = mail.open_for_writing(cfg.mail_db_path)
         for sender, text in letters:
-            assert mail.submit(m, cfg.settings["web"], sender, text, "visitor").ok
+            assert mail.submit(m, cfg.settings["web"], sender, text, "visitor", secret="passphrase").ok
         m.close()
     t = tuning.load()
     fc = FakeClock()
@@ -47,17 +47,34 @@ def test_letters_are_checked_and_rate_limited(cfg):
     web = cfg.settings["web"]
     web.update(mail_per_ip_per_hour=2, mail_per_hour=3, mail_blocklist=["spam"])
     m = mail.open_for_writing(cfg.mail_db_path)
-    assert mail.submit(m, web, "", "   ", "a").code == "empty"
-    assert mail.submit(m, web, "", "x" * (web["mail_max_chars"] + 1), "a").code == "long"
-    assert mail.submit(m, web, "", "buy SPAM now", "a").code == "blocked"
-    r = mail.submit(m, web, "Ann\x07", "Hello\x00 Nit", "a")
+    send = lambda name, text, who="a", **k: mail.submit(m, web, name, text, who, secret=k.pop("secret", "secret1"), **k)
+    assert send("Ann", "   ").code == "empty"
+    assert send("Ann", "x" * (web["mail_max_chars"] + 1)).code == "long"
+    assert send("Ann", "buy SPAM now").code == "blocked"
+    assert send("", "no name").code == "name" and send("A b", "bad chars").code == "name"
+    r = send("Ann", "Hello\x00 Nit")
     assert r.ok and tuple(m.execute("SELECT sender, text FROM letters").fetchone()) == ("Ann", "Hello Nit")
-    assert mail.submit(m, web, "", "again", "a").ok
-    assert mail.submit(m, web, "", "and again", "a").code == "slow"
-    assert mail.submit(m, web, "", "from someone else", "b").ok
-    assert mail.submit(m, web, "", "one more", "c").code == "full"
+    assert send("Ann", "again").ok
+    assert send("Ann", "and again").code == "slow"
+    assert send("Bob", "from someone else", "b").ok
+    assert send("Cyd", "one more", "c").code == "full"
     later = datetime.now() + timedelta(hours=2)
-    assert mail.submit(m, web, "", "next hour", "a", now=later).ok
+    assert send("Ann", "next hour", now=later).ok
+
+
+def test_a_name_is_a_claimed_account_nobody_else_can_write_as(cfg):
+    web = cfg.settings["web"]
+    m = mail.open_for_writing(cfg.mail_db_path)
+    assert mail.submit(m, web, "Kaleb", "first", "a", secret="short").code == "secret"        # a new name needs a passphrase
+    assert mail.submit(m, web, "Kaleb", "first", "a", secret="a good phrase").ok               # this letter claims the name
+    assert mail.submit(m, web, "KALEB", "faking", "b", secret="not it").code == "denied"        # unique ignoring case
+    assert mail.submit(m, web, "kaleb", "mine again", "c", secret="a good phrase").ok
+    rows = m.execute("SELECT sender, account_id FROM letters ORDER BY id").fetchall()
+    assert [r[0] for r in rows] == ["Kaleb", "Kaleb"] and rows[0][1] == rows[1][1]              # one account, one name
+    assert "a good phrase" not in " ".join(str(tuple(r)) for r in m.execute("SELECT * FROM accounts"))   # only a hash
+    for i in range(8):
+        mail.submit(m, web, "Kaleb", "guess", "thief", secret=f"guess{i}")
+    assert mail.submit(m, web, "Kaleb", "guess", "thief", secret="a good phrase").code == "slow"   # guessing is slowed
 
 
 def test_letters_reach_the_mailbox_untemplated(cfg):
@@ -97,10 +114,10 @@ def test_website_pages(site):
 
 
 def test_website_letter_form(site, cfg):
-    r = site.post("/letters", data={"text": "Hello", "sender": "Bo"}, follow_redirects=False)
+    r = site.post("/letters", data={"text": "Hello", "sender": "Bob", "secret": "bo-secret"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/?letter=ok#letter"
     assert "Your letter is in the mailbox" in site.get("/?letter=ok").text
-    r = site.post("/letters", data={"text": "", "sender": "Bo"}, follow_redirects=False)
+    r = site.post("/letters", data={"text": "", "sender": "Bob", "secret": "bo-secret"}, follow_redirects=False)
     assert r.headers["location"] == "/?letter=empty#letter"
     n = mail.open_for_reading(cfg.mail_db_path).execute("SELECT COUNT(*) FROM letters").fetchone()[0]
     site.post("/letters", data={"text": "bot", "website": "http://spam"}, follow_redirects=False)   # honeypot

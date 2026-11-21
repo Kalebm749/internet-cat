@@ -183,7 +183,6 @@ class Loop:
             for r in rows:
                 self.life.world.append_raw(key, {"id": mailmod.letter_key(r["id"]), "sender": r["sender"],
                                                  "text": r["text"], "status": "unread", "received": self.life.sim_time})
-                peoplemod.touch(self.conn, r["sender"], self.life.sim_time, 0.05, 0.0, 0)
                 self.conn.execute("INSERT INTO mail_imports(letter_id, sim_time, real_time) VALUES (?, ?, ?)",
                                   (r["id"], self.life.sim_time, r["received_at"]))
             lifemod.save(self.conn, self.life)
@@ -247,6 +246,7 @@ class Loop:
                              inner=innermod.describe(self.life.inner, self.life.content.world.get("inner_words"),
                                                      self.t["inner"]),
                              temperament_words=self._temperament_words(),
+                             carrying=mindmod.carrying_now(self.life), board=mindmod.board_now(self.life),
                              projects=projectsmod.on_mind(self.conn, self.prompts),
                              people=peoplemod.on_mind(self.conn, self.prompts),
                              beliefs=beliefsmod.lines_for_now(self.conn, self.t["beliefs"], self.life.location,
@@ -412,6 +412,10 @@ class Loop:
         out: set[str] = set()
         if self.life.bodystate.energy <= dec["sleep_offer_energy"]:
             out |= {a.id for a in self.life.content.actions.values() if a.builtin == "sleep"}
+        ld, box = self.life.content.world.get("letter_decision"), self.life.content.world.get("mailbox")
+        if ld and box and box.split(".", 1)[0] == self.life.location \
+                and any(isinstance(i, dict) and i.get("status") == "read" for i in self.life.world.get(box)):
+            out |= set(ld.values())                    # a letter it has read waits for a decision: both ways are offered
         food = (self.life.content.world.get("starving") or {}).get("eat")
         if food and self.life.bodystate.hunger >= dec["food_offer_hunger"]:
             out.add(food)

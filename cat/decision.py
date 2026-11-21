@@ -33,7 +33,7 @@ PROMPT_FIELDS = {
     "system": {"name", "nature", "senses", "abilities", "traits", "tendencies", "background", "boundaries", "core"},
     "core": {"lines"}, "note_liked": set(), "note_disliked": set(), "note_repeated": set(),
     "learned": {"lines"}, "dwelling": {"lines"}, "subject_repeat": {"count", "example"},
-    "loops": {"lines"}, "mulling": set(), "gut": set(), "practised": set(), "projects": {"lines"}, "project_line": {"title", "how"}, "project_new": set(), "project_pleased": set(),
+    "loops": {"lines"}, "mulling": set(), "gut": set(), "board": {"senders"}, "carrying": {"items"}, "practised": set(), "projects": {"lines"}, "project_line": {"title", "how"}, "project_new": set(), "project_pleased": set(),
     "project_disappointed": set(), "project_unsure": set(), "people": {"lines"}, "person_line": {"name", "n", "feel"},
     "person_warm": set(), "person_uneasy": set(), "person_unsure": set(), "beliefs": {"lines"}, "belief_note": {"statement"}, "memory_good": set(), "memory_bad": set(), "faded": {"gist"}, "inner": {"lines"}, "need_relief": {"what"},
     "stay": {"hours"}, "exit_never": set(), "exit_recent": set(), "exit_ago": {"hours"},
@@ -159,6 +159,10 @@ def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories:
     stay = mind.location.get("stay_minutes", 0)
     if stay >= 120:
         parts.append(p["stay"].format(hours=round(stay / 60)))
+    if mind.board:
+        parts.append(p["board"].format(senders=", ".join(mind.board)))
+    if mind.carrying:
+        parts.append(p["carrying"].format(items=", ".join(mind.carrying)))
     if visible:
         parts.append(p["visible"].format(lines=_lines(visible)))
     if perception:

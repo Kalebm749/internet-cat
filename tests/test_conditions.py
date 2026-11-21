@@ -66,7 +66,7 @@ def test_random_is_seeded():
 def test_validate_against_content():
     c = content.load()
     assert conditions.validate({"fact_count_where": ["market.mailbox", {"status": "read"}, 1]}, c) == []
-    assert conditions.validate({"weather_in": ["snow"]}, c) == ["weather_in: unknown weather ['snow'] (known: ['clear', 'cloudy', 'rain'])"]
+    assert conditions.validate({"weather_in": ["snow"]}, c) == ["weather_in: unknown weather ['snow'] (known: ['clear', 'cloudy', 'rain', 'windy', 'fog'])"]
     assert "needs a list of conditions" in conditions.validate({"any_of": []}, c)[0]
     assert "one key" in conditions.validate({"energy_gte": 0.1, "hunger_lte": 0.5}, c)[0]
     assert conditions.validate({"not": {"knows": "fly"}}, c) == ["not: knows: no action 'fly'"]

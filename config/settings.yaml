@@ -31,7 +31,9 @@ web:
   diary_page: 40                # entries per diary page
   mail_db: data/mail.db         # visitor letters: the ONLY file the website writes
   mail_max_chars: 500
-  mail_name_max: 40
+  mail_name_min: 3              # a visitor's name is a unique account: 3-20 letters, numbers, - or _
+  mail_name_max: 20
+  mail_secret_min: 6            # the passphrase that claims a new name (it is never stored, only a salted hash)
   mail_per_ip_per_hour: 3
   mail_per_hour: 30             # all visitors together
   mail_poll_seconds: 30         # the engine imports new letters this often (real seconds)
