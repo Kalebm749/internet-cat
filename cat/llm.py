@@ -63,6 +63,15 @@ class LLMBackend(ABC):
         """Raises BackendError on failure."""
 
 
+IO_MAX_CHARS = 30000
+
+
+def _io(system: str, user: str, response: str | None = None) -> dict:
+    """What went into a call and what came out, shortened, for the dev dashboard's LLM page."""
+    cut = lambda s: s if s is None or len(s) <= IO_MAX_CHARS else s[:IO_MAX_CHARS] + f"\n... ({len(s) - IO_MAX_CHARS} more characters)"
+    return {"system": cut(system), "user": cut(user), "response": cut(response)}
+
+
 def _record(backend: LLMBackend, task: str, model: str, attempt: int, parsed: Any,
             error: str | None) -> None:
     """Hand one attempt to the tracer. Tracing must never break the creature."""
@@ -204,9 +213,9 @@ class OllamaBackend(LLMBackend):
     @staticmethod
     def _call_event(call_id: str, operation: str, task: str, model: str, input_chars: int,
                     started_at: str, started_ts: float, status: str, *, info: dict | None = None,
-                    error: str | None = None) -> dict:
+                    error: str | None = None, io: dict | None = None) -> dict:
         info = info or {}
-        return {"id": call_id, "operation": operation, "task": task, "model": model, "status": status,
+        return {"io": io, "id": call_id, "operation": operation, "task": task, "model": model, "status": status,
                 "started_at": started_at, "started_ts": started_ts,
                 "input_tokens_estimate": (input_chars + 3) // 4,
                 "input_tokens": info.get("prompt_tokens"), "output_tokens": info.get("completion_tokens"),
@@ -235,8 +244,10 @@ class OllamaBackend(LLMBackend):
             "valid_json": 0, "error": None}
         self.last_call = info
         call_id, started_ts = uuid.uuid4().hex, time.time()
+        traced = self.s.get("llm_trace_io", True)          # the dev dashboard can show what went in and came out
         self._notify_call(self._call_event(call_id, "chat", task, model, len(sysm) + len(user),
-                                           info["started_at"], started_ts, "running"))
+                                           info["started_at"], started_ts, "running",
+                                           io=_io(sysm, user) if traced else None))
         t0 = time.perf_counter()
         try:
             data = self._post("/api/chat", payload)
@@ -257,7 +268,8 @@ class OllamaBackend(LLMBackend):
             self._notify_call(self._call_event(call_id, "chat", task, model, len(sysm) + len(user),
                                                info["started_at"], started_ts,
                                                "failed" if info.get("error") else "completed", info=info,
-                                               error=info.get("error")))
+                                               error=info.get("error"),
+                                               io=_io(sysm, user, info.get("raw_response")) if traced else None))
 
     def embed(self, model: str, texts: list[str]) -> list[list[float]]:
         started_at = datetime.now().isoformat(timespec="milliseconds")

@@ -168,3 +168,18 @@ def test_dashboard_access_rules(cfg, monkeypatch):
     ok = {"Authorization": "Basic " + base64.b64encode(b"me:secret").decode()}
     assert c.get("/", headers=ok).status_code == 200
     assert c.post("/", headers=ok).status_code == 403                  # no X-Requested-With
+
+
+def test_the_llm_page_lets_you_read_each_call_s_input_and_output(dash, cfg):
+    import json as _json
+    call = {"id": "c1", "operation": "chat", "task": "decide", "model": "qwen3:4b", "status": "completed",
+            "started_at": "2026-11-21T10:00:00", "started_ts": 1.0, "input_tokens_estimate": 10, "input_tokens": 12,
+            "output_tokens": 5, "duration_ms": 900, "error": None,
+            "io": {"system": "You are Nit.", "user": "It is morning <b>now</b>.", "response": '{"action": "inspect"}'}}
+    path = cfg.path("data/llm-calls.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps({"updated_at": "x", "active": [], "recent": [call]}))
+    html = dash.get("/llm").text
+    assert "Read input and output" in html and "You are Nit." in html and "&#34;action&#34;: &#34;inspect&#34;" in html
+    assert "<b>now</b>" not in html and "&lt;b&gt;now&lt;/b&gt;" in html                       # escaped, never markup
+    assert dash.get("/api/dev/llm").json()["recent"][0]["io"]["user"].startswith("It is morning")

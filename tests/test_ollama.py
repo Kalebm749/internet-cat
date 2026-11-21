@@ -125,3 +125,22 @@ def test_missing_models_unreachable_is_none(cfg):
     def refused(req):
         raise httpx.ConnectError("refused", request=req)
     assert backend(cfg, refused).missing_models() is None
+
+
+def test_call_events_carry_what_went_in_and_came_out(cfg):
+    events = []
+    b = backend(cfg, lambda r: chat_reply('{"action": "nap"}'))
+    b.call_observer = events.append
+    b.chat_json("decide", "m", [{"role": "system", "content": "SYS"}, {"role": "user", "content": "USER"}], {})
+    assert events[0]["status"] == "running" and events[0]["io"] == {"system": "SYS", "user": "USER", "response": None}
+    assert events[-1]["status"] == "completed" and events[-1]["io"]["response"] == '{"action": "nap"}'
+    cfg.settings["llm_trace_io"] = False
+    events.clear()
+    b.chat_json("decide", "m", [{"role": "user", "content": "x"}], {})
+    assert all(e["io"] is None for e in events)
+
+
+def test_a_long_prompt_is_shortened_in_the_trace():
+    from cat.llm import IO_MAX_CHARS, _io
+    out = _io("s", "u" * (IO_MAX_CHARS + 50), "r")
+    assert len(out["user"]) < IO_MAX_CHARS + 60 and "more characters" in out["user"] and out["response"] == "r"

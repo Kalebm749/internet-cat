@@ -12,7 +12,8 @@ from cat.healthcheck import write_heartbeat
 
 
 class LLMCallMonitor:
-    """Persist safe call summaries, never prompts or model output, for the dev dashboard."""
+    """Persist call summaries for the dev dashboard, with what went in and came out of each call (the `io` field,
+    switched off by settings `llm_trace_io: false`). The dashboard is loopback or password-protected and read-only."""
 
     def __init__(self, path: Path, heartbeat_path: Path | None = None):
         self.path = path

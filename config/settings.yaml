@@ -8,6 +8,7 @@ llm_timeout_seconds: 600       # the 14B sleep model, partly on the CPU, can tak
 health_timeout_seconds: 3
 llm_temperature: {decide: 0.8, sleep: 0.5, capability: 0.8}   # by task (sleep_* tasks use "sleep")
 llm_num_ctx: 4096
+llm_trace_io: true   # the dev dashboard's LLM page keeps each call's prompts and answer (30 calls); false: only summaries
 
 # --- files ---
 heartbeat_file: data/engine.heartbeat   # written by the engine every loop step; read by its healthcheck
