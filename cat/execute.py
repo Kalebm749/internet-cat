@@ -37,7 +37,7 @@ WORLD_TEXT_FIELDS = {
     "arrive": {"location"}, "inspect_found": {"hint", "name"}, "inspect_nothing": set(), "discovered": {"name"},
     "finished": {"name"}, "interrupted": {"name"}, "rejected": {"name", "reason"}, "fall_asleep": set(),
     "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_gone": set(),
-    "capability_failed": set(), "same_thought": set(), "mail_arrived": set(),
+    "capability_failed": set(), "same_thought": set(), "nothing_new": set(), "mail_arrived": set(),
     "wish_granted": {"wish", "note"}, "drawing_made": {"materials", "description"},
     "drawing_looked_at": {"title", "status", "history"}, "drawing_version": {"n", "when", "description", "materials"},
     "drawing_seen": {"seen"},
@@ -474,6 +474,11 @@ class Executor:
                 log.warning("could not preserve interrupted drawing: %s", e)
         if not changes:
             self.mood_base = 0.0
+        gained = any((c.var == "hunger" and c.delta < 0) or (c.var == "energy" and c.delta > 0) or
+                     (c.var == "mood" and c.delta > 0.02) for c in changes) or bool((r.cap or {}).get("artifact"))
+        if status == "finished" and r.action.builtin not in ("move", "sleep", "inspect") and not gained \
+                and r.freshness < self.t["repetition"]["empty_below"]:
+            text = f"{text} {self.texts['nothing_new']}"          # plain words for a repeat that gave nothing
         self.conn.execute("UPDATE activities SET status = ?, ended_at = ?, text = ?, changes = ? WHERE id = ?",
                           (status, self.life.sim_time, text, _dump([asdict(c) for c in changes]), r.id))
         if status == "finished":

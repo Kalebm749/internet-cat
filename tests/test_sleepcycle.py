@@ -317,3 +317,12 @@ def test_a_full_memory_pushes_the_weakest_out(n):
     p = n.plan("2026-11-21T22:00")
     forgot = [r["text"] for r in n.q("SELECT text FROM memories WHERE id IN (%s)" % ",".join(map(str, p.forget)))]
     assert sorted(forgot) == ["memory number 0", "memory number 1"]
+
+
+def test_a_promise_opens_from_its_own_reply_and_is_shown_as_one(n):
+    from cat import loops
+    e = n.exp(text="I wrote a reply to a message: I will go to the art room.", action="reply_message")
+    n.b.handlers["sleep_loops"] = lambda m, s: {"close": [], "open": [
+        {"kind": "promise", "text": "I said I would go to the art room.", "sources": [e]}]}
+    n.commit(n.plan())
+    assert loops.on_mind(n.conn, n.t) == ["(something you said you would do) I said I would go to the art room."]

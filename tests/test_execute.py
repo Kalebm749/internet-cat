@@ -257,3 +257,16 @@ def test_the_same_wish_cannot_be_made_twice_while_it_waits(rig):
     rig.life.world.values["fountain.wishes"][0]["status"] = "granted"     # granted: it may be wished again
     assert rig.do("make_wish", wish)["status"] == "started"
 
+
+
+def test_a_stale_repeat_that_gave_nothing_says_so_plainly(rig):
+    rig.learn("assess_wishes")
+    rig.life.content.actions["assess_wishes"].requires = []
+    rig.t["repetition"]["empty_below"] = 1.1                    # anything counts as stale for this check
+    rig.do("assess_wishes")
+    rig.wait(60)
+    assert "Nothing new came of it" in rig.rows("SELECT text FROM activities ORDER BY id DESC LIMIT 1")[0][0]
+    rig.t["repetition"]["empty_below"] = 0.0                    # fresh enough: plain outcome only
+    rig.do("assess_wishes")
+    rig.wait(60)
+    assert "Nothing new came of it" not in rig.rows("SELECT text FROM activities ORDER BY id DESC LIMIT 1")[0][0]

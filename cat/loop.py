@@ -238,7 +238,8 @@ class Loop:
                              notes=self._notes(), core_memories=memories.core_texts(self.conn),
                              count_done=self.exec.count_done,
                              dwelling=behaviour.dwelling(self.conn, self.life.sim_time, self.t),
-                             loops=loopsmod.on_mind(self.conn, self.t))
+                             loops=loopsmod.on_mind(self.conn, self.t),
+                             mulling=behaviour.mulling(self.conn, self.t))
         self.exec.perception = []
         self.scheduler.started(due, now, self.life.sim_time)
         t0 = self.clock()
@@ -334,6 +335,9 @@ class Loop:
                                    "LIMIT ?", (rp["thought_window"],)):
             if memories.cosine(memories.from_blob(r["embedding"]), v) > rp["thought_dup_threshold"]:
                 return [self.prompts["thought_repeat"].format(example=r["text"])]
+        theme = behaviour.thought_theme(self.conn, vec, self.t)          # the same theme in other words
+        if theme:
+            return [self.prompts["thought_theme"].format(count=len(theme), example=theme[0])]
         return []
 
     def _stale_action_problems(self, mind, decision: Decision) -> list[str]:

@@ -207,6 +207,33 @@ def subject_freshness(found: list[Echo], tuning: dict) -> float:
     return round(max(rp["freshness_min"], min(1.0, 1 - rp["subject_weight"] * weight)), 4)
 
 
+def thought_theme(conn: sqlite3.Connection, vec, tuning: dict, exclude_latest: bool = False) -> list[str]:
+    """Recent thoughts that go the same way as `vec` (cosine >= thought_theme_threshold), newest first: the same
+    theme in other words, which the near-copy check (thought_dup_threshold) lets through. Needs at least
+    thought_theme_min of them to count as a theme; otherwise an empty list."""
+    import numpy as np
+    from cat.memories import cosine, from_blob
+    rp = tuning["repetition"]
+    if vec is None or not rp["thought_theme_window"]:
+        return []
+    v = np.asarray(vec, dtype=np.float32)
+    rows = conn.execute("SELECT text, embedding FROM thoughts WHERE embedding IS NOT NULL ORDER BY id DESC LIMIT ?",
+                        (rp["thought_theme_window"] + int(exclude_latest),)).fetchall()
+    if exclude_latest:
+        rows = rows[1:]
+    near = [r["text"] for r in rows if cosine(from_blob(r["embedding"]), v) >= rp["thought_theme_threshold"]]
+    return near if len(near) >= rp["thought_theme_min"] else []
+
+
+def mulling(conn: sqlite3.Connection, tuning: dict) -> list[str]:
+    """When its recent thoughts keep going the same way: its latest thought of that theme, in its own words."""
+    row = conn.execute("SELECT text, embedding FROM thoughts WHERE embedding IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+    if row is None:
+        return []
+    from cat.memories import from_blob
+    return [row["text"]] if thought_theme(conn, from_blob(row["embedding"]), tuning, exclude_latest=True) else []
+
+
 def dwelling(conn: sqlite3.Connection, now: str, tuning: dict) -> list[str]:
     """When the recent subjects keep circling one thing: the creature's own words for it (up to two)."""
     from cat.memories import cosine, from_blob

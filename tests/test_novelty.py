@@ -189,3 +189,30 @@ def test_a_guarded_but_valid_choice_beats_a_fallback(lp):
     lp.step()
     row = lp.conn.execute("SELECT action, fallback FROM decisions ORDER BY id DESC LIMIT 1").fetchone()
     assert row["fallback"] == 0 and row["action"] == "inspect"
+
+
+def add_thought(lp, text, vec=None):
+    with store.transaction(lp.conn):
+        lp.conn.execute("INSERT INTO thoughts(decision_id, sim_time, text, embedding, repeated) VALUES (NULL, ?, ?, ?, 0)",
+                        (lp.life.sim_time, text, memories.to_blob(vec if vec is not None else hash_embed(text))))
+
+
+def test_the_same_theme_in_new_words_is_caught_and_shown_as_mulling(lp):
+    t = lp.t["repetition"]
+    t.update(thought_theme_threshold=0.25, thought_dup_threshold=0.99, thought_theme_min=3)
+    for w in ("the quiet feels real now here", "the quiet feels deep now here", "the quiet is real here now"):
+        add_thought(lp, w)
+    mind = type("M", (), {"options": [], "option": lambda self, x: None})()
+    again = Decision(kind="full", action="inspect", inputs={}, thought="the quiet feels real in this place")
+    problems = lp._reconsider_stale_choice(mind, again)
+    assert len(problems) == 1 and "3 thoughts like this" in problems[0] and "think about something else" in problems[0]
+    other = Decision(kind="full", action="inspect", inputs={}, thought="a bird landed on the stall roof today")
+    assert lp._reconsider_stale_choice(mind, other) == []
+    add_thought(lp, "the quiet feels real in this place")
+    assert behaviour.mulling(lp.conn, lp.t) == ["the quiet feels real in this place"]
+    seen = []
+    lp.backend.handlers["decide"] = lambda msgs, schema: (seen.append(msgs[1]["content"]),
+                                                          {"thought": "hm", "reasoning": "hm", "action": "inspect",
+                                                           "inputs": {}, "preserve": False, "letter": None})[1]
+    lp.step()
+    assert "Lately your thoughts keep going the same way" in seen[0]

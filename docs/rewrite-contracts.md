@@ -765,7 +765,9 @@ loops and may close some (with the ids of the experiences that settled them) and
 new ones (each citing the experiences it comes from). Code keeps only loops whose citations are real own
 experiences (letters never count), skips a new loop close to an open one (`dup_threshold`), fades an open loop after
 `loops.expire_days`, and pushes the oldest out beyond `loops.max_open`. The Mind shows the open ones as "Still on your
-mind, not settled yet" (`loops.on_mind`). They are never options and never ranked: only what Nit sees.
+mind, not settled yet" (`loops.on_mind`). A third kind, `promise`, is what it told someone it would do (for example in a reply: "I said I would ..."),
+opened from the experience where it said so and settled only by an experience showing it was done. They are never
+options and never ranked: only what Nit sees.
 
 ---
 
@@ -835,6 +837,13 @@ again when nothing has changed is not.
   different now, or think about something else"). The guard only advises: if the extra attempt fails, the valid
   first answer is used, not a fallback. Core `boundaries` include that it does not want to repeat itself without
   noticing.
+- **Themes, not only copies**: a thought that is not a near-copy can still go the same way as the recent ones.
+  When at least `thought_theme_min` of the last `thought_theme_window` thoughts have cosine >=
+  `thought_theme_threshold` with it, the guard quotes one (`thought_theme`) and asks once; and when its latest
+  thought has such a theme, the Mind shows *"Lately your thoughts keep going the same way"* with that thought.
+- **Plain outcome for an empty repeat**: a finished activity whose freshness is below `empty_below` and that
+  gave nothing (no hunger/energy relief, no mood gain over 0.02, nothing made; not move, sleep or inspect) ends with
+  `nothing_new` ("Nothing new came of it ..."), in the diary and in what it perceives next.
 - **Reflections and written pieces** (`write` capability, sleep summaries): the same check against the last
   `reflection_window` items. A near-duplicate gets progressively less mood reward, and the sleep stage
   that produced it is retried once with *"this is close to what you wrote on day N"*.
