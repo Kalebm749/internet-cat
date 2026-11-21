@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 import urllib.request
 from datetime import datetime
@@ -21,7 +22,7 @@ def write_heartbeat(path: Path) -> None:
     """Atomically stamp the file with the current time. Never raises."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(datetime.now().isoformat(timespec="seconds"))
         os.replace(tmp, path)
     except OSError:

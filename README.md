@@ -200,7 +200,7 @@ is down Nit *dozes*: time and any running activity go on, but no decisions are m
 ## Using the dev dashboard
 
 `http://127.0.0.1:8090` on the laptop. To use it from another machine without exposing it, tunnel:
-`ssh -L 8090:127.0.0.1:8090 <laptop>`. It only reads `nit.db`; it never changes the life and never calls a model.
+`ssh -L 8090:127.0.0.1:8090 <laptop>`. It reads `nit.db` and the engine's small LLM call status file; it never changes the life and never calls a model.
 Every page has a JSON twin under `/api/dev/<page>`.
 
 | Page | What it shows |
@@ -214,6 +214,7 @@ Every page has a JSON twin under `/api/dev/<page>`.
 | **World** | every fact (and whether Nit changed it), places, perceived events, capability use |
 | **Sleep** | each night: every stage's status, real seconds and output |
 | **Mail** | the mailbox, the answered pile with Nit's replies, imports |
+| **LLM calls** | active model requests with elapsed time and progress, current action/tool, and recent input/output token counts |
 | **Content** | validation of `content/` and of the `nit:` tuning |
 
 **Access rules** (set in `.env`, see `.env.example`): published on **127.0.0.1 only** by default. To reach it from

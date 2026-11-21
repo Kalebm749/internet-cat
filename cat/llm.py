@@ -11,6 +11,7 @@ import math
 import random
 import re
 import time
+import uuid
 from datetime import datetime
 from abc import ABC, abstractmethod
 from typing import Any, Callable
@@ -137,6 +138,7 @@ class OllamaBackend(LLMBackend):
         s = cfg.settings
         self.s = s
         self._warned_missing: list[str] = []
+        self.call_observer: Callable[[dict], None] | None = None
         self.client = client or httpx.Client(
             timeout=httpx.Timeout(s["llm_timeout_seconds"], connect=s["health_timeout_seconds"]))
 
@@ -183,6 +185,25 @@ class OllamaBackend(LLMBackend):
         except (httpx.HTTPError, ValueError) as e:
             raise BackendError(f"{path} failed: {e}") from e
 
+    def _notify_call(self, event: dict) -> None:
+        if self.call_observer is None:
+            return
+        try:
+            self.call_observer(event)
+        except Exception:
+            log.warning("LLM call observer failed", exc_info=True)
+
+    @staticmethod
+    def _call_event(call_id: str, operation: str, task: str, model: str, input_chars: int,
+                    started_at: str, started_ts: float, status: str, *, info: dict | None = None,
+                    error: str | None = None) -> dict:
+        info = info or {}
+        return {"id": call_id, "operation": operation, "task": task, "model": model, "status": status,
+                "started_at": started_at, "started_ts": started_ts,
+                "input_tokens_estimate": (input_chars + 3) // 4,
+                "input_tokens": info.get("prompt_tokens"), "output_tokens": info.get("completion_tokens"),
+                "duration_ms": info.get("total_ms"), "error": error}
+
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
         options = {"temperature": self.s["llm_temperature"].get("sleep" if task.startswith("sleep_") else task, 0.7),
             "num_ctx": self.s["llm_num_ctx"]}
@@ -197,6 +218,9 @@ class OllamaBackend(LLMBackend):
             "system_prompt": sysm, "user_prompt": user, "schema": schema, "raw_response": None,
             "valid_json": 0, "error": None}
         self.last_call = info
+        call_id, started_ts = uuid.uuid4().hex, time.time()
+        self._notify_call(self._call_event(call_id, "chat", task, model, len(sysm) + len(user),
+                                           info["started_at"], started_ts, "running"))
         t0 = time.perf_counter()
         try:
             data = self._post("/api/chat", payload)
@@ -214,13 +238,36 @@ class OllamaBackend(LLMBackend):
         finally:
             if not info.get("total_ms"):
                 info["total_ms"] = int((time.perf_counter() - t0) * 1000)
+            self._notify_call(self._call_event(call_id, "chat", task, model, len(sysm) + len(user),
+                                               info["started_at"], started_ts,
+                                               "failed" if info.get("error") else "completed", info=info,
+                                               error=info.get("error")))
 
     def embed(self, model: str, texts: list[str]) -> list[list[float]]:
-        data = self._post("/api/embed", {"model": model, "input": texts})
-        vecs = data.get("embeddings")
-        if not isinstance(vecs, list) or len(vecs) != len(texts) or not all(vecs):
-            raise BackendError("unexpected /api/embed response")
-        return vecs
+        started_at = datetime.now().isoformat(timespec="milliseconds")
+        started_ts = time.time()
+        call_id = uuid.uuid4().hex
+        chars = sum(map(len, texts))
+        info: dict[str, Any] = {}
+        self._notify_call(self._call_event(call_id, "embedding", "embed", model, chars,
+                                           started_at, started_ts, "running"))
+        t0 = time.perf_counter()
+        error = None
+        try:
+            data = self._post("/api/embed", {"model": model, "input": texts})
+            info.update(ollama_metrics(data))
+            vecs = data.get("embeddings")
+            if not isinstance(vecs, list) or len(vecs) != len(texts) or not all(vecs):
+                raise BackendError("unexpected /api/embed response")
+            return vecs
+        except BackendError as e:
+            error = str(e)
+            raise
+        finally:
+            info.setdefault("total_ms", int((time.perf_counter() - t0) * 1000))
+            self._notify_call(self._call_event(call_id, "embedding", "embed", model, chars,
+                                               started_at, started_ts, "failed" if error else "completed",
+                                               info=info, error=error))
 
 
 def hash_embed(text: str, dim: int = EMBED_DIM) -> list[float]:

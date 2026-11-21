@@ -13,6 +13,7 @@ import sys
 from cat import content, logs, store, tuning
 from cat.config import load_config
 from cat.llm import MockBackend, OllamaBackend
+from cat.llm_telemetry import LLMCallMonitor
 from cat.loop import FakeClock, Loop
 
 
@@ -36,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     db = a.db or ("data/nit-mock.db" if a.mock else str(tuning.path(t, "db_path")))
     conn = store.connect(db)
     backend = MockBackend(seed=a.seed or 0) if a.mock else OllamaBackend(cfg)
+    if isinstance(backend, OllamaBackend):
+        backend.call_observer = LLMCallMonitor(cfg.path("data/llm-calls.json"), cfg.heartbeat_path)
     fc = FakeClock() if a.fast else None
     loop = Loop(conn, c, t, backend, clock=fc or __import__("time").monotonic, seed=a.seed, cfg=cfg)
     steps = None

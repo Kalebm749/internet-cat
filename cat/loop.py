@@ -192,33 +192,15 @@ class Loop:
         return len(rows)
 
     def _prepare_running_activity(self) -> None:
-        """Finish a capability after its running row is visible, keeping engine health fresh while it works."""
+        """Finish a capability after its running row is visible to live status views."""
         running = self.exec.running
         if running is None or not running.action.capability or running.cap is not None:
             return
-        stop = threading.Event()
-
-        def heartbeat_while_working():
-            while not stop.wait(10):
-                if self.cfg is not None:
-                    try:
-                        write_heartbeat(self.cfg.heartbeat_path)
-                    except OSError:
-                        log.warning("could not refresh heartbeat during %s", running.action.id, exc_info=True)
-
-        keepalive = threading.Thread(target=heartbeat_while_working, name="activity-heartbeat", daemon=True)
-        if self.cfg is not None:
-            keepalive.start()
-        try:
-            cap = self.exec.prepare_running()
-            if cap is not None:
-                with store.transaction(self.conn):
-                    self.exec.attach_capability(cap)
-                    lifemod.save(self.conn, self.life)
-        finally:
-            stop.set()
-            if keepalive.is_alive():
-                keepalive.join(timeout=1)
+        cap = self.exec.prepare_running()
+        if cap is not None:
+            with store.transaction(self.conn):
+                self.exec.attach_capability(cap)
+                lifemod.save(self.conn, self.life)
 
     def step(self) -> StepReport:
         if self.cfg is not None:

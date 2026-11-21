@@ -45,6 +45,12 @@ details.blk pre { margin: 0; padding: 8px 10px; white-space: pre-wrap; word-brea
 button.copy { position: absolute; right: 6px; top: 30px; font-size: 11px; padding: 0 8px; z-index: 1; }
 .call { border-left: 3px solid var(--accent); padding: 4px 0 4px 10px; margin: 10px 0; } .call-bad { border-left-color: var(--bad); }
 .call-head { margin-bottom: 4px; }
+.llm-call { border-left: 3px solid var(--accent); padding: 8px 10px; margin: 10px 0; background: var(--bg); }
+.llm-call p { margin: 6px 0; }
+.llm-call.llm-stale { border-left-color: var(--bad); }
+.llm-progress { height: 5px; overflow: hidden; background: var(--rule); border-radius: 4px; margin: 10px 0; }
+.llm-progress i { display: block; width: 30%; height: 100%; background: var(--accent); animation: llm-progress 1.2s ease-in-out infinite alternate; }
+@keyframes llm-progress { from { transform: translateX(-10%); } to { transform: translateX(245%); } }
 .stagebar { display: flex; height: 16px; border-radius: 3px; overflow: hidden; border: 1px solid var(--rule); margin-top: 8px; }
 .seg { min-width: 2px; } .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
 .seg-world { background: #8aa2c8; } .seg-recall { background: #b08ad0; } .seg-brain { background: #e0975a; } .seg-narrator { background: #d96c6c; }

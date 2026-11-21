@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="grid2">
+  <section class="card">
+    <h2>Current activity</h2>
+    {% if d.activity %}<p><b>{{ d.activity.line }}</b></p>
+      <p>Action: <code>{{ d.activity.action }}</code></p>
+      <p>Tool: {% if d.activity.tool %}<code>{{ d.activity.tool }}</code>{% else %}<span class="dim">none</span>{% endif %}</p>
+    {% else %}<p class="dim">No activity is currently running.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Active LLM calls</h2>
+    {% for c in d.active %}
+      <article class="llm-call {{ 'llm-stale' if c.status == 'stale' }}">
+        <div class="titlebar"><b>{{ c.task }} · {{ c.model }}</b>
+          <span class="pill {{ 'bad' if c.status == 'stale' else 'ok' if c.status == 'running' }}">{{ c.status }}</span>
+          <span class="dim elapsed" data-started="{{ c.started_ts }}" data-duration="{{ c.duration_ms or 0 }}">{{ c.duration_ms or 0 }} ms</span>
+        </div>
+        {% if c.tool %}<p>Tool: <code>{{ c.tool }}</code>{% if c.activity %} · {{ c.activity.action }}{% endif %}</p>
+        {% elif c.task == 'decide' %}<p class="dim">Nit is choosing an action; no tool has been selected yet.</p>
+        {% elif c.task.startswith('sleep_') %}<p class="dim">Sleep cycle</p>{% endif %}
+        <p>Input tokens: {% if c.input_tokens is not none %}{{ c.input_tokens }}{% else %}about {{ c.input_tokens_estimate }} estimated{% endif %}
+          · Output tokens: {% if c.output_tokens is not none %}{{ c.output_tokens }}{% else %}reported when the call finishes{% endif %}</p>
+        {% if c.activity and c.activity.line %}<p class="dim">{{ c.activity.line }}</p>{% endif %}
+        {% if c.status == 'running' %}<div class="llm-progress" aria-label="LLM request in progress"><i></i></div>{% endif %}
+        {% if c.error %}<p class="bad">{{ c.error }}</p>{% endif %}
+      </article>
+    {% else %}<p class="dim">No active LLM requests.</p>{% endfor %}
+    {% if d.heartbeat_age is not none %}<p class="dim small">Engine heartbeat: {{ '%.0f' % d.heartbeat_age }}s ago · {{ 'alive' if d.engine_alive else 'stale' }}</p>{% endif %}
+  </section>
+</div>
+<section class="card" style="margin-top:14px">
+  <h2>Recent calls</h2>
+  <table class="data"><tr><th>status</th><th>task</th><th>model</th><th>input tokens</th><th>output tokens</th><th>duration</th><th>error</th></tr>
+    {% for c in d.recent %}<tr class="{{ 'row-bad' if c.status == 'failed' }}">
+      <td>{{ c.status }}</td><td>{{ c.task }} <span class="dim">({{ c.operation }})</span></td><td class="mono">{{ c.model }}</td>
+      <td>{{ c.input_tokens if c.input_tokens is not none else '~' ~ c.input_tokens_estimate }}</td>
+      <td>{{ c.output_tokens if c.output_tokens is not none else '—' }}</td>
+      <td>{{ '%.2f' % (c.duration_ms / 1000) if c.duration_ms is not none else '—' }}s</td><td class="bad">{{ c.error or '' }}</td>
+    </tr>{% else %}<tr><td colspan="7" class="dim">No calls recorded yet.</td></tr>{% endfor %}
+  </table>
+  <p class="dim small">Token counts are exact when Ollama reports them. While a request is running, input is estimated from prompt length and output count is not available yet.</p>
+</section>
+<script src="/static/llm.js" defer></script>
+{% endblock %}

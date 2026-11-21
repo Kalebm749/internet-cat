@@ -36,7 +36,8 @@ from cat.healthcheck import heartbeat_age
 HERE = Path(__file__).parent
 NAV = [("overview", "Overview", "/"), ("decisions", "Decisions", "/decisions"), ("character", "Character", "/character"),
        ("memory", "Memory", "/memory"), ("knowledge", "Knowledge", "/knowledge"), ("repetition", "Repetition", "/repetition"),
-       ("world", "World", "/world"), ("sleep", "Sleep", "/sleep"), ("mail", "Mail", "/mail"), ("content", "Content", "/content")]
+       ("world", "World", "/world"), ("sleep", "Sleep", "/sleep"), ("mail", "Mail", "/mail"),
+       ("llm", "LLM calls", "/llm"), ("content", "Content", "/content")]
 SECURITY_HEADERS = {"X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
                     "X-Content-Type-Options": "nosniff"}
 
@@ -103,6 +104,31 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 "last_night": last_night[0] if last_night else None, "models": t["models"],
                 "repetition": readmodel.repetition_view(conn, t)["score"]}
 
+    def llm_calls(conn) -> dict:
+        path = cfg.path("data/llm-calls.json")
+        try:
+            snapshot = json.loads(path.read_text())
+        except (OSError, ValueError):
+            snapshot = {"active": [], "recent": [], "updated_at": None}
+        now = readmodel.now(conn, content, t, heartbeat_age(cfg.heartbeat_path))
+        activity = None
+        if now and now.get("doing"):
+            doing = now["doing"]
+            spec = content.actions.get(doing["action"])
+            activity = {"line": doing["line"], "action": spec.name if spec else doing["action"],
+                        "tool": spec.capability if spec else None, "since": doing["since"]}
+        heartbeat = heartbeat_age(cfg.heartbeat_path)
+        alive = heartbeat is not None and heartbeat <= cfg.settings["healthcheck"]["engine_max_age_seconds"]
+        active = [dict(call) for call in snapshot.get("active", [])]
+        for call in active:
+            call["activity"] = activity
+            call["tool"] = activity["tool"] if activity and call.get("task") == "capability" else None
+        if not alive:
+            for call in active:
+                call["status"] = "stale"
+        return {"active": active, "recent": snapshot.get("recent", []), "updated_at": snapshot.get("updated_at"),
+                "activity": activity, "engine_alive": alive, "heartbeat_age": heartbeat}
+
     pages: dict[str, tuple[str, Callable[[sqlite3.Connection, Request], dict]]] = {
         "overview": ("Overview", lambda c, r: overview(c)),
         "decisions": ("Decisions", lambda c, r: {"decisions": readmodel.decisions(
@@ -115,12 +141,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         "world": ("World", lambda c, r: readmodel.world_view(c, content)),
         "sleep": ("Sleep", lambda c, r: {"nights": readmodel.sleep_view(c)}),
         "mail": ("Mail", lambda c, r: readmodel.mail_view(c, content)),
+        "llm": ("LLM calls", lambda c, r: llm_calls(c)),
     }
 
     def render(request: Request, name: str, title: str, data: dict) -> HTMLResponse:
         return templates.TemplateResponse(request, f"{name}.html", {
             "active": name, "title": title, "d": data, "refresh_s": cfg.settings["devdash"]["refresh_seconds"]
-            if name == "overview" else 0})
+            if name in ("overview", "llm") else 0})
 
     @app.get("/healthz")
     def healthz():
