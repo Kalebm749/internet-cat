@@ -12,7 +12,8 @@ but leave them unused; Nit's portrait is `cat/web/static/img/nit/` (`scripts/mak
 
 ## The design: `docs/rewrite-contracts.md` (it wins)
 Read it before changing behaviour. Each section ends with an "as built" note. `docs/archive/` holds the first engine's
-docs (replaced November 2026); nothing there describes current code.
+docs (replaced November 2026); nothing there describes current code. `docs/individuality-plan.md` is a **proposal** (not accepted
+yet) for making creatures distinct individuals: it does not change any rule here until a stage is accepted and built.
 
 ## Where things live
 - `content/` — the world and the character, as data: `character.yaml` (core: nature, senses, boundaries, never changed
