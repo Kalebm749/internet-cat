@@ -76,7 +76,7 @@ def _record(backend: LLMBackend, task: str, model: str, attempt: int, parsed: An
 
 
 def call_json(backend: LLMBackend, task: str, model: str, messages: list[dict], schema: dict,
-              parse: Callable[[dict], Any], retries: int) -> Any:
+              parse: Callable[[dict], Any], retries: int, max_tokens: int | None = None) -> Any:
     """chat_json + parse, retried `retries` times on any BackendError (timeout, bad JSON,
     unusable content). After the last failure raises BackendError => the engine dozes.
     Every attempt is reported to `backend.recorder` (if set)."""
@@ -84,7 +84,10 @@ def call_json(backend: LLMBackend, task: str, model: str, messages: list[dict], 
     for attempt in range(1, retries + 2):
         backend.last_call = None
         try:
-            raw = backend.chat_json(task, model, messages, schema)
+            limited = getattr(backend, "chat_json_with_options", None)
+            raw = (limited(task, model, messages, schema, {"num_predict": max_tokens})
+                   if max_tokens is not None and callable(limited)
+                   else backend.chat_json(task, model, messages, schema))
         except BackendError as e:
             _record(backend, task, model, attempt, None, str(e))
             last = e
@@ -205,8 +208,13 @@ class OllamaBackend(LLMBackend):
                 "duration_ms": info.get("total_ms"), "error": error}
 
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
+        return self.chat_json_with_options(task, model, messages, schema, {})
+
+    def chat_json_with_options(self, task: str, model: str, messages: list[dict], schema: dict,
+                               extra_options: dict) -> dict:
         options = {"temperature": self.s["llm_temperature"].get("sleep" if task.startswith("sleep_") else task, 0.7),
             "num_ctx": self.s["llm_num_ctx"]}
+        options.update(extra_options)
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False,
                                    "format": schema, "options": options}
         if "ollama_think" in self.s:

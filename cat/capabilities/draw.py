@@ -52,18 +52,27 @@ class Drawing:
         situation = json.dumps({"place": ctx.content.locations[ctx.location].description,
                                 "world": {k: v for k, v in ctx.facts.items() if k.startswith("world.")}},
                                ensure_ascii=False, default=str)[:3000]
+        pass_guidance = (
+            "This is the first pass. Make a clear, satisfying sketch with a strong composition and a few broad "
+            "color shapes. Leave details unfinished so Nit can return to it. Use at most 12 shapes and keep the "
+            "SVG compact, under 4,000 characters. "
+            if previous is None else
+            "This is one refinement pass on existing unfinished work. Preserve its main composition and subject; "
+            "make only the changes Nit asked for, leaving room for another pass. Use at most 18 shapes and keep "
+            "the complete SVG compact, under 5,000 characters. "
+        )
         prompt = ("You are Gwen, a visual craft tool for Nit. Nit has already chosen what it wants to make. "
                   "Do not choose a new subject, interpret its personality, or add narrative text. Translate its "
-                  "intention into a self-contained SVG image. Be visually expressive and make a complete image, "
-                  "not a placeholder. Use only SVG elements svg,g,path,rect,circle,ellipse,line,polyline,polygon; "
-                  "no scripts, text, links, stylesheets, or external resources. Canvas viewBox='0 0 512 512'. "
-                  "Return a title, a short description of the visible image, and the SVG. Keep the description "
-                  "faithful to what is actually drawn.")
+                  "intention into a self-contained SVG image. Be visually expressive and make a readable image. "
+                  + pass_guidance +
+                  "Use only SVG elements svg,g,path,rect,circle,ellipse,line,polyline,polygon; no scripts, text, "
+                  "links, stylesheets, or external resources. Canvas viewBox='0 0 512 512'. Return a title, a short "
+                  "description of the visible image, and the SVG. Keep the description faithful to what is drawn.")
         user = f"Nit's intention: {intention}\nNit's associated thoughts: {thoughts}\nContext: {situation}"
         if previous:
-            user += (f"\nThis is a revision of {previous.get('title')}: {previous.get('description')}\n"
+            user += (f"\nThis is a new pass on {previous.get('title')}: {previous.get('description')}\n"
                      f"Previous SVG: {previous.get('svg', '')}\nNit's revision intention: {intention}. Preserve the "
-                     "prior version as history and make a distinct new version.")
+                     "prior version as history and make a distinct but related version.")
         schema = {"type": "object", "properties": {"title": {"type": "string"},
                    "description": {"type": "string"}, "svg": {"type": "string"}},
                   "required": ["title", "description", "svg"]}
@@ -76,17 +85,18 @@ class Drawing:
             raise BackendError("large creative model is unavailable")
         result = call_json(ctx.backend, "capability", model,
                            [{"role": "system", "content": prompt}, {"role": "user", "content": user}],
-                           schema, parse, retries=1)
+                           schema, parse, retries=0, max_tokens=1400)
         svg = _safe_svg(result["svg"])
         artifact_id = uuid.uuid4().hex
         artifact = {"id": artifact_id, "type": "drawing", "title": result["title"][:100],
                     "created_at": ctx.sim_time, "subject": intention[:500],
                     "description": result["description"][:1000], "thoughts": thoughts[:1000], "svg": svg,
-                    "status": "completed", "revision_of": previous.get("id") if previous else None}
+                    "status": "unfinished", "revision_of": previous.get("id") if previous else None}
         # A revision links to the same original root while retaining every prior activity/artifact.
         fields = {k: v for k, v in artifact.items() if k != "svg"}
         fields["svg"] = svg
-        return CapabilityResult(text="A new image takes shape on the page.", fields=fields, artifact=artifact)
+        return CapabilityResult(text="An unfinished first pass takes shape." if previous is None
+                                else "Another unfinished pass takes shape.", fields=fields, artifact=artifact)
 
 
 CAPABILITY = Drawing()
