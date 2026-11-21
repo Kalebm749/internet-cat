@@ -225,7 +225,7 @@ def character_history(conn: sqlite3.Connection) -> dict:
 
 
 def memory_view(conn: sqlite3.Connection, content: Content, tuning: dict, sim_time: str) -> dict:
-    out = {"core": [], "long": []}
+    out = {"core": [], "long": [], "short": [], "faded": []}
     for m in memories.all_memories(conn):
         row = {"id": m.id, "text": m.text, "importance": round(m.importance, 2), "created_at": m.created_at,
                "sources": m.sources, "recalls": m.recall_count, "last_recalled": m.last_recalled,

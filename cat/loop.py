@@ -427,7 +427,12 @@ class Loop:
         if spec is None or row["location"] != self.life.location or spec.builtin in ("move", "sleep", "inspect") \
                 or any(s["type"] == "text" for s in spec.inputs.values()):
             return None
-        return {"action": spec.id, "inputs": json.loads(row["inputs"] or "{}"), "name": spec.name}
+        inputs = json.loads(row["inputs"] or "{}")
+        fresh = behaviour.freshness(self.conn, self.life.content, self.t, spec, inputs, self.life.sim_time,
+                                    self.life.world.values, location=self.life.location)
+        if fresh.value < self.t["decisions"]["carry_min_freshness"]:        # never offer a rut as a way forward
+            return None
+        return {"action": spec.id, "inputs": inputs, "name": spec.name}
 
     def _manner(self, kind: str) -> tuple[bool, float | None]:
         """How it decides this time: by its first pull (a short, fast answer) with a chance that grows with

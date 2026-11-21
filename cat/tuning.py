@@ -38,7 +38,7 @@ START = {"mood": (-1, 1), "energy": (0, 1), "hunger": (0, 1)}
 # numeric sections: key -> (low, high)
 SECTIONS = {
     "decisions": {
-        "menu_size": (0, 50), "queue_max": (0, 4), "sleep_offer_energy": (0, 1), "food_offer_hunger": (0, 1),
+        "menu_size": (0, 50), "queue_max": (0, 4), "carry_min_freshness": (0, 1), "sleep_offer_energy": (0, 1), "food_offer_hunger": (0, 1),
         "interval_seconds": (1, 3600),
         "check_in_minutes": (1, 24 * 60),
         "event_salience_min": (0, 1),

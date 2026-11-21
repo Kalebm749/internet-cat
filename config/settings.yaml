@@ -73,7 +73,7 @@ nit:
     start: {novelty: 0.2, social: 0.2, solitude: 0.1, expression: 0.2, accomplishment: 0.2, belonging: 0.1,
             security: 0.1, stress: 0.1, confidence: 0.5, curiosity: 0.3, loneliness: 0.1, frustration: 0.0,
             satisfaction: 0.3}
-    rise_per_hour: {novelty: 0.07, social: 0.05, expression: 0.06, accomplishment: 0.04, belonging: 0.02}   # x temperament
+    rise_per_hour: {novelty: 0.03, social: 0.012, expression: 0.02, accomplishment: 0.015, belonging: 0.006}   # x temperament
     fall_per_hour: {solitude: 0.04, security: 0.03}   # these ease on their own when it is left quiet
     loud: 0.65                   # a need this high is pressing: felt in words, noted on options, may start a decision
     note_min: 0.5                # an option is noted as easing a need from this level
@@ -119,6 +119,7 @@ nit:
     fear_min: 6                  # a belief that something wears it down, borne out this often, becomes an acquired fear
     interest_min: 8              # one that something lifts it, borne out this often, becomes an acquired interest
   decisions:                     # §3
+    carry_min_freshness: 0.6     # "carry on" is offered only while the last action is still this fresh (never a rut)
     queue_max: 2                 # moves a decision may queue after its own; they run with no model while nothing new happens
     menu_size: 3                 # actions drawn (uniformly, by chance) from those genuinely available; 0 = offer all
     sleep_offer_energy: 0.3      # below this energy sleep is always among the options (offered, never chosen for it)
