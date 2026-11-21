@@ -222,6 +222,7 @@ class Loop:
         due = self.scheduler.due(now, self.life.sim_time, view)
         if due is None:
             return rep
+        self._place_awareness()
         recalled = self._recall(view)
         sleep_ids = [a.id for a in self.life.content.actions.values() if a.builtin == "sleep"]
         notable = memories.notable_today(self.conn, self.t, memories.last_wake(self.conn, sleep_ids))
@@ -304,7 +305,7 @@ class Loop:
                     out.append("it is night; sleeping now will restore your energy")
             if not action.builtin:
                 f = behaviour.freshness(self.conn, self.life.content, self.t, action, None, self.life.sim_time,
-                                        self.life.world.values)
+                                        self.life.world.values, location=self.life.location)
                 if f.value < below:
                     out.append(self.prompts["note_repeated"])
             return out
@@ -328,7 +329,8 @@ class Loop:
             if found and behaviour.subject_freshness(found, self.t) < threshold:
                 return [self.prompts["subject_repeat"].format(count=len(found), example=found[0].text)]
         selected = behaviour.freshness(self.conn, self.life.content, self.t, action, decision.inputs,
-                                       self.life.sim_time, self.life.world.values)
+                                       self.life.sim_time, self.life.world.values,
+                                 location=self.life.location)
         if selected.value >= threshold:
             return []
         fresh = []
@@ -339,7 +341,8 @@ class Loop:
             if candidate is None:
                 continue
             score = behaviour.freshness(self.conn, self.life.content, self.t, candidate, None,
-                                        self.life.sim_time, self.life.world.values)
+                                        self.life.sim_time, self.life.world.values,
+                                 location=self.life.location)
             if score.value >= threshold:
                 fresh.append(candidate.name)
         if len(fresh) < 2:
@@ -348,6 +351,20 @@ class Loop:
         return [f"You chose {action.name}, whose freshness is low ({selected.value:.2f}). "
                 f"Other available actions have felt fresher: {alternatives}. Repeating may still matter; "
                 "if something has changed, say what. Otherwise reconsider and choose a different action."]
+
+    def _place_awareness(self) -> None:
+        """Where it could go, from its own history, and how long it has been here (before building the Mind)."""
+        stay, last = behaviour.stay_and_visits(self.conn, self.life.content, self.life.location, self.life.sim_time)
+        self.life.stay_minutes = stay
+        notes = {}
+        for x in self.life.content.locations[self.life.location].exits:
+            if x not in last:
+                notes[x] = self.prompts["exit_never"]
+            elif last[x] < 60:
+                notes[x] = self.prompts["exit_recent"]
+            else:
+                notes[x] = self.prompts["exit_ago"].format(hours=round(last[x] / 60))
+        self.life.exit_notes = notes
 
     def _subject_vec(self, text: str):
         """The embedding of a subject (cached: the reconsider guard and the record use the same words)."""

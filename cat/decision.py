@@ -33,6 +33,7 @@ PROMPT_FIELDS = {
     "system": {"name", "nature", "senses", "abilities", "traits", "tendencies", "background", "boundaries", "core"},
     "core": {"lines"}, "note_liked": set(), "note_disliked": set(), "note_repeated": set(),
     "learned": {"lines"}, "dwelling": {"lines"}, "subject_repeat": {"count", "example"},
+    "stay": {"hours"}, "exit_never": set(), "exit_recent": set(), "exit_ago": {"hours"},
     "time": {"part_of_day", "clock", "weather"},
     "place": {"location", "description"},
     "visible": {"lines"}, "perception": {"lines"}, "body": {"lines"}, "recent": {"lines"},
@@ -148,6 +149,9 @@ def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories:
     parts = [p["time"].format(part_of_day=mind.now["part_of_day"], clock=mind.now["sim_time"][-5:],
                               weather=mind.now["weather"] or "unknown"),
              p["place"].format(location=mind.location["name"], description=mind.location["description"])]
+    stay = mind.location.get("stay_minutes", 0)
+    if stay >= 120:
+        parts.append(p["stay"].format(hours=round(stay / 60)))
     if visible:
         parts.append(p["visible"].format(lines=_lines(visible)))
     if perception:
