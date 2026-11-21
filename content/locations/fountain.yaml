@@ -25,7 +25,7 @@ actions:
     duration: {minutes: [10, 30]}
     continuous: true
     effort: none
-    per_minute: {energy: 0.002}
+    per_minute: {energy: 0.0002}
     on_finish:
       creature: {mood: 0.05}
       reflection: true

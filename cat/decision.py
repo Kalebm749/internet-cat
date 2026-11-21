@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import string
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -243,6 +244,11 @@ def _shorten(text: str, limit: int) -> str:
     return (cut[: cut.rfind(" ")] if " " in cut[limit // 2:] else cut).rstrip()
 
 
+def _has_stray_han(text: str) -> bool:
+    return any(unicodedata.name(c, "").startswith(("CJK UNIFIED IDEOGRAPH", "CJK COMPATIBILITY IDEOGRAPH"))
+               for c in text)
+
+
 def validate(raw: Any, mind: Mind, kind: str, tuning: dict) -> Decision:
     """Check a model answer against the Mind. Raises DecisionInvalid with every problem."""
     d = tuning["decisions"]
@@ -260,6 +266,8 @@ def validate(raw: Any, mind: Mind, kind: str, tuning: dict) -> Decision:
             texts[k] = _shorten(v.strip(), limit)
             if len(texts[k]) < len(v.strip()):
                 notes.append(f"{k} shortened")
+            if _has_stray_han(texts[k]):
+                probs.append(f'"{k}" contains stray Chinese characters; write it in English')
     action = raw.get("action")
     allowed = allowed_actions(mind, kind)
     if action not in allowed:
@@ -281,6 +289,8 @@ def validate(raw: Any, mind: Mind, kind: str, tuning: dict) -> Decision:
                 inputs[name] = _shorten(v, spec["max_chars"])
                 if len(inputs[name]) < len(v):
                     notes.append(f"input {name} shortened")
+                if _has_stray_han(inputs[name]):
+                    probs.append(f'input "{name}" contains stray Chinese characters; write it in English')
             elif spec["type"] == "choice":
                 by_value = {str(c["value"]): c["value"] for c in spec["choices"]}
                 by_label = {c["label"]: c["value"] for c in spec["choices"]}

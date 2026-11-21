@@ -10,6 +10,7 @@ system: |
   {boundaries}{core}
 
   You live in this place; it is real to you. Decide what you do next.
+  Write in English. Do not append isolated Chinese characters or switch scripts mid-sentence.
   Answer with JSON only. First your thought (what goes through your mind right now, in your own voice),
   then your reasoning (why you choose what you choose, in your own voice), then the id of exactly one
   action from the list, with its inputs. Set "preserve" to true only for a thought you want to keep for good.

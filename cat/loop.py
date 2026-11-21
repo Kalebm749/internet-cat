@@ -276,6 +276,13 @@ class Loop:
             n = memories.note_for(prefs, action, minimum) if prefs else 0
             if n:
                 out.append(words[n])
+            if action.builtin == "sleep":
+                night = clock_mod.hour_in_range(clock_mod.parse(self.life.sim_time),
+                                                 *self.t["sleep"]["night_hours"])
+                if self.life.bodystate.energy <= 0.5:
+                    out.append("your energy is low; sleep restores it")
+                elif night:
+                    out.append("it is night; sleeping now will restore your energy")
             if not action.builtin:
                 f = behaviour.freshness(self.conn, self.life.content, self.t, action, None, self.life.sim_time,
                                         self.life.world.values)
@@ -286,9 +293,15 @@ class Loop:
 
     def _reconsider_stale_choice(self, mind, decision: Decision) -> list[str]:
         """Offer one prompt-level loop break when Nit picks a stale action despite fresh alternatives."""
-        action = self.life.content.actions.get(decision.action)
-        if action is None or decision.kind == "check_in":
+        if decision.kind == "check_in":
+            if self.life.bodystate.energy <= 0.2 and decision.action != "stop":
+                return ["Your energy is critically low. Stop this activity so you can consider sleep."]
             return []
+        action = self.life.content.actions.get(decision.action)
+        if action is None:
+            return []
+        if self.life.bodystate.energy <= 0.2 and decision.action != "sleep" and mind.option("sleep"):
+            return ["Your energy is critically low. Sleep is available and restores energy; reconsider before continuing."]
         threshold = self.t["repetition"]["note_below"]
         selected = behaviour.freshness(self.conn, self.life.content, self.t, action, decision.inputs,
                                        self.life.sim_time, self.life.world.values)

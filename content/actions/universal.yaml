@@ -26,7 +26,7 @@
   builtin: sleep
   diary: "{name} is sleeping at {location.name}"
   name: go to sleep
-  description: "Lie down and sleep."
+  description: "Lie down and sleep. Your energy will recover while you rest."
   family: sleep
   discovery: innate
   requires:
