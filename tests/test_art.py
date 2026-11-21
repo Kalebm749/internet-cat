@@ -332,3 +332,19 @@ def test_the_website_shows_png_and_old_svg_artwork(room, cfg):
     detail = c.get(f"/artwork/{second['id']}").text
     assert "How it developed" in detail and "Version 2" in detail and first["id"] in detail
     assert c.get("/artwork/old1").status_code == 200 and c.get("/artwork/nope").status_code == 404
+
+
+def test_more_passes_on_one_drawing_are_allowed_with_diminishing_returns(room):
+    room.do("make_drawing", intention="a round thing", thoughts="", materials="pencils", effort="quick")
+    fresh = []
+    for k in range(3):
+        current = room.works()[-1]
+        res = room.do("work_on_drawing", artwork=current["id"], intention=f"refine it {k}", thoughts="",
+                      materials="pencils", effort="quick")
+        assert res["status"] == "started"                          # continuing is always allowed
+        row = room.conn.execute("SELECT freshness, repeat_parts FROM activities WHERE id = ?",
+                                (res["activity_id"],)).fetchone()
+        assert "restart" not in json.loads(row["repeat_parts"])     # never treated as doing it again at once
+        fresh.append(row["freshness"])
+    assert fresh == sorted(fresh, reverse=True) and fresh[-1] < fresh[0] and fresh[0] > 0.6
+    assert len([w for w in room.works() if w["status"] == "superseded"]) == 3

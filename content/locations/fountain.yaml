@@ -68,8 +68,13 @@ actions:
     discovery: hidden
     requires:
       - {fact_count_gte: [fountain.wishes, 1]}
+      - {not_done_since_minutes: [assess_wishes, 240]}   # looking again changes nothing; at most every 4 sim hours
     duration: {minutes: [5, 15]}
     effort: none
     revisit_key: [fountain.wishes]
-    on_finish:
-      creature: {mood: 0.02}
+    outcomes:
+      - when: {fact_count_where: [fountain.wishes, {status: granted}, 1]}
+        text: "Some of your wishes have come true; the others are as they were. Looking again will not change them."
+        creature: {mood: 0.03}
+      - text: "Your wishes are as they were: nothing has come true yet. Wishes come true only when the world itself changes; looking again will not change them."
+        creature: {mood: 0.01}
