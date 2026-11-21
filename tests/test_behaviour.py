@@ -24,6 +24,7 @@ class Rig:
         self.ex = Executor(self.conn, self.life, self.t, load_texts(), Registry(self.life.content),
                            Scheduler(self.t["decisions"]), random.Random(0))
         self.life.content.actions["make_wish"].requires = [{"energy_gte": 0.1}]   # repetition, not the daily limit
+        self.life.content.actions["make_wish"].distinct = None                   # nor the same-wish rule
         with store.transaction(self.conn):
             for a in ("make_wish", "assess_wishes"):
                 knowledge.learn(self.conn, a, "fountain", "inspect", self.life.sim_time)
@@ -130,6 +131,7 @@ def test_stale_options_get_a_note_but_stay(tmp_path):
     lp = Loop(store.connect(tmp_path / "nit.db"), content.load(), t, MockBackend(), clock=fc, seed=1)
     lp.life.content.events.clear()
     lp.life.content.actions["make_wish"].requires = [{"energy_gte": 0.1}]
+    lp.life.content.actions["make_wish"].distinct = None
     with store.transaction(lp.conn):
         knowledge.learn(lp.conn, "make_wish", "fountain", "inspect", lp.life.sim_time)
     for _ in range(3):

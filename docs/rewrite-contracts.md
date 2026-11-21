@@ -850,6 +850,10 @@ were never repeats. Three things keep a small model from circling one subject:
 - **What it learned comes back.** World `learned` names the list of things it kept from reading (status `kept`,
   with its own summary and meaning). The newest, and one older one that rotates by the hour, stay in the Mind for
   `learned_days`, so reading seeds new thoughts.
+- **The same thing twice where it cannot be twice.** An action may declare `distinct: {fact, field, value, match?,
+  reason}`: it cannot happen when the list fact already holds an item matching `match` whose `field` has (nearly) the
+  same words as the rendered `value` (word overlap >= 0.8). `make_wish` uses it against open wishes. The guard checks
+  it before carrying out a decision, so the model hears the reason and chooses again.
 
 ## 7. Models
 

@@ -99,9 +99,9 @@ def test_outcomes_follow_their_conditions(rig):
 def test_wishes_are_limited_and_never_granted_by_the_world(rig):
     rig.learn("make_wish", "assess_wishes")
     for i in range(2):
-        assert rig.do("make_wish", {"kind": "I want a place where I can", "what": f"climb high {i}"})["status"] == "started"
+        assert rig.do("make_wish", {"kind": "I want a place where I can", "what": ["climb high", "swim deep"][i]})["status"] == "started"
         rig.wait(10)
-    assert rig.life.world.get("fountain.wishes")[0]["text"] == "I want a place where I can climb high 0"
+    assert rig.life.world.get("fountain.wishes")[0]["text"] == "I want a place where I can climb high"
     assert rig.do("make_wish", {"kind": "I wish I could", "what": "fly"})["status"] == "rejected"   # 2 a real day
     for _ in range(5):
         rig.do("assess_wishes")
@@ -242,3 +242,18 @@ def test_a_running_activity_survives_a_restart(tmp_path):
     again = Executor(r.conn, life.open_life(r.conn, content.load(), r.t), r.t, load_texts(), r.reg, Scheduler(r.t["decisions"]),
                      random.Random(0))
     assert again.running is not None and again.running.action.id == "sit_and_reflect"
+
+
+def test_the_same_wish_cannot_be_made_twice_while_it_waits(rig):
+    rig.learn("make_wish")
+    rig.life.content.actions["make_wish"].requires = [{"energy_gte": 0.1}]
+    wish = {"kind": "I want a place where I can", "what": "climb up high and look around"}
+    assert rig.do("make_wish", wish)["status"] == "started"
+    rig.wait(10)
+    again = {"kind": "I want a place where I can", "what": "Climb up  high and look around!"}
+    assert rig.do("make_wish", again)["status"] == "rejected"
+    assert rig.do("make_wish", {"kind": "I wish I could", "what": "swim in the fountain"})["status"] == "started"
+    rig.wait(10)
+    rig.life.world.values["fountain.wishes"][0]["status"] = "granted"     # granted: it may be wished again
+    assert rig.do("make_wish", wish)["status"] == "started"
+
