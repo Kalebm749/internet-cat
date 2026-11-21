@@ -11,7 +11,9 @@ import sqlite3
 
 from cat import clock
 
-KINDS = ("want", "question")
+KINDS = ("want", "question", "promise")
+LABELS = {"want": "something you want", "question": "something you wonder",
+          "promise": "something you said you would do"}
 
 
 def open_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -23,8 +25,7 @@ def on_mind(conn: sqlite3.Connection, tuning: dict) -> list[str]:
     k = tuning["loops"]["on_mind"]
     if k == 0:
         return []
-    return [f"({'something you want' if r['kind'] == 'want' else 'something you wonder'}) {r['text']}"
-            for r in reversed(open_rows(conn))][:k]
+    return [f"({LABELS[r['kind']]}) {r['text']}" for r in reversed(open_rows(conn))][:k]
 
 
 def expired(rows: list[sqlite3.Row], tuning: dict, now: str) -> list[int]:
