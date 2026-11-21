@@ -37,7 +37,7 @@ FACT_KEYS = {"type", "default", "visible", "min", "max", "max_len", "choices", "
 EVENT_KEYS = {"id", "text", "sense", "chance_per_hour", "salience", "hours", "weather_in", "world"}
 ACTION_KEYS = {"id", "name", "description", "family", "discovery", "inspect_hint", "requires", "inputs",
                "duration", "continuous", "per_minute", "on_finish", "outcomes", "on_interrupt", "capability",
-               "revisit_key", "effort", "builtin", "diary", "subject"}
+               "revisit_key", "effort", "builtin", "diary", "subject", "distinct"}
 EFFECT_KEYS = {"world", "creature", "discover", "remember", "reflection"}
 OUTCOME_KEYS = EFFECT_KEYS | {"when", "text"}
 WORLD_KEYS = {"name", "sim_start", "senses", "facts", "events", "effort", "body_words", "derived_conditions",
@@ -142,6 +142,7 @@ class ActionSpec:
     builtin: str | None = None
     diary: str | None = None      # the website's third-person line, e.g. "{name} is walking to {inputs.to}"
     subject: str | None = None    # what the action is about, in Nit's own words, e.g. "{inputs.intention}" (§6.6)
+    distinct: dict | None = None  # {fact, field, value, match?, reason}: not if the list already holds the same thing
     source: str = ""
 
 
@@ -350,7 +351,7 @@ def _parse_action(owner: str | None, d: Any, path: Path, probs: _Problems, line:
                    per_minute=d.get("per_minute") or {}, on_finish=d.get("on_finish"),
                    outcomes=d.get("outcomes"), on_interrupt=d.get("on_interrupt"),
                    capability=d.get("capability"), revisit_key=d.get("revisit_key") or [],
-                   effort=d.get("effort"), builtin=builtin, diary=d.get("diary"), subject=d.get("subject"),
+                   effort=d.get("effort"), builtin=builtin, diary=d.get("diary"), subject=d.get("subject"), distinct=d.get("distinct"),
                    source=f"{path.name}:{line}")
     if a.per_minute and not a.continuous:
         probs.add(path, line_of(d, "per_minute"), f"{what}: per_minute needs continuous: true")
@@ -712,6 +713,19 @@ def _check_action(c: Content, a: ActionSpec, path: Path, line: int, probs: _Prob
                 p = tmpl(ph)
                 if p:
                     probs.add(path, line, f"{w} subject: {p}")
+    if a.distinct is not None:
+        dd = a.distinct
+        ok = isinstance(dd, dict) and set(dd) <= {"fact", "field", "value", "match", "reason"} \
+            and {"fact", "field", "value", "reason"} <= set(dd) and all(isinstance(dd[k], str) for k in ("field", "value", "reason"))
+        if not ok:
+            probs.add(path, line, f"{w}: distinct must be {{fact, field, value, reason, match?}}")
+        elif dd["fact"] not in c.facts or c.facts[dd["fact"]].type != "list":
+            probs.add(path, line, f"{w}: distinct.fact must name a list fact")
+        else:
+            for ph in templating.placeholders(dd["value"]):
+                p = tmpl(ph)
+                if p:
+                    probs.add(path, line, f"{w} distinct: {p}")
     if a.capability is not None and a.capability not in c.capabilities:
         probs.add(path, line, f"{w}: unknown capability '{a.capability}' (declare it in capabilities.yaml)")
     for k in a.revisit_key:

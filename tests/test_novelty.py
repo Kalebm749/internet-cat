@@ -147,3 +147,11 @@ def test_kept_reading_comes_back_to_mind(lp):
     assert len(got) == 2 and got[1].startswith("Page 0")
     lp.life.sim_time = "2026-12-30T08:00"
     assert mindmod.learned_on_mind(lp.life, lp.t) == []          # long ago: it has faded from the slot
+
+
+def test_the_guard_says_it_was_already_wished_and_asks_again(lp):
+    lp.life.world.values["fountain.wishes"] = [{"text": "I wish I could fly", "made": "x", "status": "open"}]
+    mind = type("M", (), {"options": [], "option": lambda self, x: None})()
+    d = Decision(kind="full", action="make_wish", inputs={"kind": "I wish I could", "what": "fly"})
+    problems = lp._reconsider_stale_choice(mind, d)
+    assert len(problems) == 1 and "already wished" in problems[0]

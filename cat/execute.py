@@ -68,6 +68,11 @@ class Running:
                 "continuous": self.action.continuous}
 
 
+def _words(text: str) -> set[str]:
+    import re
+    return set(re.findall(r"[a-z0-9']+", text.lower()))
+
+
 def _dump(v: Any) -> str:
     return json.dumps(v, ensure_ascii=False, default=str)
 
@@ -182,7 +187,32 @@ class Executor:
             ok, why = self.registry.available(self.conn, a.capability, self.day())
             if not ok:
                 return why
+        if a.distinct and self._already_holds(a, inputs):
+            return a.distinct["reason"]
         return None
+
+    def duplicate(self, action_id: str, inputs: dict) -> str | None:
+        """The action's `distinct` reason when its list already holds the same thing, else None."""
+        a = self.c.actions.get(action_id)
+        return a.distinct["reason"] if a and a.distinct and self._already_holds(a, inputs) else None
+
+    def _already_holds(self, a: ActionSpec, inputs: dict) -> bool:
+        """Does the action's `distinct` list already hold the same thing (same words, or nearly)?"""
+        d = a.distinct
+        try:
+            value = templating.render(d["value"], {"inputs": inputs or {}})
+        except templating.TemplateError:
+            return False
+        mine = _words(str(value))
+        if not mine:
+            return False
+        for item in self.life.world.get(d["fact"]):
+            if not isinstance(item, dict) or not conditions.matches(item, d.get("match") or {}):
+                continue
+            theirs = _words(str(item.get(d["field"], "")))
+            if theirs and len(mine & theirs) / len(mine | theirs) >= 0.8:
+                return True
+        return False
 
     # ---------------------------------------------------------------- outside the transaction
 

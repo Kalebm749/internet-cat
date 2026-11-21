@@ -36,6 +36,8 @@ actions:
   - id: make_wish
     diary: "{name} is making a wish at {location.name}: {inputs.kind} {inputs.what}"
     subject: "{inputs.what}"
+    distinct: {fact: fountain.wishes, field: text, value: "{inputs.kind} {inputs.what}", match: {status: open},
+               reason: "you have already wished for that, and the wish is still waiting"}
     name: make a wish
     description: "Wish at the moving water for a place you do not have, or something you cannot yet do."
     family: wish

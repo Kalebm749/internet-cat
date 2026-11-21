@@ -320,6 +320,9 @@ class Loop:
         action = self.life.content.actions.get(decision.action)
         if action is None:
             return []
+        why = self.exec.duplicate(decision.action, decision.inputs)
+        if why:                                              # it is already there: say so and let it choose again
+            return [self.texts["rejected"].format(name=action.name, reason=why)]
         if self.life.bodystate.energy <= 0.2 and decision.action != "sleep" and mind.option("sleep"):
             return ["Your energy is critically low. Sleep is available and restores energy; reconsider before continuing."]
         threshold = self.t["repetition"]["note_below"]
