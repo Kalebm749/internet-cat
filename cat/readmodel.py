@@ -471,3 +471,100 @@ def artwork_detail(conn: sqlite3.Connection, artwork_id: str) -> dict | None:
                     pass_operations=meta.get("pass_ops"), materials_words=meta.get("materials_words"))
     item["versions"] = artwork_versions(conn, artwork_id)
     return item
+
+
+# ---------------------------------------------------------------- public views (the website, never the dev internals)
+# What is deliberately NOT here: the author's temperament numbers, what really caused a failure (the creature's own
+# mistaken beliefs are shown as it holds them), how it feels about each person, prompts and model calls.
+
+NEED_LABELS = {"novelty": "Wants something new", "social": "Wants company", "solitude": "Wants to be alone",
+               "expression": "Wants to make something", "accomplishment": "Wants to finish something",
+               "belonging": "Wants to belong", "security": "Wants things to feel safe"}
+AFFECT_LABELS = {"stress": "Tense", "confidence": "Sure of itself", "curiosity": "Curious", "loneliness": "Lonely",
+                 "frustration": "Frustrated", "satisfaction": "Pleased"}
+
+
+def _fact(conn: sqlite3.Connection, key: str | None) -> list:
+    if not key:
+        return []
+    r = conn.execute("SELECT value FROM facts WHERE key = ?", (key,)).fetchone()
+    return _j(r[0], []) if r else []
+
+
+def public_inside(conn: sqlite3.Connection, content: Content, tuning: dict) -> dict:
+    """How it is inside right now: needs and feelings, what it carries, what it is making, what is on its mind, what is
+    pinned on its board."""
+    from cat import inner as innermod
+    st = state(conn)
+    if st is None:
+        return {"needs": [], "feelings": [], "words": [], "carrying": [], "projects": [], "concerns": [], "board": []}
+    inn = innermod.Inner.load(st, tuning["inner"])
+    loud = tuning["inner"]["loud"]
+    words = innermod.describe(inn, content.world.get("inner_words"), {**tuning["inner"], "max_words": 6})
+    needs = [{"name": NEED_LABELS[v], "value": round(inn.v[v], 2), "pressing": inn.v[v] >= loud} for v in innermod.NEEDS]
+    feelings = [{"name": AFFECT_LABELS[v], "value": round(inn.v[v], 2)} for v in innermod.AFFECT]
+    carrying = [str(i.get("name", "something")) for i in _fact(conn, content.world.get("carrying")) if isinstance(i, dict)]
+    how = lambda r: ("not looked at closely yet" if r is None else "pleased with how it turned out" if r >= 0.65
+                     else "disappointed in how it turned out" if r <= 0.35 else "unsure how it turned out")
+    projects = [{"title": r["title"], "status": r["status"], "how": how(r["rating"]), "intention": r["intention"],
+                 "evaluation": r["evaluation"], "attempts": len(_j(r["history"], [])), "updated": r["updated_at"]}
+                for r in conn.execute("SELECT * FROM projects ORDER BY (status = 'active') DESC, updated_at DESC LIMIT 12")]
+    kinds = {"want": "wants", "question": "wonders", "promise": "promised", "worry": "worries about",
+             "idea": "wants to try", "problem": "has not worked out"}
+    concerns = [{"kind": kinds.get(r["kind"], r["kind"]), "text": r["text"], "since": r["opened_at"]}
+                for r in conn.execute("SELECT kind, text, opened_at FROM loops WHERE status = 'open' ORDER BY id DESC")]
+    board = [{"sender": i.get("sender") or "someone", "pinned": i.get("answered_at"), "id": i.get("id")}
+             for i in _fact(conn, content.world.get("pinned")) if isinstance(i, dict) and i.get("status") == "answered"]
+    return {"needs": needs, "feelings": feelings, "words": words, "carrying": carrying, "projects": projects,
+            "concerns": concerns, "board": board}
+
+
+def public_memory(conn: sqlite3.Connection, content: Content, tuning: dict, sim_time: str) -> dict:
+    """What it remembers (short, long, faded), what is first to go, and what it has come to believe."""
+    m = tuning["memory"]
+    layers: dict[str, list] = {"short": [], "long": [], "faded": []}
+    for x in memories.all_memories(conn):
+        if x.kind in layers:
+            layers[x.kind].append({"text": x.gist or x.text if x.kind == "faded" else x.text,
+                                   "worth": round(memories.strength_now(x, sim_time, m), 2),
+                                   "came_back": x.recall_count, "met": x.occurrences, "since": x.created_at[:10]})
+    for k in ("short", "long"):
+        layers[k].sort(key=lambda r: -r["worth"])
+    first = {k: layers[k][-1] for k in ("short", "long") if layers[k]}
+    beliefs = [{"statement": r["statement"], "for": r["for_count"], "against": r["against_count"], "days": r["days"],
+                "strength": round(r["strength"], 2), "last": (r["last_reinforced"] or "")[:10]}
+               for r in conn.execute("SELECT * FROM beliefs WHERE status = 'active' ORDER BY strength DESC, for_count DESC")]
+    given_up = [{"statement": r["statement"], "for": r["for_count"], "against": r["against_count"]}
+                for r in conn.execute("SELECT * FROM beliefs WHERE status = 'dropped' AND for_count >= 3 "
+                                      "ORDER BY last_reinforced DESC LIMIT 12")]
+    return {"layers": layers, "first_to_go": first, "room": {"short": m["short_cap"], "long": m["long_cap"],
+                                                             "faded": m["faded_cap"]},
+            "beliefs": beliefs, "given_up": given_up}
+
+
+def public_who(conn: sqlite3.Connection, content: Content) -> dict:
+    """The sheet it started with (written for it) next to what it has added to itself, with what each came from."""
+    from cat import mind as mindmod
+    row = conn.execute("SELECT version, sheet FROM character_versions ORDER BY version DESC LIMIT 1").fetchone()
+    if row is None:
+        return {"written": {}, "acquired": {}, "history": []}
+    sheet = _j(row["sheet"], {})
+    core = sheet.get("core") or {}
+    written = {"name": sheet.get("name"), "nature": core.get("nature", ""), "senses": core.get("senses") or [],
+               "abilities": core.get("abilities") or [], "stays_true": core.get("boundaries") or [],
+               "traits": mindmod._trait_words(sheet.get("traits") or {}),
+               "tendencies": [t for t, _ in sorted((sheet.get("tendencies") or {}).items(), key=lambda kv: -kv[1])],
+               "holds": [h.get("text", "") for h in sheet.get("holds") or []],
+               "background": sheet.get("background", "")}
+    acquired = {k: [{"text": i.get("text", ""), "since": i.get("since")} for i in (sheet.get("acquired") or {}).get(k, [])]
+                for k in ("habits", "fears", "interests")}
+    history = []
+    for r in conn.execute("SELECT * FROM character_versions WHERE version > 1 ORDER BY version DESC"):
+        reason = r["reason"] or ""
+        if reason.startswith("author edit"):
+            continue
+        kind = "let go" if reason.startswith("let go") else "added" if reason.startswith("acquired") else "changed"
+        history.append({"version": r["version"], "when": r["created_at"][:10], "kind": kind, "what": reason,
+                        "occasions": len(_j(r["evidence"], []))})
+    return {"written": written, "acquired": acquired, "history": history}
+

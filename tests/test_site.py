@@ -200,3 +200,52 @@ def test_the_llm_page_lets_you_read_each_call_s_input_and_output(dash, cfg):
     assert "Read input and output" in html and "You are Nit." in html and "&#34;action&#34;: &#34;inspect&#34;" in html
     assert "<b>now</b>" not in html and "&lt;b&gt;now&lt;/b&gt;" in html                       # escaped, never markup
     assert dash.get("/api/dev/llm").json()["recent"][0]["io"]["user"].startswith("It is morning")
+
+
+# ---------------------------------------------------------------- the public "inside him" pages
+
+def test_the_public_inside_memories_and_who_pages_show_it_and_hide_what_they_should(cfg):
+    import json as _json
+    from fastapi.testclient import TestClient
+    from cat.web.app import create_app
+    live(cfg, 6, [("Ann", "Hello there")])
+    c = store.connect(cfg.db_path)
+    with store.transaction(c):
+        c.execute("INSERT INTO beliefs(kind, subject, outcome, statement, for_count, against_count, days, strength, first_seen, "
+                  "last_reinforced, status, note) VALUES ('failure', 'make_drawing', 'self', 'I am not good at this: sketch a "
+                  "picture.', 3, 0, 2, 0.6, '2026-11-21T08:00', '2026-11-22T08:00', 'active', ?)",
+                  (_json.dumps({"truth": "circumstance"}),))
+        c.execute("INSERT INTO people(name, familiarity, affinity, interactions, first_seen, last_seen) "
+                  "VALUES ('Ann', 0.3, -0.8, 2, '2026-11-21T08:00', '2026-11-21T09:00')")
+        c.execute("INSERT INTO loops(kind, text, opened_at) VALUES ('worry', 'The stall may run out of food.', '2026-11-21T08:00')")
+        c.execute("INSERT INTO projects(kind, title, intention, status, rating, evaluation, root_id, history, created_at, updated_at) "
+                  "VALUES ('drawing', 'The round thing', 'a heron', 'active', 0.2, 'Not what I meant.', 'r', '[]', 'x', '2026-11-21T09:00')")
+    c.close()
+    site = TestClient(create_app(cfg))
+    inside = site.get("/inside").text
+    assert "How it feels" in inside and "The stall may run out of food." in inside and "The round thing" in inside
+    assert "Disappointed in how it turned out" in inside
+    assert "Ann" not in inside                                                  # how it feels about people stays private
+    mem = site.get("/memories").text
+    assert "I am not good at this: sketch a picture." in mem and "circumstance" not in mem   # what really caused it is not shown
+    who = site.get("/who").text
+    assert "Written for it" in who and "Added by itself" in who
+    for api in ("/api/inside", "/api/memories", "/api/who"):
+        assert site.get(api).status_code == 200 and site.get(api).json()
+    assert "temperament" not in _json.dumps(site.get("/api/who").json())
+
+
+def test_a_letter_it_set_aside_shows_no_words_on_the_website(cfg):
+    import json as _json
+    from fastapi.testclient import TestClient
+    from cat.web.app import create_app
+    live(cfg, 4, [("Ann", "A secret thing I wrote")])
+    c = store.connect(cfg.db_path)
+    with store.transaction(c):
+        row = c.execute("SELECT value FROM facts WHERE key = 'market.discarded'").fetchone()
+        c.execute("UPDATE facts SET value = ? WHERE key = 'market.discarded'",
+                  (_json.dumps([{"id": "L1", "sender": "Ann", "status": "discarded", "discarded_at": "2026-11-21T10:00"}]),))
+        c.execute("UPDATE facts SET value = '[]' WHERE key = 'market.mailbox'")
+    c.close()
+    html = TestClient(create_app(cfg)).get("/letters").text
+    assert "A secret thing I wrote" not in html and "set this letter aside" in html

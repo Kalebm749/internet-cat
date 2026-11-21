@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Inside him · {{ now.name if now else "Nit" }}</title><link rel="stylesheet" href="/static/css/site.css"><link rel="icon" href="/static/img/nit/nit.svg"></head>
+<body class="{{ 'night' if now and now.part_of_day == 'night' else '' }}"><header class="top"><img class="portrait" src="/static/img/nit/nit.svg" alt=""><div><h1>Inside him</h1><p class="where">How it is, right now, and what it has on its hands.</p></div>{% set active = "/inside" %}{% include "_nav.html" %}</header>
+<main class="layout">
+{% if not d %}<section class="col"><article class="card"><p>Nit has not woken yet.</p></article></section>{% else %}
+<section class="col">
+  <article class="card"><h2>How it feels</h2>
+    {% if d.words %}<ul class="body">{% for w in d.words %}<li>{{ w }}</li>{% endfor %}</ul>{% else %}<p class="hint">Nothing in particular is strong right now.</p>{% endif %}
+    <div class="meters">{% for f in d.feelings %}<label>{{ f.name }} <meter min="0" max="1" value="{{ f.value }}"></meter></label>{% endfor %}</div>
+    <p class="hint">Feelings can pull against each other: it can be curious and tense at once.</p>
+  </article>
+  <article class="card"><h2>What it wants</h2>
+    <div class="meters">{% for n in d.needs %}<label>{{ n.name }} <meter min="0" max="1" low="0.4" high="0.65" optimum="0" value="{{ n.value }}"></meter>{% if n.pressing %} <span class="pill2">pressing</span>{% endif %}</label>{% endfor %}</div>
+    <p class="hint">Needs grow with time and ease when it does something about them. Nothing here decides what it does.</p>
+  </article>
+  <article class="card"><h2>On its mind</h2>
+    <ul>{% for c in d.concerns %}<li><span class="hint">{{ c.kind }}:</span> {{ c.text }}</li>{% else %}<li class="hint">Nothing unsettled yet.</li>{% endfor %}</ul>
+  </article>
+</section>
+<section class="col">
+  <article class="card"><h2>In its pocket</h2>
+    <ul>{% for i in d.carrying %}<li>{{ i | capitalize }}</li>{% else %}<li class="hint">Nothing.</li>{% endfor %}</ul>
+  </article>
+  <article class="card"><h2>What it is making</h2>
+    {% for p in d.projects %}<p><b>{{ p.title }}</b> <span class="pill2">{{ p.status }}</span><br>
+      <span class="hint">meant: {{ p.intention }}</span><br>{{ p.how | capitalize }}{% if p.evaluation %}: <i>{{ p.evaluation }}</i>{% endif %}<br>
+      <span class="hint">{{ p.attempts }} step{{ "s" if p.attempts != 1 }}</span></p>
+    {% else %}<p class="hint">Nothing yet.</p>{% endfor %}
+  </article>
+  <article class="card"><h2>Pinned on its board</h2>
+    <p class="hint">Letters it wrote back to stay here until it takes them down. See <a href="/letters">Letters</a> for the words.</p>
+    <ul>{% for b in d.board %}<li>A letter from {{ b.sender }}</li>{% else %}<li class="hint">Nothing pinned.</li>{% endfor %}</ul>
+  </article>
+</section>
+{% endif %}</main></body></html>
