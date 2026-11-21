@@ -831,6 +831,26 @@ again when nothing has changed is not.
 - A repeated thought is always noticed ("You keep coming back to the same thought.") but costs mood at most
   once per `thought_dup_cooldown_minutes`, so mood's drift back to its baseline always outpaces it.
 
+### 6.6 Being drawn to the same subject
+
+Freshness (§6.2) compares actions and exact inputs, so "draw the fountain's water" and "sketch the moving water"
+were never repeats. Three things keep a small model from circling one subject:
+
+- **Recall does not feed on itself.** A memory's recency is when it was formed, not when it was last recalled.
+  A memory that was on the creature's mind in the last `recall_rest_minutes` rests (score x `recall_rest_factor`),
+  and `wander_slots` of the recall slots go to an important memory not thought of for `wander_after_minutes`.
+  (Before, every recall made its memories the most recent, so the same few filled every prompt.)
+- **Subjects.** An action may declare `subject` (content), e.g. `"{inputs.intention}"` on making a drawing, the
+  query on a search, the wish. Each subject is embedded (table `subjects`) and compared with recent ones: those at
+  least `subject_floor` similar, decayed over `subject_half_life_minutes`, lower that activity's freshness (so
+  the repeat feels flatter and preferences learn it), give the reconsider guard a reason that quotes the
+  creature's own earlier words, and, when `dwell_min` recent subjects are close, put a "Lately you keep coming
+  back to" line in the Mind. Returning to the same drawing (`work_on_drawing`) declares no subject: continuing is
+  not repeating. Code never names or picks a subject.
+- **What it learned comes back.** World `learned` names the list of things it kept from reading (status `kept`,
+  with its own summary and meaning). The newest, and one older one that rotates by the hour, stay in the Mind for
+  `learned_days`, so reading seeds new thoughts.
+
 ## 7. Models
 
 | Setting | Default | Used for |

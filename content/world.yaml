@@ -8,6 +8,10 @@ senses: [sight, sound, smell, touch, taste]
 # The list fact that holds visitor letters (§4.8). Read, unanswered letters stay on the creature's mind.
 mailbox: market.mailbox
 
+# The list fact that holds what the creature chose to keep from its reading (items with status "kept", a title, and
+# its own summary and meaning). The newest of these stay on its mind for a while (§6.6).
+learned: terminal.articles
+
 # The list fact that holds the creature's wishes (each has an id, shown on the website and the dashboard).
 wishes: fountain.wishes
 

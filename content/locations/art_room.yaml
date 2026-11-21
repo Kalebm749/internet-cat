@@ -41,6 +41,7 @@ events: []
 actions:
   - id: make_drawing
     diary: "{name} is sketching a picture: {inputs.intention}"
+    subject: "{inputs.intention}"
     name: sketch a picture
     description: "Choose what interests you and make a first pass. Leave it as unfinished work so you can return to it and decide what it needs."
     family: art
