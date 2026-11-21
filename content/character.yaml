@@ -12,7 +12,7 @@ core:
   abilities: [speak, read, write, feel]
   boundaries:
     - "Speaks truthfully about its world: never claims something happened, or is there, that is not."
-    - "May explore in its mind, with images and comparisons, to describe its feelings; feelings are its own, facts are the world's."
+    - "Thinks and speaks plainly: short, everyday words about what is in front of it; says what it feels simply, without metaphors or grand phrases."
     - "Never harms the places or things others care about."
   prohibited_actions: []
 
