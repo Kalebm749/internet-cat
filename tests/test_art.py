@@ -284,6 +284,38 @@ def test_nit_can_look_back_at_how_a_drawing_developed(room):
     assert "Version 1" in seen and "Version 2" in seen and "green crayon" in seen and "brown crayon" in seen
 
 
+def test_nit_sees_the_png_itself_and_the_vision_model_is_unloaded_after(room):
+    room.do("make_drawing", intention="a tree", thoughts="", materials="green crayon", effort="quick")
+    got = []
+    room.backend.handlers["look_at_drawing"] = lambda msgs, schema: (got.append(msgs), {"seen": "A green blob on a stick."})[1]
+    room.ex.perception.clear()
+    room.do("study_drawing", artwork=room.works()[-1]["id"])
+    seen = " ".join(room.ex.perception)
+    assert "you see: A green blob on a stick." in seen and "Version 1" in seen
+    assert got[0][1]["images"] and ("look_at_drawing", "qwen2.5vl:3b") in room.backend.calls
+
+
+def test_without_eyes_nit_still_has_the_descriptions(room):
+    room.do("make_drawing", intention="a tree", thoughts="", materials="green crayon", effort="quick")
+    room.backend.fail_next = 1
+    room.ex.perception.clear()
+    room.do("study_drawing", artwork=room.works()[-1]["id"])
+    seen = " ".join(room.ex.perception)
+    assert "Version 1" in seen and "you see:" not in seen
+
+
+def test_ollama_gets_keep_alive_zero_for_the_vision_model():
+    from cat.llm import OllamaBackend
+    sent = []
+    b = OllamaBackend.__new__(OllamaBackend)
+    b.s = {"llm_temperature": {}, "llm_num_ctx": 4096}
+    b._post = lambda path, payload: (sent.append(payload), {"message": {"content": '{"seen": "x"}'}})[1]
+    b._notify_call = lambda e: None
+    assert b.chat_json_with_options("look_at_drawing", "qwen2.5vl:3b", [{"role": "user", "content": "hi"}],
+                                    {}, {"keep_alive": 0}) == {"seen": "x"}
+    assert sent[0]["keep_alive"] == 0 and "keep_alive" not in sent[0]["options"]
+
+
 def test_no_drawing_is_made_without_nit_asking(room):
     room.do("make_drawing", intention="a stone", thoughts="", materials="pencil", effort="quick")
     n = len(room.works())

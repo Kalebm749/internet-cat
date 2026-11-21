@@ -86,7 +86,7 @@ INTEGER_KEYS = {"learned_k", "learned_chars", "subject_window", "dwell_min", "wa
                 "dev_min_evidence", "dev_min_days", "recall_k", "notable_k", "recent", "thought_window",
                 "reflection_window", "retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
                 "on_mind", "on_mind_chars"}
-MODEL_KEYS = ("decision_model", "sleep_model", "embed_model", "art_model")
+MODEL_KEYS = ("decision_model", "sleep_model", "embed_model", "art_model", "vision_model")
 TOP = {"db_path", "content_dir", "time_scale", "body", "models", "sleep", "art"} | set(SECTIONS)
 ART_NUMBERS = {"canvas": (128, 2048), "max_points": (2, 1000), "max_points_per_pass": (10, 100000),
                "max_total": (1, 10000), "max_tokens": (200, 32000)}
