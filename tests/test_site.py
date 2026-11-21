@@ -216,7 +216,7 @@ def test_the_public_inside_memories_and_who_pages_show_it_and_hide_what_they_sho
                   "picture.', 3, 0, 2, 0.6, '2026-11-21T08:00', '2026-11-22T08:00', 'active', ?)",
                   (_json.dumps({"truth": "circumstance"}),))
         c.execute("INSERT INTO people(name, familiarity, affinity, interactions, first_seen, last_seen) "
-                  "VALUES ('Ann', 0.3, -0.8, 2, '2026-11-21T08:00', '2026-11-21T09:00')")
+                  "VALUES ('Ann', 0.3, -0.8, 2, '2026-11-21T08:00', '2026-11-21T09:00') ON CONFLICT(name) DO UPDATE SET affinity = -0.8")
         c.execute("INSERT INTO loops(kind, text, opened_at) VALUES ('worry', 'The stall may run out of food.', '2026-11-21T08:00')")
         c.execute("INSERT INTO projects(kind, title, intention, status, rating, evaluation, root_id, history, created_at, updated_at) "
                   "VALUES ('drawing', 'The round thing', 'a heron', 'active', 0.2, 'Not what I meant.', 'r', '[]', 'x', '2026-11-21T09:00')")

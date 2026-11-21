@@ -147,12 +147,14 @@ def build_options(life: Life, known: set[str], last_done: dict[str, float], rng:
                   capability_ok: Callable[[str], bool] | None = None,
                   count_done: Callable[[str, float], int] | None = None, time_scale: float = 24.0,
                   menu_size: int = 0, protected: set[str] | None = None, carry: dict | None = None,
-                  info: dict | None = None) -> list[Option]:
+                  info: dict | None = None, hidden: set[str] | None = None) -> list[Option]:
     """What it can do now. All of what is genuinely available (known, here, its requires hold, its capability on) is
     the pool; with `menu_size` a uniform draw of that many from the pool is offered (chance, not code, decides what
     it meets), plus the `protected` ones that must always be offered (sleep when worn out, food when hungry) and,
     when there is something to carry on with, that. Never ranked; options stay in shuffled order."""
     pool = available(life, known, last_done, rng, capability_ok, count_done, time_scale)
+    stopped = sorted(a.id for a, _ in pool if hidden and a.id in hidden)            # silently not offered (hard stop)
+    pool = [x for x in pool if not (hidden and x[0].id in hidden)]
     rng.shuffle(pool)
     chosen = pool
     must = [x for x in pool if x[0].id in (protected or set())]
@@ -166,7 +168,7 @@ def build_options(life: Life, known: set[str], last_done: dict[str, float], rng:
         opts.append(Option("continue", "carry on", f"Carry on with what you were doing: {spec.name}.", {},
                            list(notes(spec)) if notes else []))
     if info is not None:
-        info.update(available=len(pool), drawn=[a.id for a, _ in chosen], guaranteed=[a.id for a, _ in must],
+        info.update(stopped=stopped, available=len(pool), drawn=[a.id for a, _ in chosen], guaranteed=[a.id for a, _ in must],
                     carry=carry["action"] if carry else None)
     return opts
 
@@ -294,6 +296,7 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
           inner: list[str] | None = None, temperament_words: list[str] | None = None,
           menu_size: int = 0, protected: set[str] | None = None, carry: dict | None = None,
           beliefs: list[str] | None = None, projects: list[str] | None = None, people: list[str] | None = None,
+          hidden: set[str] | None = None,
           carrying: list[str] | None = None, board: list[str] | None = None) -> Mind:
     rng = random.Random(f"{seed}|{life.sim_time}")
     now = clock.parse(life.sim_time)
@@ -302,7 +305,7 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
     weather = life.world.values.get("world.weather")
     info: dict = {}
     options = build_options(life, known, last_done or {}, rng, notes, capability_ok, count_done,
-                            float(tuning.get("time_scale", 24)), menu_size, protected, carry, info)
+                            float(tuning.get("time_scale", 24)), menu_size, protected, carry, info, hidden)
     return Mind(
         now={"sim_time": life.sim_time, "part_of_day": clock.part_of_day(now), "weather": weather},
         location={"id": loc.id, "name": loc.name, "description": loc.description.strip(),

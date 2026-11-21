@@ -76,7 +76,8 @@ SECTIONS = {
         "thought_dup_threshold": (0.5, 1), "thought_dup_mood": (-1, 0), "thought_dup_cooldown_minutes": (0, 24 * 60), "reflection_window": (0, 100),
         "reflection_dup_threshold": (0.5, 1), "reflection_dup_mood": (-1, 0), "subject_floor": (0.3, 1),
         "subject_weight": (0, 2), "subject_half_life_minutes": (1, 24 * 60 * 30), "subject_window": (1, 200),
-        "dwell_min": (2, 50), "thought_theme_window": (0, 100), "thought_theme_threshold": (0.5, 1),
+        "dwell_min": (2, 50), "hard_window_hours": (0.5, 48), "hard_in_a_row": (0, 20), "hard_in_window": (0, 50),
+        "hard_same_subject": (0, 20), "hard_failed": (0, 20), "thought_theme_window": (0, 100), "thought_theme_threshold": (0.5, 1),
         "thought_theme_min": (2, 50), "empty_below": (0, 1),
     },
     "beliefs": {"lift_mood": (0, 1), "min_days": (1, 60), "min_days_loose": (1, 60), "min_for": (1, 100), "ratio": (0.5, 1),
@@ -97,7 +98,7 @@ SLEEP_NUMBERS = {
     "dev_min_days": (1, 60), "dev_max_step": (0, 1), "dev_new_strength": (0, 1), "dev_cooldown_days": (0, 60),
 }
 SLEEP_OTHER = {"night_hours", "threaded", "dev_forbidden_words"}
-INTEGER_KEYS = {"habit_days", "habit_expire_days", "fear_min", "interest_min", "min_days", "min_days_loose", "min_for", "fail_min", "max_shown", "short_cap", "faded_cap", "promote_days", "promote_occurrences", "queue_max", "menu_size", "thought_theme_window", "thought_theme_min", "long_cap", "max_open", "per_night", "expire_days", "on_mind", "text_chars", "learned_k", "learned_chars", "subject_window", "dwell_min", "wander_slots", "canvas", "max_points", "max_points_per_pass", "max_total", "max_tokens", "day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
+INTEGER_KEYS = {"hard_in_a_row", "hard_in_window", "hard_same_subject", "hard_failed", "habit_days", "habit_expire_days", "fear_min", "interest_min", "min_days", "min_days_loose", "min_for", "fail_min", "max_shown", "short_cap", "faded_cap", "promote_days", "promote_occurrences", "queue_max", "menu_size", "thought_theme_window", "thought_theme_min", "long_cap", "max_open", "per_night", "expire_days", "on_mind", "text_chars", "learned_k", "learned_chars", "subject_window", "dwell_min", "wander_slots", "canvas", "max_points", "max_points_per_pass", "max_total", "max_tokens", "day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
                 "dev_min_evidence", "dev_min_days", "recall_k", "notable_k", "recent", "thought_window",
                 "reflection_window", "retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
                 "on_mind", "on_mind_chars", "max_words"}

@@ -248,4 +248,9 @@ nit:
     subject_weight: 0.45         # ... and lower freshness by weight x decayed closeness
     subject_half_life_minutes: 480   # SIM minutes: a subject stays "recent" longer than an action does
     subject_window: 14           # recent subjects compared
+    hard_window_hours: 3         # HARD STOP (silent, spec §13.4): the history looked at, in SIM hours
+    hard_in_a_row: 2             # the same action this many times in a row is not offered again (0 = off)
+    hard_in_window: 4            # more than this many times within the window: not offered until it slides away
+    hard_same_subject: 3         # this many close subjects lately (the 3rd drawing of "the coins"): not offered
+    hard_failed: 2               # it could not be done this many times within the window: left alone for a while
     dwell_min: 3                 # this many close subjects recently: the Mind says it keeps coming back to it

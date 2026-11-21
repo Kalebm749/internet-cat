@@ -1093,3 +1093,15 @@ many occasions). Deliberately not public: the author's temperament numbers, what
 beliefs are shown as it holds them), how it feels about each person, prompts and model calls (those stay on the dev dashboard).
 A letter it set aside shows no words on the Letters page, and the letter form says letters and names are public.
 
+### 13.4 The silent hard stop (as built; overturns "never removed for repetition")
+
+Notes and prompts were not enough to stop a small model repeating itself (look around three times in a row, a third drawing of
+the same coins, the same failed sketch again). By decision of the author there is now a **hard, silent cap**
+(`behaviour.hard_stops`): an action is simply *not offered* until its recent history clears. It is never mentioned to the model
+(no note, no message). Rules, over `repetition.hard_window_hours` (3 sim hours; 0 turns a rule off): the same action
+`hard_in_a_row` (2) times running; more than `hard_in_window` (4) times in the window (an action may relax this with content
+`repeat_limit: {max: N}` or opt out with `repeat_limit: off`; drawing passes allow 8); the same subject (embeddings)
+`hard_same_subject` (3) times; it could not be done `hard_failed` (2) times. Moving, sleeping, food when hungry and a letter
+waiting for a decision are never stopped. Queued moves and "carry on" respect it. The dev dashboard shows what was stopped in a
+decision's factors (`menu.stopped`).
+

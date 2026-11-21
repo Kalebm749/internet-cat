@@ -102,6 +102,7 @@ actions:
     name: make another pass on a drawing
     description: "Choose an unfinished drawing and make one focused pass on it. You can return to it again or decide it is finished."
     family: art
+    repeat_limit: {max: 8}
     project: reworked
     inner: {expression: -0.25, accomplishment: -0.05}
     discovery: known_on_arrival
