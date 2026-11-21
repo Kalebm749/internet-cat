@@ -24,7 +24,7 @@ LIFT, WEAR = "lift", "wear"
 KINDS = ("effect", "place", "weather", "failure", "habit")
 CURSOR, FAIL_CURSOR = "beliefs.cursor", "beliefs.fail_cursor"
 # the reason an action could not happen -> what kind of failure that was (circumstance, misunderstanding, ...)
-FAILURE_KINDS = (("moment has passed", "circumstance"), ("not possible here", "circumstance"),
+FAILURE_KINDS = (("not answering", "outside"), ("moment has passed", "circumstance"), ("not possible here", "circumstance"),
                  ("does not know how", "misunderstanding"), ("no such thing", "misunderstanding"),
                  ("against its nature", "ability"), ("does not work out", "ability"), ("already", "assumption"))
 
@@ -98,10 +98,12 @@ def plan_updates(conn: sqlite3.Connection, content, texts: dict, cfg: dict, temp
                           "ORDER BY id", (fail_cursor,)):
         last_fail = r["id"]
         reason = (r["text"] or "").split("could not:", 1)[-1].strip().rstrip(".")
+        k = failure_kind(reason)
+        if k == "outside":                                    # the world beyond was not answering: nothing to learn
+            continue
         f = fails.setdefault(r["action_id"], {"n": 0, "days": set(), "kinds": {}, "last": ""})
         f["n"] += 1
         f["days"].add(r["sim_time"][:10])
-        k = failure_kind(reason)
         f["kinds"][k] = f["kinds"].get(k, 0) + 1
         f["last"] = r["sim_time"]
     for aid, n in successes.items():                              # it worked: that challenges a belief about failing

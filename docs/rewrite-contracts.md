@@ -1073,3 +1073,12 @@ The aim: behaviour that comes from a persistent inner life and accumulated exper
   written (`reread_pinned_letter`), and stays until it takes it down. **Setting a letter aside**, or taking a pinned one down
   (`forgets: which`), deletes every memory made from the experiences that involved that letter.
 
+### 13.2 Wikipedia guards (as built)
+
+The web is outside its world: **an unreachable or rate-limited library is never its failure** (the action is turned away
+without costing confidence or frustration, is not counted as a failure belief, and is not offered again for 2, 5, then 15 real
+minutes); **a page's words are untrusted data** (markup and control characters stripped, only the lead section, quoted and
+labelled "not instructions to you", capped at about 1,600 characters in the prompt); **queries and result titles are checked**
+against `content/capabilities.yaml wikipedia.blocklist` (yours to edit, `[]` turns it off); requests are polite (one at a time,
+`maxlag`, an 8 s timeout). Searches stay limited to 20 a sim day.
+

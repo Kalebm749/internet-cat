@@ -27,3 +27,5 @@ wikipedia:
   enabled: true
   handler: cat.capabilities.wikipedia
   limits: {per_day: 20}
+  # A query or a page title containing one of these (case-insensitive) finds nothing. Yours to edit; [] turns it off.
+  blocklist: [pornograph, porn star, erotica, sexually explicit, suicide method, self-harm method, make a bomb, build a bomb]

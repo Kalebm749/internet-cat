@@ -45,7 +45,7 @@ WORLD_KEYS = {"name", "sim_start", "senses", "facts", "events", "effort", "body_
 CHARACTER_KEYS = {"name", "pronoun", "core", "traits", "tendencies", "background", "likes", "dislikes",
                   "innate_knowledge", "start_location", "temperament", "holds"}
 CORE_KEYS = {"nature", "senses", "abilities", "boundaries", "prohibited_actions"}
-CAPABILITY_KEYS = {"enabled", "handler", "permissions", "limits"}
+CAPABILITY_KEYS = {"enabled", "handler", "permissions", "limits", "blocklist"}
 
 
 class ContentError(ValueError):
@@ -509,6 +509,8 @@ def load(content_dir: Path | str = CONTENT_DIR) -> Content:
             probs.add(cpath, line_of(caps, name), f"capability '{name}': must be a mapping")
             continue
         _unknown(cd, CAPABILITY_KEYS, cpath, probs, f"capability '{name}'")
+        if "blocklist" in cd and not (isinstance(cd["blocklist"], list) and all(isinstance(w, str) for w in cd["blocklist"])):
+            probs.add(cpath, line_of(caps, name), f"capability '{name}': blocklist must be a list of words")
         if not isinstance(cd.get("handler"), str) or "." not in cd["handler"]:
             probs.add(cpath, line_of(caps, name), f"capability '{name}': handler must be a dotted module path")
 
