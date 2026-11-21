@@ -112,10 +112,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             result = []
             for item in incoming:
                 saved = records.get(mail.letter_key(item["id"]), {})
-                replied = saved.get("status") in ("answered", "discarded") and isinstance(saved.get("reply"), str)
-                discarded = saved.get("status") == "discarded" and not replied
+                replied = saved.get("status") == "answered" and isinstance(saved.get("reply"), str)
+                discarded = saved.get("status") == "discarded"
                 result.append({"id": item["id"], "received_at": item["received_at"], "sender": item["sender"],
-                               "text": item["text"], "reply": saved.get("reply") if replied else None,
+                               "text": None if discarded else item["text"], "reply": saved.get("reply") if replied else None,
                                "answered_at": saved.get("answered_at") if replied else None,
                                "discarded_at": saved.get("discarded_at") if discarded else None,
                                "status": "answered" if replied else "discarded" if discarded else "unanswered"})
@@ -212,6 +212,46 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             return {"entries": entries, "next": nxt}
         finally:
             conn.close()
+
+    def public(view):
+        """Run one read model for a public page (None when there is no life yet)."""
+        conn = open_db()
+        try:
+            return view(conn) if conn is not None else None
+        finally:
+            if conn is not None:
+                conn.close()
+
+    def sim_now(conn):
+        st = readmodel.state(conn)
+        return st["sim_time"] if st else ""
+
+    @app.get("/inside", response_class=HTMLResponse)
+    def inside_page(request: Request):
+        d = public(lambda c: {"d": readmodel.public_inside(c, content, t), "now": readmodel.now(c, content, t, None)})
+        return templates.TemplateResponse(request, "inside.html", d or {"d": None, "now": None})
+
+    @app.get("/api/inside")
+    def api_inside():
+        return public(lambda c: readmodel.public_inside(c, content, t)) or {}
+
+    @app.get("/memories", response_class=HTMLResponse)
+    def memories_page(request: Request):
+        d = public(lambda c: {"d": readmodel.public_memory(c, content, t, sim_now(c)), "now": readmodel.now(c, content, t, None)})
+        return templates.TemplateResponse(request, "memories.html", d or {"d": None, "now": None})
+
+    @app.get("/api/memories")
+    def api_memories():
+        return public(lambda c: readmodel.public_memory(c, content, t, sim_now(c))) or {}
+
+    @app.get("/who", response_class=HTMLResponse)
+    def who_page(request: Request):
+        d = public(lambda c: {"d": readmodel.public_who(c, content), "now": readmodel.now(c, content, t, None)})
+        return templates.TemplateResponse(request, "who.html", d or {"d": None, "now": None})
+
+    @app.get("/api/who")
+    def api_who():
+        return public(lambda c: readmodel.public_who(c, content)) or {}
 
     @app.get("/places", response_class=HTMLResponse)
     def places_page(request: Request):

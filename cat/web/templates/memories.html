@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Memories &amp; beliefs · {{ now.name if now else "Nit" }}</title><link rel="stylesheet" href="/static/css/site.css"><link rel="icon" href="/static/img/nit/nit.svg"></head>
+<body class="{{ 'night' if now and now.part_of_day == 'night' else '' }}"><header class="top"><img class="portrait" src="/static/img/nit/nit.svg" alt=""><div><h1>Memories &amp; beliefs</h1><p class="where">What it keeps, what it is about to lose, and what it has come to think.</p></div>{% set active = "/memories" %}{% include "_nav.html" %}</header>
+<main class="layout">
+{% if not d %}<section class="col"><article class="card"><p>Nit has not woken yet.</p></article></section>{% else %}
+<section class="col">
+  <article class="card"><h2>What it is holding</h2>
+    <p class="hint">Its memory is small on purpose: short term {{ d.layers.short | length }} of {{ d.room.short }}, long term {{ d.layers.long | length }} of {{ d.room.long }}. A new memory has to be worth more than the weakest one in its layer, or it never gets in.</p>
+    {% for layer, title, note in [("long", "Kept for good", "Things that kept coming back, or were big enough to go straight in. It fades over days."), ("short", "Lately", "Fades quickly unless it keeps coming back.")] %}
+    <h3>{{ title }}</h3><p class="hint">{{ note }}</p>
+    <ol class="diary">{% for m in d.layers[layer] %}<li class="entry{% if d.first_to_go[layer] and d.first_to_go[layer].text == m.text %} wish open{% endif %}"><p>{{ m.text }}{% if d.first_to_go[layer] and d.first_to_go[layer].text == m.text %} <span class="pill2">first to go</span>{% endif %}</p>
+      <p class="hint">worth {{ m.worth }} · met {{ m.met }}x · came back {{ m.came_back }}x · since {{ m.since }}</p></li>{% else %}<li class="hint">Nothing yet.</li>{% endfor %}</ol>
+    {% endfor %}
+  </article>
+  <article class="card"><h2>Faded</h2>
+    <p class="hint">What is left of a memory once the sharp of it has gone: one worn sentence. It comes back only when something in front of it touches it.</p>
+    <ul>{% for m in d.layers.faded %}<li>{{ m.text }}</li>{% else %}<li class="hint">Nothing has faded yet.</li>{% endfor %}</ul>
+  </article>
+</section>
+<section class="col">
+  <article class="card"><h2>What it has come to think</h2>
+    <p class="hint">Worked out by counting what went with what, not by understanding causes, so it can be wrong. A belief that nothing bears out for long enough is let go.</p>
+    <ol class="diary">{% for b in d.beliefs %}<li class="entry"><p>{{ b.statement }}</p><p class="hint">borne out {{ b.for }} time{{ "s" if b.for != 1 }}{% if b.against %}, challenged {{ b.against }}{% endif %} · on {{ b.days }} different day{{ "s" if b.days != 1 }} · last {{ b.last }}</p></li>{% else %}<li class="hint">Nothing yet: a belief needs several different days.</li>{% endfor %}</ol>
+    {% if d.given_up %}<h3>Given up</h3><ul>{% for b in d.given_up %}<li class="hint">{{ b.statement }} ({{ b.for }} for, {{ b.against }} against)</li>{% endfor %}</ul>{% endif %}
+  </article>
+</section>
+{% endif %}</main></body></html>

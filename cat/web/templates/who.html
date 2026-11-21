@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Who he is · {{ now.name if now else "Nit" }}</title><link rel="stylesheet" href="/static/css/site.css"><link rel="icon" href="/static/img/nit/nit.svg"></head>
+<body class="{{ 'night' if now and now.part_of_day == 'night' else '' }}"><header class="top"><img class="portrait" src="/static/img/nit/nit.svg" alt=""><div><h1>Who he is</h1><p class="where">What it was given, and what it has added to itself.</p></div>{% set active = "/who" %}{% include "_nav.html" %}</header>
+<main class="layout">
+{% if not d or not d.written %}<section class="col"><article class="card"><p>Nit has not woken yet.</p></article></section>{% else %}
+<section class="col">
+  <article class="card"><h2>Written for it</h2>
+    <p>{{ d.written.nature }}</p>
+    <p class="hint">{{ d.written.background }}</p>
+    <h3>What it is like</h3><ul>{% for t in d.written.traits %}<li>{{ t }}</li>{% endfor %}{% for t in d.written.tendencies %}<li>{{ t | capitalize }}</li>{% endfor %}</ul>
+    <h3>What it holds to</h3><ul>{% for h in d.written.holds %}<li>{{ h }}</li>{% else %}<li class="hint">Nothing written.</li>{% endfor %}</ul>
+    <h3>What stays true of it</h3><ul>{% for s in d.written.stays_true %}<li>{{ s }}</li>{% endfor %}</ul>
+    <p class="hint">These parts are fixed: it does not change them.</p>
+  </article>
+</section>
+<section class="col">
+  <article class="card"><h2>Added by itself</h2>
+    <p class="hint">Learned from what it did, one step at a time. A line is let go again if there is no sign of it for long enough.</p>
+    {% for title, key in [("Habits", "habits"), ("Fears", "fears"), ("Interests", "interests")] %}<h3>{{ title }}</h3>
+    <ul>{% for i in d.acquired[key] %}<li>{{ i.text | capitalize }} <span class="hint">since {{ i.since }}</span></li>{% else %}<li class="hint">None yet.</li>{% endfor %}</ul>{% endfor %}
+  </article>
+  <article class="card"><h2>How it changed</h2>
+    <ol class="diary">{% for h in d.history %}<li class="entry"><p class="when">{{ h.when }} · <span class="pill2">{{ h.kind }}</span></p><p>{{ h.what }}</p>{% if h.occasions %}<p class="hint">from {{ h.occasions }} occasion{{ "s" if h.occasions != 1 }}</p>{% endif %}</li>{% else %}<li class="hint">It has not changed yet.</li>{% endfor %}</ol>
+  </article>
+</section>
+{% endif %}</main></body></html>

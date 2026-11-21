@@ -1083,3 +1083,13 @@ labelled "not instructions to you", capped at about 1,600 characters in the prom
 against `content/capabilities.yaml wikipedia.blocklist` (yours to edit, `[]` turns it off); requests are polite (one at a time,
 `maxlag`, an 8 s timeout). Searches stay limited to 20 a sim day.
 
+### 13.3 The public pages for the inner life (as built)
+
+The website has three new pages and JSON twins: **Inside him** (`/inside`: feelings in words and meters, needs, what is on its
+mind, its pocket, what it is making and how it feels about it, the letters pinned on its board), **Memories & beliefs**
+(`/memories`: short, long and faded memory with what each is worth, what is first to go, and what it has come to think with the
+evidence for and against) and **Who he is** (`/who`: the written sheet next to what it has added to itself, with when and from how
+many occasions). Deliberately not public: the author's temperament numbers, what really caused a failure (its mistaken
+beliefs are shown as it holds them), how it feels about each person, prompts and model calls (those stay on the dev dashboard).
+A letter it set aside shows no words on the Letters page, and the letter form says letters and names are public.
+

@@ -19,7 +19,7 @@
     <p class="where">Nit has not woken yet.</p>
     {% endif %}
   </div>
-  <nav class="tabs"><a href="/" class="on">Now &amp; diary</a> <a href="/places">Places &amp; wishes</a> <a href="/artwork">Artwork</a> <a href="/letters">Letters</a> <a href="/internet">Internet</a></nav>
+  {% set active = "/" %}{% include "_nav.html" %}
   {% if now and now.engine_alive == false %}<p class="banner">Nit's world is paused right now.</p>{% endif %}
 </header>
 
@@ -52,7 +52,8 @@
         write back. Ask it anything; it will weigh your words as its own choice.</p>
       {% if letter_message %}<p class="notice {{ 'ok' if letter_ok else 'err' }}" role="status">{{ letter_message }}</p>{% endif %}
       <form method="post" action="/letters">
-        <p class="hint">Pick a name. It is yours: the first time you use it, the passphrase claims it, and Nit will
+        <p class="hint">Letters, and the name you write under, are shown on the <a href="/letters">Letters</a> page, with
+          Nit's reply if it writes back. A letter it sets aside is not shown. Pick a name. It is yours: the first time you use it, the passphrase claims it, and Nit will
           remember you by it. Use the same name and passphrase to write again.</p>
         <label>Your name <input name="sender" required minlength="3" maxlength="{{ name_max }}" autocomplete="username"
           pattern="[A-Za-z0-9][A-Za-z0-9_\-]*"></label>

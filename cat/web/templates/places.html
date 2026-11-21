@@ -10,7 +10,7 @@
   <img class="portrait" src="/static/img/nit/nit.svg" alt="">
   <div><h1>{{ now.name if now else "Nit" }}</h1>
     {% if now %}<p class="where">Now at {{ now.place }}.</p>{% endif %}</div>
-  <nav class="tabs"><a href="/">Now &amp; diary</a> <a href="/places" class="on">Places &amp; wishes</a> <a href="/artwork">Artwork</a> <a href="/letters">Letters</a> <a href="/internet">Internet</a></nav>
+  {% set active = "/places" %}{% include "_nav.html" %}
 </header>
 <main class="layout">
   <section class="col" style="grid-column: span 2">
