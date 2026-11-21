@@ -89,6 +89,7 @@ def test_a_different_target_is_fresher_than_the_same_one(rig):
 
 
 def test_a_meaningful_return_is_fresh(rig):
+    rig.life.content.actions["assess_wishes"].requires = [{"fact_count_gte": ["fountain.wishes", 1]}]   # logic, not the limit
     rig.life.world.values["fountain.wishes"] = [{"id": "1", "text": "x", "status": "open"}]
     rig.do("assess_wishes")
     rig.finish()
@@ -189,3 +190,21 @@ def test_the_same_night_entry_is_retried_then_penalised(tmp_path):
     assert [r[0] for r in conn.execute("SELECT repeated FROM sleep_runs ORDER BY id")] == [0, 1, 1]
     assert "very close to what Nit wrote on 2026-11-21" in asked[2]           # night 2 was asked once more
     assert sleepcycle.repeat_streak(conn) == 2
+
+
+def test_doing_the_same_thing_again_at_once_is_flat_straight_away(rig):
+    rig.life.content.actions["assess_wishes"].requires = [{"fact_count_gte": ["fountain.wishes", 1]}]
+    rig.life.world.values["fountain.wishes"] = [{"id": "1", "text": "x", "status": "open"}]
+    rig.do("assess_wishes")
+    rig.finish()
+    rig.do("assess_wishes")                                   # nothing changed, just finished it
+    assert rig.last("freshness") < rig.t["repetition"]["note_below"]
+    assert json.loads(rig.last("repeat_parts"))["restart"] == 1.0
+
+
+def test_looking_over_wishes_says_it_changes_nothing_and_waits(rig):
+    rig.life.world.values["fountain.wishes"] = [{"id": "1", "text": "x", "status": "open"}]
+    rig.do("assess_wishes")
+    rig.finish()
+    assert "looking again will not change them" in rig.last("text")
+    assert rig.do("assess_wishes")["status"] == "rejected"    # not again for a while

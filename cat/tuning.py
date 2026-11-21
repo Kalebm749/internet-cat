@@ -62,7 +62,7 @@ SECTIONS = {
     "repetition": {
         "half_life_minutes": (1, 10000), "w_action": (0, 2), "w_family": (0, 2), "w_target": (0, 2),
         "w_aimless": (0, 2), "freshness_min": (0, 1), "window_hours": (1, 24 * 30),
-        "restart_window_minutes": (0, 24 * 60), "note_below": (0, 1), "recent": (1, 50), "thought_window": (0, 100),
+        "restart_window_minutes": (0, 24 * 60), "w_restart": (0, 2), "note_below": (0, 1), "recent": (1, 50), "thought_window": (0, 100),
         "thought_dup_threshold": (0.5, 1), "thought_dup_mood": (-1, 0), "thought_dup_cooldown_minutes": (0, 24 * 60), "reflection_window": (0, 100),
         "reflection_dup_threshold": (0.5, 1), "reflection_dup_mood": (-1, 0), "subject_floor": (0.3, 1),
         "subject_weight": (0, 2), "subject_half_life_minutes": (1, 24 * 60 * 30), "subject_window": (1, 200),

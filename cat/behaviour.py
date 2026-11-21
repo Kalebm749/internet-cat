@@ -113,6 +113,10 @@ def freshness(conn: sqlite3.Connection, content: Content, tuning: dict, action: 
                     and _minutes(r["ended_at"], now) <= rp["restart_window_minutes"]:
                 restart = r["id"]
                 break
+    if restart is not None and not changed:
+        # the same thing again right after finishing it, with nothing it is about changed: flat at once
+        value -= rp["w_restart"]
+        parts["restart"] = 1.0
     return Freshness(value=round(max(rp["freshness_min"], min(1.0, value)), 4),
                      parts={k: round(v, 4) for k, v in parts.items()}, revisit_changed=changed, restart_of=restart)
 
