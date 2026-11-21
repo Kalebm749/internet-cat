@@ -75,7 +75,8 @@ def _record(backend: LLMBackend, task: str, model: str, attempt: int, parsed: An
 
 
 def call_json(backend: LLMBackend, task: str, model: str, messages: list[dict], schema: dict,
-              parse: Callable[[dict], Any], retries: int) -> Any:
+              parse: Callable[[dict], Any], retries: int, timeout_seconds: float | None = None,
+              max_tokens: int | None = None) -> Any:
     """chat_json + parse, retried `retries` times on any BackendError (timeout, bad JSON,
     unusable content). After the last failure raises BackendError => the engine dozes.
     Every attempt is reported to `backend.recorder` (if set)."""
@@ -83,7 +84,11 @@ def call_json(backend: LLMBackend, task: str, model: str, messages: list[dict], 
     for attempt in range(1, retries + 2):
         backend.last_call = None
         try:
-            raw = backend.chat_json(task, model, messages, schema)
+            limited = getattr(backend, "chat_json_limited", None)
+            if timeout_seconds is not None and callable(limited):
+                raw = limited(task, model, messages, schema, timeout_seconds, max_tokens)
+            else:
+                raw = backend.chat_json(task, model, messages, schema)
         except BackendError as e:
             _record(backend, task, model, attempt, None, str(e))
             last = e
@@ -170,9 +175,13 @@ class OllamaBackend(LLMBackend):
         self._warned_missing = []
         return True
 
-    def _post(self, path: str, payload: dict) -> dict:
+    def _post(self, path: str, payload: dict, timeout: float | None = None) -> dict:
         try:
-            r = self.client.post(f"{self.base}{path}", json=payload)
+            if timeout is None:
+                r = self.client.post(f"{self.base}{path}", json=payload)
+            else:
+                r = self.client.post(f"{self.base}{path}", json=payload,
+                                     timeout=httpx.Timeout(timeout, connect=self.s["health_timeout_seconds"]))
             r.raise_for_status()
             return r.json()
         except httpx.TimeoutException as e:
@@ -184,8 +193,14 @@ class OllamaBackend(LLMBackend):
             raise BackendError(f"{path} failed: {e}") from e
 
     def chat_json(self, task: str, model: str, messages: list[dict], schema: dict) -> dict:
+        return self.chat_json_limited(task, model, messages, schema, None, None)
+
+    def chat_json_limited(self, task: str, model: str, messages: list[dict], schema: dict,
+                          timeout_seconds: float | None, max_tokens: int | None) -> dict:
         options = {"temperature": self.s["llm_temperature"].get("sleep" if task.startswith("sleep_") else task, 0.7),
             "num_ctx": self.s["llm_num_ctx"]}
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False,
                                    "format": schema, "options": options}
         if "ollama_think" in self.s:
@@ -199,7 +214,7 @@ class OllamaBackend(LLMBackend):
         self.last_call = info
         t0 = time.perf_counter()
         try:
-            data = self._post("/api/chat", payload)
+            data = self._post("/api/chat", payload, timeout_seconds)
             info.update(ollama_metrics(data))
             content = (data.get("message") or {}).get("content")
             if not isinstance(content, str):

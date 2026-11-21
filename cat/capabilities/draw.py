@@ -12,8 +12,8 @@ from cat.llm import BackendError, call_json
 
 def _safe_svg(value: str) -> str:
     """Accept a small self-contained SVG subset; reject active or external content."""
-    if not isinstance(value, str) or len(value) > 300_000:
-        raise BackendError("image is missing or too large")
+    if not isinstance(value, str) or len(value) > 20_000:
+        raise BackendError("image is missing or too large (maximum 20,000 characters)")
     try:
         root = ET.fromstring(value)
     except ET.ParseError as e:
@@ -54,7 +54,8 @@ class Drawing:
                                ensure_ascii=False, default=str)[:3000]
         prompt = ("You are Gwen, a visual craft tool for Nit. Nit has already chosen what it wants to make. "
                   "Do not choose a new subject, interpret its personality, or add narrative text. Translate its "
-                  "intention into a self-contained SVG image. Be visually expressive and make a complete image, "
+                  "intention into a self-contained SVG image in a compact form, under 12,000 characters. Use "
+                  "at most 30 shapes and keep path data concise. Make a complete image, "
                   "not a placeholder. Use only SVG elements svg,g,path,rect,circle,ellipse,line,polyline,polygon; "
                   "no scripts, text, links, stylesheets, or external resources. Canvas viewBox='0 0 512 512'. "
                   "Return a title, a short description of the visible image, and the SVG. Keep the description "
@@ -73,10 +74,10 @@ class Drawing:
             return result
         model = (ctx.tuning or {}).get("models", {}).get("art_model")
         if not ctx.backend or not model:
-            raise BackendError("large creative model is unavailable")
+            raise BackendError("drawing model is unavailable")
         result = call_json(ctx.backend, "capability", model,
                            [{"role": "system", "content": prompt}, {"role": "user", "content": user}],
-                           schema, parse, retries=1)
+                           schema, parse, retries=0, timeout_seconds=120, max_tokens=1536)
         svg = _safe_svg(result["svg"])
         artifact_id = uuid.uuid4().hex
         artifact = {"id": artifact_id, "type": "drawing", "title": result["title"][:100],
