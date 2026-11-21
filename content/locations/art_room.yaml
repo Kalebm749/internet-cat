@@ -112,7 +112,8 @@ actions:
     duration: { minutes: [5, 12] }
     effort: low
     capability: draw
-    revisit_key: [art_room.artworks]
+    # no revisit_key: each pass makes a new version, which must not make the next pass look fresh.
+    # Continuing a drawing is never an immediate repeat (each pass names a new version), but passes add up.
     on_finish:
       world:
         - { op: add, fact: art_room.paper, value: -1 }
