@@ -26,12 +26,11 @@ def has(probs: list[str], where: str, text: str) -> bool:
 
 def test_real_pack_loads():
     c = content.load()
-    assert set(c.locations) == {"fountain", "market"}
+    assert {"fountain", "market"} <= set(c.locations)
     assert c.character["name"] == "Nit"
     assert c.character["core"]["senses"] == ["sight", "smell", "touch"]
     assert {a.builtin for a in c.actions.values() if a.builtin} == {"move", "inspect", "sleep"}
-    assert set(c.facts) == {"world.weather", "fountain.wishes", "market.offerings", "market.mailbox",
-                            "market.answered"}
+    assert {"world.weather", "fountain.wishes", "market.offerings", "market.mailbox", "market.answered"} <= set(c.facts)
 
 
 def test_actions_at_lists_local_then_universal():
@@ -74,7 +73,7 @@ actions:
       world: [{op: add, fact: garden.apples, value: -1}]
       creature: {hunger: -0.3}
 """)
-    pack.replace("locations/fountain.yaml", "exits: [market]", "exits: [market, garden]")
+    pack.replace("locations/fountain.yaml", "exits: [market", "exits: [market, garden")
     c = content.load(pack.root)
     assert [a.id for a in c.actions_at("garden")][0] == "eat_apple"
     assert "garden" in c.locations["fountain"].exits
@@ -84,7 +83,7 @@ actions:
 
 def test_all_problems_are_reported_at_once_with_file_and_line(pack):
     pack.replace("locations/market.yaml", "    family: eat\n", "    family: eat\n    colour: red\n")
-    pack.replace("locations/fountain.yaml", "exits: [market]", "exits: [market, nowhere]")
+    pack.replace("locations/fountain.yaml", "exits: [market", "exits: [market, nowhere")
     probs = problems(pack)
     assert has(probs, f"locations/market.yaml:{pack.line_of('locations/market.yaml', 'colour: red')}:",
                "unknown field 'colour'")

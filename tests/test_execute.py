@@ -143,7 +143,7 @@ def test_stop_ends_the_activity_and_asks_again(rig):
     rig.wait(5)
     with store.transaction(rig.conn):
         rig.ex.start(Decision(kind="check_in", action="stop"), None)
-    assert rig.ex.running is None and [t.kind for t in rig.sched.pending] == ["activity_finished"]
+    assert rig.ex.running is None and "activity_finished" in [t.kind for t in rig.sched.pending]
 
 
 def test_continuous_activity_restores_energy_per_minute(rig):

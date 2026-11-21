@@ -164,7 +164,7 @@ def test_the_same_thought_again_costs_a_little(tmp_path):
     rows = lp.conn.execute("SELECT repeated FROM thoughts ORDER BY id").fetchall()
     assert [r[0] for r in rows] == [0, 1]
     assert lp.conn.execute("SELECT COUNT(*) FROM body_changes WHERE cause = 'same thought'").fetchone()[0] == 1
-    assert "You keep coming back to the same thought." in lp.exec.perception
+    assert load_texts()["same_thought"] in lp.exec.perception
 
 
 def test_the_same_night_entry_is_retried_then_penalised(tmp_path):

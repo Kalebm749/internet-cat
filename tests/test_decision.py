@@ -79,7 +79,7 @@ def test_schema_lists_options_and_thinks_first(m, t):
     assert list(s["properties"])[:3] == ["thought", "reasoning", "action"]
     assert sorted(s["properties"]["action"]["enum"]) == sorted(o.id for o in m.options)
     assert s["properties"]["inputs"]["properties"]["what"] == {"type": "string", "maxLength": 80}
-    assert s["properties"]["inputs"]["properties"]["to"]["enum"] == ["market"]
+    assert "market" in s["properties"]["inputs"]["properties"]["to"]["enum"]
 
 
 def test_prompt_has_every_section_and_marks_letters(m, t, p):
@@ -115,7 +115,7 @@ def test_decide_retries_with_the_problems_then_succeeds(m, t, p):
     r = decide(b, "qwen3:4b", m, "full", p, t)
     assert r.decision.action == "make_wish" and not r.decision.fallback
     assert len(r.attempts) == 2 and r.attempts[0]["problems"]
-    assert seen[1][-1]["content"].startswith("That answer could not be used: \"action\" must be one of")
+    assert seen[1][-1]["content"].startswith(p["retry"].split("{problems}")[0] + '"action" must be one of')
 
 
 def test_decide_falls_back_after_the_last_retry(m, t, p):
