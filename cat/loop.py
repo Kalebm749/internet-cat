@@ -27,7 +27,7 @@ import numpy as np
 
 from cat import clock as clock_mod, mail as mailmod
 from cat import behaviour, content as contentmod, decision as decisionmod, identity, knowledge, life as lifemod, loops as loopsmod, memories
-from cat import mind as mindmod, sleepcycle, store, wishes
+from cat import mind as mindmod, sleepcycle, starving, store, wishes
 from cat.capabilities import Registry
 from cat.config import Config
 from cat.healthcheck import write_heartbeat
@@ -243,9 +243,14 @@ class Loop:
         self.exec.perception = []
         self.scheduler.started(due, now, self.life.sim_time)
         t0 = self.clock()
+        forced = starving.decide(self.life, self.exec, self.t)       # hunger takes over: no model, no menu (§2.5)
         try:
-            res = decisionmod.decide(self.backend, self.t["models"]["decision_model"], mind, due.kind, self.prompts,
-                                     self.t, reconsider=lambda d: self._reconsider_stale_choice(mind, d))
+            if forced is not None:
+                res = decisionmod.Result(forced[0], [], [], [])
+            else:
+                res = decisionmod.decide(self.backend, self.t["models"]["decision_model"], mind, due.kind,
+                                         self.prompts, self.t,
+                                         reconsider=lambda d: self._reconsider_stale_choice(mind, d))
         except BackendError as e:
             self.scheduler.finished()
             self.doze_until = self.clock() + float(self.t["loop"]["doze_seconds"])
@@ -260,6 +265,12 @@ class Loop:
         d = res.decision
         with store.transaction(self.conn):
             did = self._record(due, d, res, mind, ms)
+            if forced is not None:
+                if forced[1]:
+                    self.life.world.apply(forced[1], {"now": self.life.sim_time}, self.rng, by="world")
+                    self.exec.perception.append(self.texts["starving_restock"])
+                if d.action != "continue":
+                    self.exec.perception.append(self.texts["starving_go"])
             memories.mark_recalled(self.conn, [r["id"] for r in recalled], self.life.sim_time)
             rep.result = self.exec.start(d, did)
             lifemod.save(self.conn, self.life)

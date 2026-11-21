@@ -106,3 +106,30 @@ def test_reopening_continues_the_same_life(tmp_path):
     where, when = lp.life.location, lp.life.sim_time
     lp2 = Loop(lp.conn, content.load(), t, MockBackend(), clock=FakeClock(), seed=2)
     assert (lp2.life.location, lp2.life.sim_time) == (where, when) and not lp2.life.spawned
+
+
+# ---------------------------------------------------------------- hunger takes over (§2.5)
+
+
+def test_starving_walks_to_the_food_and_eats_without_asking_the_model(tmp_path):
+    lp, fc, t = make(tmp_path)
+    lp.life.content.events.clear()
+    asked = []
+    lp.backend.handlers["decide"] = lambda m, s: (asked.append(1), {"thought": "hm", "reasoning": "hm", "action": "inspect",
+                                                                    "inputs": {}, "preserve": False, "letter": None})[1]
+    lp.life.bodystate.hunger = 0.85
+    lp.life.world.values["market.offerings"] = 0                 # the stall is empty
+    lp.run(60, sleep=fc.sleep)
+    acts = [r[0] for r in q(lp, "SELECT action_id FROM activities ORDER BY id")]
+    assert acts[:2] == ["move", "eat_offering"]
+    assert [json.loads(r[0]) for r in q(lp, "SELECT attempts FROM decisions ORDER BY id LIMIT 2")] == [[], []]   # no model
+    assert lp.life.bodystate.hunger < 0.5 and lp.life.location == "market"
+    notes = [json.loads(r[0]) for r in q(lp, "SELECT notes FROM decisions ORDER BY id LIMIT 2")]
+    assert notes == [["forced: starving"], ["forced: starving"]]
+
+
+def test_not_hungry_enough_leaves_the_choice_to_the_model(tmp_path):
+    lp, fc, t = make(tmp_path)
+    lp.life.bodystate.hunger = 0.5
+    lp.step()
+    assert q(lp, "SELECT COUNT(*) FROM decisions WHERE notes LIKE '%forced%'")[0][0] == 0

@@ -61,3 +61,10 @@ derived_conditions:
      words: "Everything feels heavy."}
   - {name: content, mood: [0.2, 1.0], energy: [0.2, 0.7],
      words: "You feel settled."}
+
+# When hunger reaches body.starving_at, code (not the model) walks it to this food and eats (spec §2.5). If the food is
+# gone when it arrives, the world leaves a fresh one: it is never left to starve.
+starving:
+  eat: eat_offering
+  restock:
+    - {op: add, fact: market.offerings, value: 1}

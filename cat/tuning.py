@@ -32,6 +32,7 @@ BODY = {
     "awake_energy_per_hour": (0, 1),
     "sleep_energy_per_hour": (0, 1),
     "hungry_sleep_penalty": (0, 1),
+    "starving_at": (0.3, 1),
 }
 START = {"mood": (-1, 1), "energy": (0, 1), "hunger": (0, 1)}
 # numeric sections: key -> (low, high)
