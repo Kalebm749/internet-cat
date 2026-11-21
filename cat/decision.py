@@ -33,7 +33,9 @@ PROMPT_FIELDS = {
     "system": {"name", "nature", "senses", "abilities", "traits", "tendencies", "background", "boundaries", "core"},
     "core": {"lines"}, "note_liked": set(), "note_disliked": set(), "note_repeated": set(),
     "learned": {"lines"}, "dwelling": {"lines"}, "subject_repeat": {"count", "example"},
-    "loops": {"lines"}, "mulling": set(),
+    "loops": {"lines"}, "mulling": set(), "gut": set(), "practised": set(), "projects": {"lines"}, "project_line": {"title", "how"}, "project_new": set(), "project_pleased": set(),
+    "project_disappointed": set(), "project_unsure": set(), "people": {"lines"}, "person_line": {"name", "n", "feel"},
+    "person_warm": set(), "person_uneasy": set(), "person_unsure": set(), "beliefs": {"lines"}, "belief_note": {"statement"}, "memory_good": set(), "memory_bad": set(), "faded": {"gist"}, "inner": {"lines"}, "need_relief": {"what"},
     "stay": {"hours"}, "exit_never": set(), "exit_recent": set(), "exit_ago": {"hours"},
     "time": {"part_of_day", "clock", "weather"},
     "place": {"location", "description"},
@@ -48,6 +50,8 @@ PROMPT_FIELDS = {
     "ask_full": set(), "ask_interrupt": {"activity"}, "ask_check_in": {"activity", "elapsed"},
     "retry": {"problems"},
 }
+from cat.inner import DIMENSIONS as _DIMS
+PROMPT_FIELDS.update({f"temp_{d}_{side}": set() for d in _DIMS for side in ("high", "low")})
 
 
 class PromptError(ValueError):
@@ -69,6 +73,7 @@ class Decision:
     reasoning: str = ""
     preserve: bool = False
     letter: str | None = None
+    then: list[dict] = field(default_factory=list)   # [{action, inputs}]: up to queue_max moves it plans after this one
     fallback: bool = False          # True when the model's answers could not be used
     notes: list[str] = field(default_factory=list)   # what validation adjusted (truncations, a dropped letter id)
 
@@ -131,7 +136,8 @@ def system_prompt(mind: Mind, p: dict) -> str:
     return p["system"].format(
         name=i["name"], nature=i["nature"], senses=", ".join(i["senses"]) or "nothing",
         abilities=", ".join(i["abilities"]) or "little", traits=", ".join(i["traits"]) or "yourself",
-        tendencies=(" You tend to: " + "; ".join(i["tendencies"]) + ".") if i["tendencies"] else "",
+        tendencies=(" You tend to: " + "; ".join(list(i["tendencies"]) + list(i.get("temperament") or [])) + ".")
+        if (i["tendencies"] or i.get("temperament")) else "",
         background=i["background"], boundaries=_lines(i["boundaries"]),
         core=p["core"].format(lines="\n".join(f"  - {c}" for c in i.get("core_memories") or []))
         if i.get("core_memories") else "").strip()
@@ -146,7 +152,7 @@ def _ask(mind: Mind, kind: str, p: dict) -> str:
 
 
 def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories: list[str],
-                visible: list[str], perception: list[str], learned: list[str] | None = None) -> str:
+                visible: list[str], perception: list[str], learned: list[str] | None = None, gut: bool = False) -> str:
     parts = [p["time"].format(part_of_day=mind.now["part_of_day"], clock=mind.now["sim_time"][-5:],
                               weather=mind.now["weather"] or "unknown"),
              p["place"].format(location=mind.location["name"], description=mind.location["description"])]
@@ -160,6 +166,8 @@ def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories:
     body = list(mind.body["words"]) + ([mind.body["derived_words"]] if mind.body.get("derived_words") else [])
     if body:
         parts.append(p["body"].format(lines=_lines(body)))
+    if mind.inner:
+        parts.append(p["inner"].format(lines=_lines(mind.inner)))
     if mind.activity:
         a = mind.activity
         parts.append(p["activity"].format(name=a["name"], elapsed=round(a["elapsed"]), planned=round(a["planned"])))
@@ -172,6 +180,12 @@ def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories:
         parts.append(p["learned"].format(lines=_lines(learned)))
     if mind.mulling:
         parts.append(p["mulling"])
+    if mind.projects:
+        parts.append(p["projects"].format(lines=_lines(mind.projects)))
+    if mind.people:
+        parts.append(p["people"].format(lines=_lines(mind.people)))
+    if mind.beliefs:
+        parts.append(p["beliefs"].format(lines=_lines(mind.beliefs)))
     if mind.loops:
         parts.append(p["loops"].format(lines=_lines(mind.loops)))
     if mind.dwelling:
@@ -182,6 +196,8 @@ def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories:
     if kind != "check_in":
         parts.append(p["options"].format(lines="\n".join(_option_line(p, o) for o in mind.options)))
     parts.append(_ask(mind, kind, p))
+    if gut:
+        parts.append(p["gut"])
     return "\n\n".join(parts)
 
 
@@ -189,7 +205,7 @@ def tokens(text: str) -> int:
     return (len(text) + 3) // 4
 
 
-def messages(mind: Mind, kind: str, p: dict, budget: int) -> tuple[list[dict], list[str]]:
+def messages(mind: Mind, kind: str, p: dict, budget: int, gut: bool = False) -> tuple[list[dict], list[str]]:
     """The prompt, shortened to the token budget: older recent activities first, then the least relevant
     memories, then what is visible, then older perceptions. The options are never dropped."""
     sysm = system_prompt(mind, p)
@@ -198,7 +214,7 @@ def messages(mind: Mind, kind: str, p: dict, budget: int) -> tuple[list[dict], l
     dropped: list[str] = []
     while True:
         user = user_prompt(mind, kind, p, recent=recent, memories=memories, visible=visible, perception=perception,
-                           learned=learned)
+                           learned=learned, gut=gut)
         if tokens(sysm) + tokens(user) <= budget:
             break
         if recent:
@@ -225,7 +241,7 @@ def allowed_actions(mind: Mind, kind: str) -> list[str]:
     return ([CONTINUE] + ids) if kind == "interrupt" and mind.activity else ids
 
 
-def schema(mind: Mind, kind: str, tuning: dict) -> dict:
+def schema(mind: Mind, kind: str, tuning: dict, gut: bool = False) -> dict:
     d = tuning["decisions"]
     inputs: dict[str, dict] = {}
     if kind != "check_in":
@@ -241,18 +257,24 @@ def schema(mind: Mind, kind: str, tuning: dict) -> dict:
                 if old and "enum" in old and "enum" in prop:
                     prop["enum"] = list(dict.fromkeys(old["enum"] + prop["enum"]))
                 inputs[name] = prop
-    return {
-        "type": "object",
-        "properties": {
-            "thought": {"type": "string", "maxLength": d["thought_max_chars"]},
-            "reasoning": {"type": "string", "maxLength": d["reasoning_max_chars"]},
-            "action": {"type": "string", "enum": allowed_actions(mind, kind)},
-            "inputs": {"type": "object", "properties": inputs},
-            "preserve": {"type": "boolean"},
-            "letter": {"type": ["string", "null"]},
-        },
-        "required": ["thought", "reasoning", "action", "inputs", "preserve", "letter"],
+    # the action comes first, so what it chooses is not steered by the words it writes about it afterwards; a gut
+    # answer (going with the first pull) has no reasoning and a short thought
+    props = {
+        "action": {"type": "string", "enum": allowed_actions(mind, kind)},
+        "inputs": {"type": "object", "properties": inputs},
+        "thought": {"type": "string", "maxLength": min(d["thought_max_chars"], 160) if gut else d["thought_max_chars"]},
+        "reasoning": {"type": "string", "maxLength": d["reasoning_max_chars"]},
+        "preserve": {"type": "boolean"},
+        "letter": {"type": ["string", "null"]},
     }
+    if gut:
+        del props["reasoning"]
+    if kind == "full" and not gut and d["queue_max"] > 0:
+        props["then"] = {"type": "array", "maxItems": d["queue_max"], "items": {
+            "type": "object", "required": ["action", "inputs"], "properties": {
+                "action": {"type": "string", "enum": [o.id for o in mind.options if o.id != CONTINUE]},
+                "inputs": {"type": "object", "properties": inputs}}}}
+    return {"type": "object", "properties": props, "required": list(props)}
 
 
 def _shorten(text: str, limit: int) -> str:
@@ -267,7 +289,7 @@ def _has_stray_han(text: str) -> bool:
                for c in text)
 
 
-def validate(raw: Any, mind: Mind, kind: str, tuning: dict) -> Decision:
+def validate(raw: Any, mind: Mind, kind: str, tuning: dict, gut: bool = False) -> Decision:
     """Check a model answer against the Mind. Raises DecisionInvalid with every problem."""
     d = tuning["decisions"]
     if not isinstance(raw, dict):
@@ -277,6 +299,9 @@ def validate(raw: Any, mind: Mind, kind: str, tuning: dict) -> Decision:
     texts = {}
     for k, limit in (("thought", d["thought_max_chars"]), ("reasoning", d["reasoning_max_chars"])):
         v = raw.get(k)
+        if gut and k == "reasoning":
+            texts[k] = ""
+            continue
         if not isinstance(v, str) or not v.strip():
             probs.append(f'"{k}" must be some words')
             texts[k] = ""
@@ -336,8 +361,21 @@ def validate(raw: Any, mind: Mind, kind: str, tuning: dict) -> Decision:
             letter = None
     if probs:
         raise DecisionInvalid(probs)
+    then: list[dict] = []
+    if kind == "full" and not gut and isinstance(raw.get("then"), list):
+        for item in raw["then"][: d["queue_max"]]:                 # what it plans next: each must be as valid as a choice
+            if not isinstance(item, dict):
+                continue
+            try:
+                sub = validate({**item, "thought": "-", "reasoning": "-", "preserve": False, "letter": None}, mind, "full",
+                               tuning, gut=True)
+            except DecisionInvalid:
+                notes.append("a planned move was not valid; dropped")
+                continue
+            if sub.action not in (CONTINUE, STOP, IDLE):
+                then.append({"action": sub.action, "inputs": sub.inputs})
     return Decision(kind=kind, action=action, inputs=inputs, thought=texts["thought"], reasoning=texts["reasoning"],
-                    preserve=raw.get("preserve") is True, letter=letter, notes=notes)
+                    preserve=raw.get("preserve") is True, letter=letter, notes=notes, then=then)
 
 
 def fallback(mind: Mind, kind: str) -> Decision:
@@ -346,13 +384,14 @@ def fallback(mind: Mind, kind: str) -> Decision:
 
 
 def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict, tuning: dict,
-           reconsider: Callable[[Decision], list[str]] | None = None) -> Result:
+           reconsider: Callable[[Decision], list[str]] | None = None, gut: bool = False,
+           options: dict | None = None) -> Result:
     """Ask the model for a decision. Retries invalid answers with their problems; falls back after the last.
     Raises BackendError when the backend itself fails (offline, timeout) on the final attempt."""
     if kind not in KINDS:
         raise ValueError(f"unknown decision kind {kind!r}")
-    msgs, dropped = messages(mind, kind, prompts, tuning["decisions"]["prompt_tokens"])
-    sch = schema(mind, kind, tuning)
+    msgs, dropped = messages(mind, kind, prompts, tuning["decisions"]["prompt_tokens"], gut)
+    sch = schema(mind, kind, tuning, gut)
     attempts: list[dict] = []
     retries = tuning["decisions"]["retries"]
     reconsidered = False
@@ -363,7 +402,9 @@ def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict
             break
         backend.last_call = None
         try:
-            raw = backend.chat_json("decide", model, msgs, sch)
+            limited = getattr(backend, "chat_json_with_options", None)
+            raw = (limited("decide", model, msgs, sch, dict(options)) if options and callable(limited)
+                   else backend.chat_json("decide", model, msgs, sch))
         except BackendError as e:
             _record(backend, "decide", model, attempt, None, str(e))
             attempts.append({"raw": None, "problems": [str(e)]})
@@ -373,7 +414,7 @@ def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict
                 raise
             continue
         try:
-            dec = validate(raw, mind, kind, tuning)
+            dec = validate(raw, mind, kind, tuning, gut)
         except DecisionInvalid as e:
             _record(backend, "decide", model, attempt, raw, str(e))
             attempts.append({"raw": raw, "problems": e.problems})

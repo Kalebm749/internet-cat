@@ -62,11 +62,19 @@ class Memory:
     sources: list[int]
     recall_count: int
     last_recalled: str | None
+    strength: float = 0.0            # what it went in with (0: the importance the sleep model gave)
+    occurrences: int = 1             # repeats folded into this one memory
+    feeling: str | None = None       # good | bad | flat: how it left the creature
+    action_id: str | None = None
+    location: str | None = None
+    recall_days: int = 0             # distinct days it came back
+    gist: str | None = None
 
 
 def _row(r: sqlite3.Row) -> Memory:
     return Memory(r["id"], r["kind"], r["text"], r["importance"], from_blob(r["embedding"]), r["created_at"],
-                  json.loads(r["sources"]), r["recall_count"], r["last_recalled"])
+                  json.loads(r["sources"]), r["recall_count"], r["last_recalled"], r["strength"], r["occurrences"],
+                  r["feeling"], r["action_id"], r["location"], r["recall_days"], r["gist"])
 
 
 def all_memories(conn: sqlite3.Connection, kind: str | None = None) -> list[Memory]:
@@ -126,18 +134,103 @@ def _minutes_since(then: str | None, now: str) -> float | None:
     return max(0.0, (clock.parse(now) - clock.parse(then)).total_seconds() / 60)
 
 
+def strength_now(mem: Memory, now: str, m: dict) -> float:
+    """What a memory is worth now: how strong it went in, faded by the time since it was last touched (formed, met
+    again or recalled) with the half-life of its layer, and held up by how often it has come back."""
+    base = mem.strength or mem.importance
+    half = m["short_half_life_days"] if mem.kind == "short" else m["long_half_life_days"]
+    touched = max([t for t in (mem.created_at, mem.last_recalled) if t])
+    held = 1 + m["recall_boost"] * min(mem.recall_count, 10)
+    return min(1.0, base * recency(half, touched, now) * held)
+
+
+def significance(importance: float, mood_base: float, remember: bool, freshness: float,
+                 temperament: dict | None, m: dict) -> float:
+    """How much an experience mattered to *this* creature: what the world says it was worth, how hard it landed
+    emotionally (a volatile creature feels more), whether it was new, whether it asked to remember it."""
+    from cat.inner import scale
+    emotional = min(1.0, abs(mood_base) * m["emotion_scale"]) * scale(temperament, "volatility")
+    s = max(importance, emotional) + (m["novelty_bonus"] if freshness >= 0.8 else 0.0) + (m["remember_bonus"] if remember else 0.0)
+    return min(1.0, s)
+
+
+def feeling_of(mood_base: float) -> str:
+    return "good" if mood_base > 0.02 else "bad" if mood_base < -0.02 else "flat"
+
+
+def add_memory(conn: sqlite3.Connection, m: dict, now: str, text: str, vec: list[float] | None, strength: float, *,
+               feeling: str, action_id: str | None, location: str | None, source: int | None) -> str:
+    """A new impression. The same thing met again strengthens the memory it already has (no duplicate); a new one must
+    be worth more than the weakest short-term memory when that layer is full, or it never gets in. Returns what
+    happened: reinforced | added | direct | dropped. Inside the caller's transaction."""
+    v = None if vec is None else np.asarray(vec, dtype=np.float32)
+    today = now[:10]
+    if v is not None:
+        for old in [x for k in ("short", "long") for x in all_memories(conn, k) if x.embedding is not None]:
+            if cosine(old.embedding, v) >= m["dup_threshold"]:
+                src = sorted(set(old.sources) | ({source} if source else set()))
+                new_day = conn.execute("SELECT last_recall_day FROM memories WHERE id = ?", (old.id,)).fetchone()[0] != today
+                conn.execute("UPDATE memories SET occurrences = occurrences + 1, strength = MIN(1.0, MAX(strength, importance, ?) "
+                             "+ ?), recall_days = recall_days + ?, last_recall_day = ?, last_recalled = ?, sources = ? "
+                             "WHERE id = ?", (strength, m["reinforce_gain"], int(new_day), today, now, json.dumps(src), old.id))
+                return "reinforced"
+    kind = "long" if strength >= m["long_direct"] else "short"
+    if kind == "short":
+        shorts = all_memories(conn, "short")
+        if len(shorts) >= m["short_cap"]:
+            weakest = min(shorts, key=lambda x: strength_now(x, now, m))
+            if strength <= strength_now(weakest, now, m):
+                return "dropped"
+            conn.execute("DELETE FROM memories WHERE id = ?", (weakest.id,))
+    conn.execute("INSERT INTO memories(kind, text, importance, strength, embedding, created_at, sources, feeling, action_id, "
+                 "location, recall_days, last_recall_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+                 (kind, text, strength, strength, to_blob(vec), now, json.dumps([source] if source else []), feeling,
+                  action_id, location, today))
+    return "direct" if kind == "long" else "added"
+
+
+def faded_cue(conn: sqlite3.Connection, m: dict, query_vec: list[float] | None) -> list[str]:
+    """A faded memory comes back only when something in front of the creature touches it (and it knows it is old)."""
+    if query_vec is None:
+        return []
+    q = np.asarray(query_vec, dtype=np.float32)
+    hits = [(cosine(x.embedding, q), x) for x in all_memories(conn, "faded") if x.embedding is not None]
+    hits = [h for h in hits if h[0] >= m["faded_cue"]]
+    hits.sort(key=lambda h: -h[0])
+    return [x.gist or x.text for _, x in hits[:1]]
+
+
+def feelings_by_action(conn: sqlite3.Connection, m: dict, now: str) -> dict[str, float]:
+    """For each action it remembers: -1 (it went badly) .. 1 (it went well), weighted by how strong the memories are.
+    Only what is still strong enough to matter is counted."""
+    tally: dict[str, list[float]] = {}
+    for x in all_memories(conn):
+        if x.kind in ("short", "long") and x.action_id and x.feeling in ("good", "bad"):
+            w = strength_now(x, now, m) * (1 + 0.5 * min(x.occurrences - 1, 4))
+            if w >= m["memory_note_min"]:
+                tally.setdefault(x.action_id, []).append(w if x.feeling == "good" else -w)
+    return {a: max(-1.0, min(1.0, sum(v) / max(1.0, len(v)))) for a, v in tally.items()}
+
+
+def gist_of(text: str) -> str:
+    """One worn sentence: the first few words, the detail gone."""
+    words = text.replace("\n", " ").split()
+    return " ".join(words[:9]) + ("..." if len(words) > 9 else "")
+
+
 def score(mem: Memory, query: np.ndarray | None, now: str, m: dict) -> dict:
     """Recency is how long ago the memory was *formed*: being recalled must not keep a memory fresh, or the same
     few memories fill every prompt and become everything the creature thinks about. A memory that was on its mind
     in the last `recall_rest_minutes` rests (its score is damped), so others get their turn."""
     rec = recency(m["recency_half_life_days"], mem.created_at, now)
     rel = cosine(mem.embedding, query) if query is not None else 0.0
-    total = m["w_recency"] * rec + m["w_importance"] * mem.importance + m["w_relevance"] * rel
+    value = strength_now(mem, now, m) if mem.kind == "short" else mem.importance
+    total = m["w_recency"] * rec + m["w_importance"] * value + m["w_relevance"] * rel
     since = _minutes_since(mem.last_recalled, now)
     resting = since is not None and since < m["recall_rest_minutes"]
     if resting:
         total *= m["recall_rest_factor"]
-    return {"id": mem.id, "text": mem.text, "recency": rec, "importance": mem.importance, "relevance": rel,
+    return {"id": mem.id, "text": mem.text, "recency": rec, "importance": value, "relevance": rel,
             "resting": resting, "score": total}
 
 
@@ -147,9 +240,11 @@ def recall(conn: sqlite3.Connection, tuning: dict, query_vec: list[float] | None
     if m["recall_k"] == 0:
         return []
     q = None if query_vec is None else np.asarray(query_vec, dtype=np.float32)
-    items = all_memories(conn, "long")
+    items = all_memories(conn, "long") + all_memories(conn, "short")
     by_id = {item.id: item for item in items}
     scored = [score(x, q, now, m) for x in items]
+    if q is not None and m["recall_min_relevance"] > 0:         # only what the moment actually touches
+        scored = [s for s in scored if s["relevance"] >= m["recall_min_relevance"]]
     scored.sort(key=lambda s: -s["score"])
     selected: list[dict] = []
     selected_items: list[Memory] = []
@@ -181,9 +276,11 @@ def recall(conn: sqlite3.Connection, tuning: dict, query_vec: list[float] | None
     return selected
 
 
-def mark_recalled(conn: sqlite3.Connection, ids: list[int], now: str) -> None:
-    conn.executemany("UPDATE memories SET recall_count = recall_count + 1, last_recalled = ? WHERE id = ?",
-                     [(now, i) for i in ids])
+def mark_recalled(conn: sqlite3.Connection, ids: list[int], now: str, gain: float = 0.0) -> None:
+    conn.executemany("UPDATE memories SET recall_count = recall_count + 1, last_recalled = ?, "
+                     "recall_days = recall_days + CASE WHEN last_recall_day IS NULL OR last_recall_day != ? THEN 1 ELSE 0 END, "
+                     "last_recall_day = ?, strength = MIN(1.0, MAX(strength, importance) + ?) WHERE id = ?",
+                     [(now, now[:10], now[:10], gain, i) for i in ids])
 
 
 def query_text(location_name: str, activity: dict | None, perception: list[str], letters: list[dict]) -> str:

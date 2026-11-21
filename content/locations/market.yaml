@@ -29,6 +29,7 @@ actions:
     discovery: known_on_arrival
     requires:
       - {fact_gte: [market.offerings, 1]}
+    inner: {stress: -0.05, satisfaction: 0.05}
     duration: {minutes: [5, 10]}
     effort: low
     outcomes:                         # food is better when it is needed
@@ -50,6 +51,7 @@ actions:
       - {fact_count_where: [market.mailbox, {status: [unread, read]}, 1]}
     inputs:
       which: {type: choice, options: "{fact:market.mailbox.labels}"}    # unread first, then read (the Mind builder)
+    inner: {social: -0.3, belonging: -0.1}
     duration: {minutes: [5, 15]}
     effort: low
     capability: read_message
@@ -72,6 +74,7 @@ actions:
     inputs:
       which: {type: choice, options: "{fact:market.mailbox.read.labels}"}
       reply: {type: text, max_chars: 800, prompt: "What do you write back?"}
+    inner: {social: -0.3, belonging: -0.25, expression: -0.15}
     duration: {minutes: [10, 25]}
     effort: medium
     on_finish:

@@ -35,7 +35,7 @@ from cat.healthcheck import heartbeat_age
 
 HERE = Path(__file__).parent
 NAV = [("overview", "Overview", "/"), ("decisions", "Decisions", "/decisions"), ("character", "Character", "/character"),
-       ("memory", "Memory", "/memory"), ("knowledge", "Knowledge", "/knowledge"), ("repetition", "Repetition", "/repetition"),
+       ("inner", "Inner life", "/inner"), ("memory", "Memory", "/memory"), ("knowledge", "Knowledge", "/knowledge"), ("repetition", "Repetition", "/repetition"),
        ("world", "World", "/world"), ("sleep", "Sleep", "/sleep"), ("mail", "Mail", "/mail"),
        ("llm", "LLM calls", "/llm"), ("content", "Content", "/content")]
 SECURITY_HEADERS = {"X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
@@ -135,6 +135,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             c, int(r.query_params["before"]) if r.query_params.get("before", "").isdigit() else None, page_size),
             "page_size": page_size}),
         "character": ("Character", lambda c, r: {**readmodel.character_history(c), "who": readmodel.identity(c)}),
+        "inner": ("Inner life", lambda c, r: readmodel.inner_view(c, content, t, sim_now(c))),
         "memory": ("Memory", lambda c, r: readmodel.memory_view(c, content, t, sim_now(c))),
         "knowledge": ("Knowledge", lambda c, r: {"knowledge": readmodel.knowledge(c, content)}),
         "repetition": ("Repetition", lambda c, r: readmodel.repetition_view(c, t)),

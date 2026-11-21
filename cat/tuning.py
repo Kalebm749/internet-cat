@@ -38,6 +38,7 @@ START = {"mood": (-1, 1), "energy": (0, 1), "hunger": (0, 1)}
 # numeric sections: key -> (low, high)
 SECTIONS = {
     "decisions": {
+        "menu_size": (0, 50), "queue_max": (0, 4), "carry_min_freshness": (0, 1), "sleep_offer_energy": (0, 1), "food_offer_hunger": (0, 1),
         "interval_seconds": (1, 3600),
         "check_in_minutes": (1, 24 * 60),
         "event_salience_min": (0, 1),
@@ -58,10 +59,16 @@ SECTIONS = {
         "recall_boost": (0, 10), "forget_below": (0, 1), "dup_threshold": (0.5, 1),
         "recall_rest_minutes": (0, 24 * 60 * 7), "recall_rest_factor": (0, 1), "wander_slots": (0, 10),
         "wander_after_minutes": (1, 24 * 60 * 30), "learned_k": (0, 10), "learned_days": (0, 365),
-        "learned_chars": (40, 4000), "long_cap": (5, 1000),
+        "learned_chars": (40, 4000), "long_cap": (5, 1000), "short_cap": (1, 200), "faded_cap": (0, 1000),
+        "short_half_life_days": (0.01, 365), "long_half_life_days": (0.01, 3650), "short_min": (0, 1), "long_direct": (0, 1),
+        "emotion_scale": (0, 100), "novelty_bonus": (0, 1), "remember_bonus": (0, 1), "reinforce_gain": (0, 1),
+        "recall_gain": (0, 1), "promote_days": (1, 100), "promote_occurrences": (1, 100), "promote_strength": (0, 1),
+        "short_forget": (0, 1), "fade_min_strength": (0, 1), "faded_cue": (0.3, 1), "recall_min_relevance": (0, 1),
+        "memory_note_min": (0, 1),
     },
     "loops": {"max_open": (1, 20), "per_night": (0, 5), "expire_days": (1, 90), "on_mind": (0, 10),
-              "text_chars": (20, 400)},
+              "text_chars": (20, 400), "salience_decay_per_day": (0, 1), "resurface_hours": (0.1, 240),
+              "resurface_chance": (0, 1)},
     "repetition": {
         "half_life_minutes": (1, 10000), "w_action": (0, 2), "w_family": (0, 2), "w_target": (0, 2),
         "w_aimless": (0, 2), "freshness_min": (0, 1), "window_hours": (1, 24 * 30),
@@ -72,6 +79,10 @@ SECTIONS = {
         "dwell_min": (2, 50), "thought_theme_window": (0, 100), "thought_theme_threshold": (0.5, 1),
         "thought_theme_min": (2, 50), "empty_below": (0, 1),
     },
+    "beliefs": {"lift_mood": (0, 1), "min_days": (1, 60), "min_days_loose": (1, 60), "min_for": (1, 100), "ratio": (0.5, 1),
+                "drop_ratio": (0, 1), "prior": (0, 50), "expire_days": (1, 365), "half_life_days": (0.5, 3650),
+                "fail_min": (1, 100), "note_min": (0, 1), "max_shown": (0, 10), "habit_days": (2, 100),
+                "habit_expire_days": (1, 365), "fear_min": (1, 100), "interest_min": (1, 100)},
     "mail": {
         "on_mind": (0, 20),
         "on_mind_chars": (40, 4000),
@@ -86,12 +97,20 @@ SLEEP_NUMBERS = {
     "dev_min_days": (1, 60), "dev_max_step": (0, 1), "dev_new_strength": (0, 1), "dev_cooldown_days": (0, 60),
 }
 SLEEP_OTHER = {"night_hours", "threaded", "dev_forbidden_words"}
-INTEGER_KEYS = {"thought_theme_window", "thought_theme_min", "long_cap", "max_open", "per_night", "expire_days", "on_mind", "text_chars", "learned_k", "learned_chars", "subject_window", "dwell_min", "wander_slots", "canvas", "max_points", "max_points_per_pass", "max_total", "max_tokens", "day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
+INTEGER_KEYS = {"habit_days", "habit_expire_days", "fear_min", "interest_min", "min_days", "min_days_loose", "min_for", "fail_min", "max_shown", "short_cap", "faded_cap", "promote_days", "promote_occurrences", "queue_max", "menu_size", "thought_theme_window", "thought_theme_min", "long_cap", "max_open", "per_night", "expire_days", "on_mind", "text_chars", "learned_k", "learned_chars", "subject_window", "dwell_min", "wander_slots", "canvas", "max_points", "max_points_per_pass", "max_total", "max_tokens", "day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
                 "dev_min_evidence", "dev_min_days", "recall_k", "notable_k", "recent", "thought_window",
                 "reflection_window", "retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
-                "on_mind", "on_mind_chars"}
+                "on_mind", "on_mind_chars", "max_words"}
 MODEL_KEYS = ("decision_model", "sleep_model", "embed_model", "art_model", "vision_model")
-TOP = {"db_path", "content_dir", "time_scale", "body", "models", "sleep", "art"} | set(SECTIONS)
+TOP = {"db_path", "content_dir", "time_scale", "body", "models", "sleep", "art", "inner"} | set(SECTIONS)
+INNER_NUMBERS = {"loud": (0, 1), "note_min": (0, 1), "max_words": (0, 8), "record_min": (0, 1),
+                 "affect_rate_per_hour": (0, 5), "frustration_decay_per_hour": (0, 5), "satisfaction_rest": (0, 1),
+                 "satisfaction_decay_per_hour": (0, 5), "confidence_drift_per_hour": (0, 5), "mood_from_stress": (0, 2),
+                 "mood_from_frustration": (0, 2), "mood_from_satisfaction": (0, 2), "fresh_novelty_relief": (0, 1),
+                 "stale_below": (0, 1), "stale_frustration": (0, 1), "stale_novelty_rise": (0, 1), "relief_mood": (0, 2),
+                 "relief_mood_cap": (0, 1), "reject_frustration": (0, 1), "reject_confidence": (0, 1),
+                 "reject_stress": (0, 1), "gut_scale": (0, 1), "temperature_span": (0, 1), "practice_k": (1, 1000), "practice_ease": (0, 0.9),
+                 "hold_boost": (0, 1)}
 ART_NUMBERS = {"canvas": (128, 2048), "max_points": (2, 1000), "max_points_per_pass": (10, 100000),
                "max_total": (1, 10000), "max_tokens": (200, 32000)}
 
@@ -136,6 +155,20 @@ def validate(nit: Any) -> list[str]:
     for name, spec in SECTIONS.items():
         if name in nit:
             _check_numbers(name, nit[name], spec, probs)
+    inner = nit.get("inner")
+    if "inner" in nit:
+        if not isinstance(inner, dict):
+            probs.append("inner must be a mapping")
+        else:
+            from cat.inner import NEEDS, VARS
+            _check_numbers("inner", {k: v for k, v in inner.items() if k not in ("start", "rise_per_hour", "fall_per_hour")},
+                           INNER_NUMBERS, probs)
+            for k, names in (("start", VARS), ("rise_per_hour", NEEDS), ("fall_per_hour", NEEDS)):
+                m = inner.get(k)
+                ok = isinstance(m, dict) and set(m) <= set(names) and (k != "start" or set(m) == set(names)) \
+                    and all(_num(v) and 0 <= v <= 1 for v in m.values())
+                if not ok:
+                    probs.append(f"inner.{k} must map {'every variable' if k == 'start' else 'needs'} to numbers 0..1")
     art = nit.get("art")
     if "art" in nit:
         if not isinstance(art, dict):

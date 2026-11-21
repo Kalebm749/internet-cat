@@ -53,9 +53,10 @@ loops: |
   {open}
 
   First: which of those open things did today settle (answered, done, or no longer wanted)? Give its id and the
-  ids of the experiences that settled it. Then: is there something new {name} wants, or wonders about, because of
-  what it did today? Open at most {max}, each a short plain sentence in {name}'s own voice, with the ids of the
-  experiences it comes from. If {name} told someone it would do something (for example in a reply), open that as
+  ids of the experiences that settled it. Most things stay open; living with something unresolved is fine. Then: did
+  today leave something new on {name}'s mind: a want, a question, a worry (something that bothers it), an idea it
+  wants to try, or a problem it has not worked out? Open at most {max}, each a short plain sentence in {name}'s own
+  voice, with the ids of the experiences it comes from. If {name} told someone it would do something (for example in a reply), open that as
   kind "promise" ("I said I would ...") citing the experience where it said so; a promise is settled only by an
   experience showing it was done. Open nothing if nothing truly is. Never repeat something already open.
 

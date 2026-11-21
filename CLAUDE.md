@@ -12,8 +12,8 @@ but leave them unused; Nit's portrait is `cat/web/static/img/nit/` (`scripts/mak
 
 ## The design: `docs/rewrite-contracts.md` (it wins)
 Read it before changing behaviour. Each section ends with an "as built" note. `docs/archive/` holds the first engine's
-docs (replaced November 2026); nothing there describes current code. `docs/individuality-plan.md` is a **proposal** (not accepted
-yet) for making creatures distinct individuals: it does not change any rule here until a stage is accepted and built.
+docs (replaced November 2026); nothing there describes current code. `docs/individuality-plan.md` holds the reasoning behind the
+individuality work (spec §13 is what was built).
 
 ## Where things live
 - `content/` — the world and the character, as data: `character.yaml` (core: nature, senses, boundaries, never changed
@@ -30,7 +30,8 @@ yet) for making creatures distinct individuals: it does not change any rule here
 - `cat/` — `loop.py` (the engine loop) · `execute.py` (activities, builtins, outcomes, events) · `decision.py` (prompt,
   schema, validation, retries) · `mind.py` (what Nit sees) · `scheduler.py` (when to decide) · `body.py` (mood, energy,
   hunger) · `identity.py` (character versions) · `knowledge.py` · `memories.py` (memory, recall, preferences) ·
-  `sleepcycle.py` (seven stages) · `behaviour.py` (freshness, repetition) · `content.py` (load + validate) ·
+  `sleepcycle.py` (stages incl. loops, beliefs) · `inner.py` (temperament, needs, affect) · `beliefs.py` · `loops.py`
+  (concerns) · `people.py` · `projects.py` · `starving.py` · `behaviour.py` (freshness, repetition) · `content.py` (load + validate) ·
   `conditions.py` · `ops.py` · `templating.py` · `worldstate.py` · `store.py` (nit.db schema, migrations) · `life.py`
   (spawn/load) · `capabilities/` · `mail.py` · `readmodel.py` (what web and devdash show) · `web/` · `devdash/` ·
   `llm.py` (Ollama + MockBackend) · `nit.py` (CLI) · `healthcheck.py` · `pullmodels.py` · `logs.py` · `db.py` · `clock.py`.
@@ -61,9 +62,14 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 - **Code never picks the move.** The decision model chooses from the Mind's options; mood, energy, hunger, preferences
   and repetition shape the prompt and the consequences, never the choice. No drives, reflexes or overrides, with
   one exception by the author: at `body.starving_at` hunger `cat/starving.py` walks it to the food and eats (spec §2.5).
-- **The menu is knowledge ∩ world.** An action is offered only if Nit knows it, it is here (or universal), its
-  `requires` hold, it is not prohibited by `core`, and its capability is enabled and under its limit. Options are
-  shuffled with a seed and never ranked or removed for repetition (stale ones get a note).
+- **The menu is a draw from knowledge ∩ world.** An action is available only if Nit knows it, it is here (or universal),
+  its `requires` hold, it is not prohibited by `core`, and its capability is enabled and under its limit. Of those a
+  uniform draw of `decisions.menu_size` is offered (plus sleep when worn out, food when hungry, and "carry on"). Options
+  are never ranked or removed for repetition or by needs (stale ones get a note).
+- **Inner life is state, not a driver** (spec §13): temperament, needs, affect, beliefs, memory layers, concerns,
+  projects and acquired identity are code-owned, persisted, and update without a model; they reach behaviour through
+  appraisal (how outcomes land), words and notes on options, what is noticed, and what is remembered, never by choosing.
+  Never quote the creature's own generated words back to it (a small model copies them).
 - **Consequences are code.** Only world ops change facts (all-or-nothing); only `cat/body.py` changes mood/energy/hunger,
   and every change carries its cause (`body_changes`). What happened is code's plain account from
   `config/prompts/world.yaml`; there is no narrator.

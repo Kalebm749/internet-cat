@@ -13,6 +13,18 @@
       <tr><th>fallback · notes</th><td>{{ d.fallback }} · {{ d.notes | join("; ") }}</td></tr>
       <tr><th>dropped</th><td>{{ d.dropped | join("; ") }}</td></tr>
     </table>
+    <h3>why it was made this way <span class="dim small">(structured, not the model's words)</span></h3>
+    {% if d.factors %}<table class="kv">
+      <tr><th>how</th><td>{{ d.factors.tier }}</td></tr>
+      <tr><th>the menu</th><td>{{ d.factors.menu.available }} available, drawn: {{ d.factors.menu.drawn | join(", ") }}{% if d.factors.menu.guaranteed %}; always offered: {{ d.factors.menu.guaranteed | join(", ") }}{% endif %}{% if d.factors.menu.carry %}; carry on: {{ d.factors.menu.carry }}{% endif %}</td></tr>
+      <tr><th>pressing needs</th><td>{{ d.factors.pressing | join(", ") or "none" }}</td></tr>
+      <tr><th>inside</th><td class="mono">{{ d.factors.inner | tojson }}</td></tr>
+      <tr><th>notes on options</th><td class="mono">{{ d.factors.option_notes | tojson }}</td></tr>
+      <tr><th>remembered</th><td>{{ d.factors.memories | join(" | ") }}</td></tr>
+      <tr><th>believed</th><td>{{ d.factors.beliefs | join(" | ") }}</td></tr>
+      <tr><th>on its mind</th><td>{{ (d.factors.concerns + d.factors.projects + d.factors.people) | join(" | ") }}</td></tr>
+      <tr><th>planned next</th><td class="mono">{{ d.factors.queue | tojson }}</td></tr>
+    </table>{% else %}<p class="dim">not recorded</p>{% endif %}
     <h3>what came of it</h3>
     {% for a in d.activities %}<p><b>{{ a.action_id }}</b> <span class="pill">{{ a.status }}</span> {{ a.started_at }} → {{ a.ended_at }}
       (planned {{ a.planned_minutes }} min, freshness {{ a.freshness }}{% if a.restart_of %}, restart of {{ a.restart_of }}{% endif %})<br>{{ a.text }}</p>

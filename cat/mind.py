@@ -41,6 +41,12 @@ class Mind:
     options: list[Option]
     learned: list[str] = field(default_factory=list)     # things it chose to keep from reading, in its words (§6.6)
     dwelling: list[str] = field(default_factory=list)    # its own words for a subject it keeps returning to (§6.6)
+    inner: list[str] = field(default_factory=list)       # what is strong inside, in words (needs and affect)
+    carry: dict | None = None                            # what it was doing, offered as "carry on" (inputs reused)
+    menu_info: dict = field(default_factory=dict)        # how the menu was drawn (for the dashboard)
+    projects: list[str] = field(default_factory=list)    # what it is making, and how it feels about it
+    people: list[str] = field(default_factory=list)      # who it knows and how it feels about them
+    beliefs: list[str] = field(default_factory=list)     # what it has come to think about where it is and the weather
     mulling: bool = False                                # its recent thoughts keep going the same way (no words quoted)
     loops: list[str] = field(default_factory=list)       # open loops: wants and questions not settled yet (§5.8)
 
@@ -137,10 +143,29 @@ def available(life: Life, known: set[str], last_done: dict[str, float], rng: ran
 def build_options(life: Life, known: set[str], last_done: dict[str, float], rng: random.Random,
                   notes: Callable[[ActionSpec], list[str]] | None = None,
                   capability_ok: Callable[[str], bool] | None = None,
-                  count_done: Callable[[str, float], int] | None = None, time_scale: float = 24.0) -> list[Option]:
-    opts = [Option(a.id, a.name, a.description, inputs, list(notes(a)) if notes else [])
-            for a, inputs in available(life, known, last_done, rng, capability_ok, count_done, time_scale)]
-    rng.shuffle(opts)
+                  count_done: Callable[[str, float], int] | None = None, time_scale: float = 24.0,
+                  menu_size: int = 0, protected: set[str] | None = None, carry: dict | None = None,
+                  info: dict | None = None) -> list[Option]:
+    """What it can do now. All of what is genuinely available (known, here, its requires hold, its capability on) is
+    the pool; with `menu_size` a uniform draw of that many from the pool is offered (chance, not code, decides what
+    it meets), plus the `protected` ones that must always be offered (sleep when worn out, food when hungry) and,
+    when there is something to carry on with, that. Never ranked; options stay in shuffled order."""
+    pool = available(life, known, last_done, rng, capability_ok, count_done, time_scale)
+    rng.shuffle(pool)
+    chosen = pool
+    must = [x for x in pool if x[0].id in (protected or set())]
+    if menu_size and len(pool) > menu_size:
+        rest = [x for x in pool if x not in must]
+        draw = rng.sample(rest, max(0, menu_size - len(must)))
+        chosen = [x for x in pool if x in must or x in draw]
+    opts = [Option(a.id, a.name, a.description, inputs, list(notes(a)) if notes else []) for a, inputs in chosen]
+    if carry and any(a.id == carry["action"] for a, _ in pool):
+        spec = next(a for a, _ in pool if a.id == carry["action"])
+        opts.append(Option("continue", "carry on", f"Carry on with what you were doing: {spec.name}.", {},
+                           list(notes(spec)) if notes else []))
+    if info is not None:
+        info.update(available=len(pool), drawn=[a.id for a, _ in chosen], guaranteed=[a.id for a, _ in must],
+                    carry=carry["action"] if carry else None)
     return opts
 
 
@@ -237,7 +262,9 @@ def identity_block(life: Life, core_memories: list[str] | None = None) -> dict:
     return {"name": s.get("name"), "pronoun": s.get("pronoun"), "nature": core.get("nature", ""),
             "senses": core.get("senses") or [], "abilities": core.get("abilities") or [],
             "boundaries": core.get("boundaries") or [], "traits": _trait_words(s.get("traits") or {}),
-            "tendencies": [t for t, _ in sorted((s.get("tendencies") or {}).items(), key=lambda kv: -kv[1])],
+            "tendencies": [t for t, _ in sorted((s.get("tendencies") or {}).items(), key=lambda kv: -kv[1])]
+            + [i["text"] for k in ("habits", "fears", "interests") for i in (s.get("acquired") or {}).get(k, [])]
+            + [f"hold that {h['text'][0].lower() + h['text'][1:]}" for h in (s.get("holds") or [])],
             "background": s.get("background", ""), "core_memories": list(core_memories or [])}
 
 
@@ -247,12 +274,18 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
           notes: Callable[[ActionSpec], list[str]] | None = None,
           capability_ok: Callable[[str], bool] | None = None, core_memories: list[str] | None = None,
           count_done: Callable[[str, float], int] | None = None, dwelling: list[str] | None = None,
-          loops: list[str] | None = None, mulling: bool = False) -> Mind:
+          loops: list[str] | None = None, mulling: bool = False,
+          inner: list[str] | None = None, temperament_words: list[str] | None = None,
+          menu_size: int = 0, protected: set[str] | None = None, carry: dict | None = None,
+          beliefs: list[str] | None = None, projects: list[str] | None = None, people: list[str] | None = None) -> Mind:
     rng = random.Random(f"{seed}|{life.sim_time}")
     now = clock.parse(life.sim_time)
     loc = life.content.locations[life.location]
     desc = life.body.describe(life.bodystate, repetition)
     weather = life.world.values.get("world.weather")
+    info: dict = {}
+    options = build_options(life, known, last_done or {}, rng, notes, capability_ok, count_done,
+                            float(tuning.get("time_scale", 24)), menu_size, protected, carry, info)
     return Mind(
         now={"sim_time": life.sim_time, "part_of_day": clock.part_of_day(now), "weather": weather},
         location={"id": loc.id, "name": loc.name, "description": loc.description.strip(),
@@ -265,11 +298,14 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
         recent=list(recent or [])[-tuning["decisions"]["recent_activities"]:] if tuning["decisions"]["recent_activities"] else [],
         memories=list(memories or []),
         letters=letters_on_mind(life, tuning),
-        identity=identity_block(life, core_memories),
-        options=build_options(life, known, last_done or {}, rng, notes, capability_ok, count_done,
-                              float(tuning.get("time_scale", 24))),
+        identity={**identity_block(life, core_memories), "temperament": list(temperament_words or [])},
+        options=options, carry=carry, menu_info=info,
         learned=learned_on_mind(life, tuning, seed),
         dwelling=list(dwelling or []),
         loops=list(loops or []),
         mulling=bool(mulling),
+        inner=list(inner or []),
+        beliefs=list(beliefs or []),
+        projects=list(projects or []),
+        people=list(people or []),
     )

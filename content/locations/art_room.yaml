@@ -45,6 +45,8 @@ actions:
     name: sketch a picture
     description: "Choose what interests you and make a first pass. Leave it as unfinished work so you can return to it and decide what it needs."
     family: art
+    project: made
+    inner: {expression: -0.4, novelty: -0.1}
     discovery: known_on_arrival
     requires:
       - { energy_gte: 0.15 }
@@ -82,6 +84,8 @@ actions:
     name: study a drawing
     description: "Sit with a drawing for a while. Look closely, interpret what you see, and notice what you feel or prefer."
     family: art
+    project: studied
+    inner: {novelty: -0.15, expression: -0.05}
     discovery: known_on_arrival
     requires: [{ fact_count_gte: [art_room.artworks, 1] }]
     inputs:
@@ -91,13 +95,15 @@ actions:
     capability: look_at_drawing
     revisit_key: [art_room.artworks]
     on_finish:
-      remember: { importance: 0.55, text: "I studied my drawing {capability.title} ({capability.versions} versions) and formed my own thoughts about it." }
+      remember: { importance: 0.55, text: "I studied my drawing {capability.title} ({capability.versions} versions) and formed my own thoughts about it. {capability.feeling}" }
 
   - id: work_on_drawing
     diary: "{name} is making another pass on a picture: {inputs.intention}"
     name: make another pass on a drawing
     description: "Choose an unfinished drawing and make one focused pass on it. You can return to it again or decide it is finished."
     family: art
+    project: reworked
+    inner: {expression: -0.25, accomplishment: -0.05}
     discovery: known_on_arrival
     requires:
       - { energy_gte: 0.15 }
@@ -143,6 +149,8 @@ actions:
     name: finish a drawing
     description: "Choose an unfinished drawing and decide it is ready to keep as finished work."
     family: art
+    project: finished
+    inner: {accomplishment: -0.45, satisfaction: 0.12, confidence: 0.05}
     discovery: known_on_arrival
     requires: [{ fact_count_where: [art_room.artworks, {status: unfinished}, 1] }]
     inputs:
@@ -157,3 +165,25 @@ actions:
           set: { status: completed, completed_at: "{now}" }
       creature: { mood: 0.02 }
       remember: { importance: 0.6, text: "I decided to finish a drawing in the art room." }
+
+  - id: abandon_drawing
+    diary: "{name} is putting a drawing aside for good"
+    name: give up on a drawing
+    description: "Decide an unfinished drawing is not going anywhere and leave it as it is, for good."
+    family: art
+    project: abandoned
+    inner: {frustration: -0.1, accomplishment: 0.05}
+    discovery: known_on_arrival
+    requires: [{ fact_count_where: [art_room.artworks, {status: unfinished}, 1] }]
+    inputs:
+      artwork: { type: choice, options: "{fact:art_room.artworks.unfinished.labels}" }
+    duration: { minutes: [1, 3] }
+    effort: none
+    on_finish:
+      world:
+        - op: update_where
+          fact: art_room.artworks
+          match: { id: "{inputs.artwork}", status: unfinished }
+          set: { status: abandoned, abandoned_at: "{now}" }
+      creature: { mood: 0.0 }
+      remember: { importance: 0.5, text: "I gave up on a drawing; it was not going anywhere." }

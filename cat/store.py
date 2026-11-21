@@ -234,6 +234,65 @@ MIGRATIONS: list[list[str]] = [
         )""",
         "CREATE INDEX idx_loops_status ON loops(status)",
     ],
+    [  # 12: individuality (docs/individuality-plan.md): memory layers, beliefs, people, projects, decision factors
+        # memories: kind is now short | long | core | faded. strength is what it went in with (0 = use importance);
+        # occurrences counts the repeats that were folded into it; recall_days counts distinct days it came back.
+        "ALTER TABLE memories ADD COLUMN strength REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE memories ADD COLUMN occurrences INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE memories ADD COLUMN feeling TEXT",
+        "ALTER TABLE memories ADD COLUMN action_id TEXT",
+        "ALTER TABLE memories ADD COLUMN location TEXT",
+        "ALTER TABLE memories ADD COLUMN recall_days INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE memories ADD COLUMN last_recall_day TEXT",
+        "ALTER TABLE memories ADD COLUMN gist TEXT",
+        "ALTER TABLE decisions ADD COLUMN factors TEXT",
+        "ALTER TABLE loops ADD COLUMN salience REAL NOT NULL DEFAULT 0.5",
+        "ALTER TABLE loops ADD COLUMN last_touched TEXT",
+        # what it has come to think about what things do to it (kind effect | place | weather | failure), with the
+        # evidence for and against, the distinct days that bore it out, and when it was last borne out
+        """CREATE TABLE beliefs (
+            id              INTEGER PRIMARY KEY,
+            kind            TEXT NOT NULL,
+            subject         TEXT NOT NULL,
+            outcome         TEXT NOT NULL,
+            statement       TEXT NOT NULL,
+            for_count       INTEGER NOT NULL DEFAULT 0,
+            against_count   INTEGER NOT NULL DEFAULT 0,
+            days            INTEGER NOT NULL DEFAULT 0,
+            strength        REAL NOT NULL DEFAULT 0,
+            first_seen      TEXT NOT NULL,
+            last_reinforced TEXT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'active',
+            sources         TEXT NOT NULL DEFAULT '[]',
+            note            TEXT,
+            UNIQUE (kind, subject, outcome)
+        )""",
+        """CREATE TABLE people (
+            id           INTEGER PRIMARY KEY,
+            name         TEXT NOT NULL UNIQUE,
+            familiarity  REAL NOT NULL DEFAULT 0,
+            affinity     REAL NOT NULL DEFAULT 0,
+            interactions INTEGER NOT NULL DEFAULT 0,
+            first_seen   TEXT NOT NULL,
+            last_seen    TEXT NOT NULL,
+            notes        TEXT NOT NULL DEFAULT ''
+        )""",
+        """CREATE TABLE projects (
+            id         INTEGER PRIMARY KEY,
+            kind       TEXT NOT NULL,
+            title      TEXT NOT NULL,
+            intention  TEXT NOT NULL,
+            status     TEXT NOT NULL DEFAULT 'active',
+            rating     REAL,
+            evaluation TEXT NOT NULL DEFAULT '',
+            root_id    TEXT,
+            history    TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX idx_beliefs_status ON beliefs(status)",
+        "CREATE INDEX idx_projects_root ON projects(root_id)",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

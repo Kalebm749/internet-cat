@@ -1,7 +1,7 @@
 """When to decide (docs/rewrite-contracts.md §3.1, §3.2).
 
     activity_finished   the current activity ended                         -> full menu
-    event / mail / body something happened (event salience >= minimum)     -> interrupt (continue, or the menu);
+    event / mail / body / need something happened (event salience >= minimum)     -> interrupt (continue, or the menu);
                                                                               full menu when nothing is running
     interval            nothing is running and `interval_seconds` (REAL) passed since the last decision started
     check_in            an activity has run `check_in_minutes` (SIM) since it started or since the last decision
@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from cat import clock
 
-TRIGGERS = ("activity_finished", "event", "mail", "body", "interval", "check_in")
+TRIGGERS = ("activity_finished", "event", "mail", "body", "need", "concern", "interval", "check_in")
 
 
 @dataclass

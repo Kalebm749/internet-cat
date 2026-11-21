@@ -21,6 +21,7 @@ actions:
     name: search Wikipedia
     description: "Use the terminal to look up a topic that interests you. Choose the question or subject yourself."
     family: explore
+    inner: {novelty: -0.2}
     discovery: known_on_arrival
     requires: [{energy_gte: 0.12}]
     inputs:
@@ -39,6 +40,7 @@ actions:
     name: read a Wikipedia page
     description: "Open an unread search result, read the page, and decide for yourself whether it matters to you."
     family: explore
+    inner: {novelty: -0.3}
     discovery: hidden
     requires:
       - {energy_gte: 0.08}
@@ -58,6 +60,7 @@ actions:
     name: keep a page as knowledge
     description: "Choose a page you have read, keep it as knowledge, and explain in your own words what it means to you."
     family: learn
+    inner: {accomplishment: -0.1, satisfaction: 0.05}
     discovery: hidden
     requires: [{fact_count_where: [terminal.articles, {status: read}, 1]}]
     inputs:

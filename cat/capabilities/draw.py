@@ -29,7 +29,8 @@ PROMPT_FIELDS = {
     "revision": {"title", "description", "history"},
     "fresh_from_old": {"title", "description"},
     "user": {"intention", "thoughts", "supplies", "materials", "effort", "place", "sheet"},
-    "see_system": set(), "see_user": {"title"},
+    "see_system": set(), "see_user": {"title"}, "evaluate_system": set(),
+    "evaluate_user": {"title", "intention", "seen"},
 }
 SUPPLIES_FACT = "art_room.supplies"
 ARTWORKS_FACT = "art_room.artworks"

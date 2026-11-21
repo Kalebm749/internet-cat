@@ -45,7 +45,43 @@ class LookAtDrawing:
         seen = self._see(ctx, item)
         if seen:
             text += " " + ctx.texts["drawing_seen"].format(seen=seen)
-        return CapabilityResult(text=text, fields={"title": item.get("title", ""), "versions": str(len(chain))})
+        fields = {"title": item.get("title", ""), "versions": str(len(chain)), "verdict": "", "rating": "", "feeling": ""}
+        inner: dict = {}
+        verdict = self._judge(ctx, item, chain, seen or (chain[-1]["description"] if chain else ""))
+        if verdict:
+            v, words, rating = verdict
+            fields.update(verdict=v, rating=f"{rating:.2f}", feeling=words)
+            text += " " + ctx.texts["drawing_feeling"].format(words=words)
+            inner = {"liked": {"satisfaction": 0.12, "confidence": 0.05},
+                     "disliked": {"frustration": 0.15, "confidence": -0.08, "satisfaction": -0.05}}.get(v, {})
+        return CapabilityResult(text=text, fields=fields, inner=inner)
+
+    def _judge(self, ctx: CapContext, item: dict, chain: list, seen: str):
+        """How it feels about the drawing against what it meant: its own, subjective verdict. A self-critical creature
+        rates the same drawing lower. None when it cannot judge (no model, no stored intention)."""
+        model = ((ctx.tuning or {}).get("models") or {}).get("decision_model")
+        stored = ctx.artifact(item.get("root_id") or item["id"]) if ctx.artifact else None
+        intention = (stored or {}).get("intention") or item.get("subject") or ""
+        if not (model and ctx.backend and intention):
+            return None
+        from cat.capabilities.draw import prompts
+        p = prompts()
+        msgs = [{"role": "system", "content": p["evaluate_system"]},
+                {"role": "user", "content": p["evaluate_user"].format(title=item.get("title", ""), intention=intention,
+                                                                       seen=seen or "(nothing you can describe)")}]
+        schema = {"type": "object", "properties": {"verdict": {"type": "string", "enum": ["liked", "mixed", "disliked"]},
+                                                   "words": {"type": "string"}}, "required": ["verdict", "words"]}
+        try:
+            out = ctx.backend.chat_json("evaluate_drawing", model, msgs, schema)
+        except BackendError as e:
+            log.warning("could not judge the drawing: %s", e)
+            return None
+        v, words = out.get("verdict"), " ".join(str(out.get("words") or "").split())[:300]
+        if v not in ("liked", "mixed", "disliked") or not words:
+            return None
+        crit = float((ctx.temperament or {}).get("self_criticism", 0.5))
+        rating = max(0.0, min(1.0, {"liked": 0.8, "mixed": 0.5, "disliked": 0.2}[v] - 0.4 * (crit - 0.5)))
+        return v, words, rating
 
     def _see(self, ctx: CapContext, item: dict) -> str | None:
         """The vision model looks at the latest PNG; loaded for this one look and unloaded right after, so it

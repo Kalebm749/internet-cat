@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="grid2">
+  <div class="card">
+    <h2>Needs <span class="dim small">(0 met, 1 pressing)</span></h2>
+    <table class="data num">{% for n in d.needs %}<tr><td>{{ n.var }}</td><td class="{{ 'bad' if n.pressing }}">{{ n.value }}</td><td>{{ n.spark | safe }}</td></tr>{% endfor %}</table>
+    <h2>Affect</h2>
+    <table class="data num">{% for n in d.affect %}<tr><td>{{ n.var }}</td><td>{{ n.value }}</td><td>{{ n.spark | safe }}</td></tr>{% endfor %}</table>
+    <h2>Temperament <span class="dim small">(the author's numbers, never changed by it)</span></h2>
+    <p class="mono">{% for k, v in d.temperament.items() %}{{ k }} {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    <h3>What it holds to</h3>
+    <ul>{% for h in d.holds %}<li>{{ h.text }} <span class="dim small">({{ h.strength }}; {{ h.keywords | join(", ") }})</span></li>{% endfor %}</ul>
+    <h2>What it has acquired <span class="dim small">(each with the experiences behind it)</span></h2>
+    {% for cat, items in d.acquired_now.items() %}<h3>{{ cat }}</h3><ul>{% for i in items %}<li>{{ i.text }} <span class="dim small">since {{ i.since }}</span></li>{% else %}<li class="dim">none</li>{% endfor %}</ul>{% endfor %}
+    <table class="data"><tr><th>version</th><th>when</th><th>change</th><th>evidence</th></tr>
+      {% for v in d.acquired_history %}<tr><td>{{ v.version }}</td><td class="nowrap">{{ v.created_at }}</td><td>{{ v.reason }}</td><td class="mono">{{ v.evidence | join(", ") }}</td></tr>{% endfor %}</table>
+    <h2>Beliefs</h2>
+    <table class="data num"><tr><th>belief</th><th>status</th><th>for</th><th>against</th><th>days</th><th>strength</th></tr>
+      {% for b in d.beliefs %}<tr><td>{{ b.statement }} <span class="dim small">[{{ b.kind }}{% if b.note.truth %}, really: {{ b.note.truth }}{% endif %}]</span></td><td>{{ b.status }}</td><td>{{ b.for }}</td><td>{{ b.against }}</td><td>{{ b.days }}</td><td>{{ b.strength }}</td></tr>{% else %}<tr><td colspan="6" class="dim">none yet</td></tr>{% endfor %}</table>
+    {% if d.dropped_beliefs %}<h3>Given up</h3><ul>{% for b in d.dropped_beliefs %}<li class="dim">{{ b.statement }} ({{ b.for }} for, {{ b.against }} against)</li>{% endfor %}</ul>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Memory by layer</h2>
+    <p class="dim small">short {{ d.memory.short | length }}/{{ d.caps.short }} · long {{ d.memory.long | length }}/{{ d.caps.long }} · faded {{ d.memory.faded | length }}/{{ d.caps.faded }}</p>
+    {% for layer in ["short", "long"] %}<h3>{{ layer }}-term</h3>
+    <table class="data num"><tr><th>memory</th><th>worth now</th><th>went in</th><th>met</th><th>came back (days)</th><th>feeling</th></tr>
+      {% for m in d.memory[layer] %}<tr class="{{ 'row-bad' if d.first_to_go[layer] and d.first_to_go[layer].id == m.id }}"><td>{{ m.text }}</td><td>{{ m.worth }}</td><td>{{ m.went_in }}</td><td>{{ m.occurrences }}</td><td>{{ m.recalls }} ({{ m.recall_days }})</td><td>{{ m.feeling }}</td></tr>{% else %}<tr><td colspan="6" class="dim">none</td></tr>{% endfor %}</table>{% endfor %}
+    <p class="dim small">The highlighted row in each layer is first to go when something worth more arrives.</p>
+    <h3>faded <span class="dim small">(one worn sentence; it comes back only when something touches it)</span></h3>
+    <ul>{% for m in d.memory.faded %}<li>{{ m.text }}</li>{% else %}<li class="dim">none</li>{% endfor %}</ul>
+    <h2>On its mind</h2>
+    <table class="data"><tr><th>kind</th><th>concern</th><th>status</th><th>salience</th></tr>
+      {% for c in d.concerns %}<tr><td>{{ c.kind }}</td><td>{{ c.text }}</td><td>{{ c.status }}</td><td>{{ c.salience }}</td></tr>{% else %}<tr><td colspan="4" class="dim">nothing yet</td></tr>{% endfor %}</table>
+    <h2>Projects</h2>
+    {% for p in d.projects %}<p><b>{{ p.title }}</b> <span class="pill">{{ p.status }}</span> {% if p.rating is not none %}rated {{ '%.2f' % p.rating }}{% endif %}<br><span class="dim">meant: {{ p.intention }}</span><br>{{ p.evaluation }}</p>
+      <pre class="box">{{ p.history | pretty }}</pre>{% else %}<p class="dim">none yet</p>{% endfor %}
+    <h2>People</h2>
+    <table class="data num"><tr><th>name</th><th>familiarity</th><th>affinity</th><th>times</th><th>last seen</th></tr>
+      {% for p in d.people %}<tr><td>{{ p.name }}</td><td>{{ '%.2f' % p.familiarity }}</td><td>{{ '%.2f' % p.affinity }}</td><td>{{ p.interactions }}</td><td class="nowrap">{{ p.last_seen }}</td></tr>{% else %}<tr><td colspan="5" class="dim">nobody yet</td></tr>{% endfor %}</table>
+    <h2>Planned moves</h2>
+    <pre class="box">{{ d.queue | pretty }}</pre>
+  </div>
+</div>
+{% endblock %}

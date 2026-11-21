@@ -999,3 +999,58 @@ All accepted. CLAUDE.md is rewritten together with the step-1 code:
 | Database | New life; the old `cat.db` is kept as a backup |
 
 Nothing is open. Next: step 1 (content loader, world state, conditions, effect ops).
+
+## 13. Individuality (as built, November 2026; reasoning in `docs/individuality-plan.md`)
+
+The aim: behaviour that comes from a persistent inner life and accumulated experience, with the model as one part.
+
+- **Temperament** (`content/character.yaml`, the author's numbers, 0..1, never changed by the creature): novelty,
+  sociability, solitude, caution, impulsiveness, persistence, volatility, self_criticism, expressiveness, ambition. Code
+  reads them (`cat/inner.py`); the strongly high or low ones also become clauses in "You tend to". `holds` are sentences with
+  keywords and a strength: an event naming one of them is more salient (`inner.hold_boost`).
+- **Inner state** (`cat/inner.py`, persisted in the `state` row, changes recorded in `body_changes`): needs (novelty, social,
+  solitude, expression, accomplishment, belonging, security; rest is the body's energy) and affect (stress, confidence,
+  curiosity, loneliness, frustration, satisfaction). Updated by code with no model call: needs rise by rate x temperament and
+  ease by what actions declare (`inner:` on an action in content); affect follows the body and the needs; stress and
+  frustration drag mood. They can contradict. Appraisal: easing a pressing need lifts mood; a stale repeat frustrates (less
+  for a persistent creature); a rejected action costs confidence (more for a self-critical one). They are shown as plain
+  words (`world.yaml inner_words`) and as notes on the options they would ease. **They never choose.** A need becoming
+  pressing starts a decision (`need` trigger).
+- **The menu is drawn** (`mind.build_options`): a uniform draw of `decisions.menu_size` (3) from what is genuinely
+  available (known, here, requires hold, capability on), plus always the options that must be offered (sleep when energy
+  <= `sleep_offer_energy`, the food action when hunger >= `food_offer_hunger`), plus "carry on" (the last action again, only
+  for actions with no free-text input). Chance, not code, decides what it meets; code still never chooses. Hunger taking
+  over at 0.8 (§2.5) remains the one exception.
+- **Replies**: the action and its inputs come first, then thought and reasoning (a thought cannot steer the action). With a
+  chance of `impulsiveness x gut_scale` the answer is a *gut* one (no reasoning, a short thought); the decision temperature
+  rises with impulsiveness. A decision may queue up to `queue_max` further moves (`then`).
+- **Event-driven**: with nothing new (no event, letter, need, perception) the queued next move runs with no model call; a
+  check-in with an unchanged situation continues with no model call; a concern can resurface by itself
+  (`loops.resurface_*`, trigger `concern`). The queue persists in `meta.queue`.
+- **Memory in three layers** (`memories.kind` short | long | core | faded): an experience becomes a short memory only if its
+  *significance* for this creature (importance, emotional impact x volatility, novelty, asked-to-remember) reaches
+  `short_min`; the same thing again strengthens the memory it already has (`occurrences`) instead of making a duplicate; a
+  new one must beat the weakest when the layer is full. Strength fades by layer half-life and is held up by recall. Sleep
+  promotes what came back on several days / was met often / is strong; a long memory that no longer fits leaves **one worn
+  sentence** (faded) that returns only when something in front of it is similar (`faded_cue`); weak ones are forgotten.
+  Recall takes only what the moment touches (`recall_min_relevance`). A remembered feeling about an action puts a note on it.
+- **Beliefs** (`cat/beliefs.py`, table `beliefs`): per (kind, subject, outcome) the evidence for and against and the distinct
+  days; candidates become beliefs after `min_days` days (weather needs fewer: it can be wrong), a belief gives way when
+  contradicted, strong ones slowly, and one nothing bears out is dropped. Failures are classified (circumstance,
+  misunderstanding, ability, assumption, unexpected) and become a belief about *why* with blame set by self-criticism, not by
+  the truth (kept in the row's note). Beliefs appear as notes on options and place/weather lines.
+- **Acquired identity**: habits (done on `habit_days` days in the same part of the day at the same place), fears and interests
+  (borne-out beliefs) enter the sheet's `acquired` section as dated character versions with their evidence, and are let go
+  after `habit_expire_days` with no sign. The written sheet is never touched. Practice per action (saturating with goes)
+  makes work cost less effort and puts a note on well-practised actions.
+- **Concerns, people, projects**: concerns are want, question, promise, worry, idea, problem (with salience that fades); `people`
+  keeps familiarity and affinity from letters; `projects` keep a drawing's intention, attempts, its own subjective
+  evaluation (self-criticism lowers the rating), and how it ended (finished, abandoned via `abandon_drawing`). Actions say
+  in content what they do (`project: made | reworked | studied | finished | abandoned`).
+- **Observability**: every decision stores `factors` (tier, what was drawn and why, inner state, notes, memories, beliefs,
+  concerns); the dev dashboard has an **Inner life** page (`/inner`, JSON `/api/dev/inner`).
+- **Starting a fresh life**: stop the engine, move `data/nit.db` aside (for example into `data/backups/`), start it again: the
+  new life is spawned with this character. Migration 12 only adds tables and columns, so an existing life also opens (its new
+  tables start empty), but the intended path is a fresh start.
+- **Settings**: `nit.inner`, `nit.beliefs`, and in `nit.memory`, `nit.loops`, `nit.decisions` the keys named above; each is
+  validated at start-up (`cat/tuning.py`).
