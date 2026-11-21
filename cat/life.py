@@ -33,6 +33,8 @@ class Life:
     asleep: bool = False
     spawned: bool = False                               # True when this call created the life
     notes: list[str] = field(default_factory=list)      # what the sync changed, for the log and dashboard
+    exit_notes: dict = field(default_factory=dict)      # place id -> a note from its own history (set before deciding)
+    stay_minutes: float = 0.0                           # sim minutes at this place since arriving
 
     def state_data(self) -> dict:
         return {"sim_time": self.sim_time, "location": self.location, "asleep": self.asleep,

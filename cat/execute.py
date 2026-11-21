@@ -271,7 +271,7 @@ class Executor:
             if cap.text:
                 self.perception.append(cap.text)
         fr = behaviour.freshness(self.conn, self.c, self.t, a, decision.inputs, self.life.sim_time,
-                                 self.life.world.values)
+                                 self.life.world.values, location=self.life.location)
         cur = self.conn.execute(
             "INSERT INTO activities(decision_id, action_id, location, inputs, started_at, planned_minutes, status, "
             "capability, family, input_sig, revisit_sig, restart_of, freshness, repeat_parts) "

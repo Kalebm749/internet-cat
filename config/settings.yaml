@@ -141,6 +141,7 @@ nit:
     freshness_min: 0.1           # freshness never falls below this
     window_hours: 24             # SIM hours of history looked at
     restart_window_minutes: 30   # starting the same thing again this soon after finishing it is a restart ...
+    w_place: 0.05                # everything done in the place it is staying in goes a little stale (long stays)
     w_restart: 0.35              # ... which, with nothing it is about changed, costs this much freshness at once
     note_below: 0.6              # options below this freshness get a note on the menu
     recent: 5                    # activities averaged for the repetition score (derived conditions)

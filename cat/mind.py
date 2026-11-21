@@ -74,7 +74,9 @@ def resolve_choices(options: Any, life: Life) -> list[dict]:
     name = templating.placeholders(options)[0]
     if name == "exits":
         locs = life.content.locations
-        return [{"value": x, "label": locs[x].name} for x in locs[life.location].exits if x in locs]
+        notes = getattr(life, "exit_notes", {}) or {}
+        return [{"value": x, "label": locs[x].name + (f" ({notes[x]})" if notes.get(x) else "")}
+                for x in locs[life.location].exits if x in locs]
     if name.startswith("fact:"):
         parts = name[5:].split(".")
         key, rest = ".".join(parts[:2]), parts[2:]
@@ -251,7 +253,8 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
     return Mind(
         now={"sim_time": life.sim_time, "part_of_day": clock.part_of_day(now), "weather": weather},
         location={"id": loc.id, "name": loc.name, "description": loc.description.strip(),
-                  "sheltered": loc.sheltered, "visible_facts": _visible(life)},
+                  "sheltered": loc.sheltered, "visible_facts": _visible(life),
+                  "stay_minutes": round(getattr(life, "stay_minutes", 0.0))},
         perception=list(perception or []),
         body={**{k: round(v, 3) for k, v in life.bodystate.as_dict().items()}, "words": desc.words,
               "derived": desc.derived, "derived_words": desc.derived_words},

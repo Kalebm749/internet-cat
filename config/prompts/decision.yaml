@@ -20,6 +20,10 @@ system: |
 
 time: "It is {part_of_day}, {clock}. The weather is {weather}."
 place: "You are at {location}. {description}"
+stay: "You have been here for about {hours} hours."
+exit_never: "you have never been there"
+exit_recent: "you were just there"
+exit_ago: "last there {hours} hours ago"
 visible: "You can see:\n{lines}"
 perception: "Just now:\n{lines}"
 body: "Your body:\n{lines}"

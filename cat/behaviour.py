@@ -83,7 +83,7 @@ def _aimless(rows: list[sqlite3.Row], content: Content, dest: str, now: str, hal
 
 
 def freshness(conn: sqlite3.Connection, content: Content, tuning: dict, action: ActionSpec, inputs: dict | None,
-              now: str, facts: dict) -> Freshness:
+              now: str, facts: dict, location: str | None = None) -> Freshness:
     """How fresh doing this would be now. `inputs` None: judged without its target (for the menu)."""
     rp = tuning["repetition"]
     hl = float(rp["half_life_minutes"])
@@ -104,8 +104,13 @@ def freshness(conn: sqlite3.Connection, content: Content, tuning: dict, action: 
             parts["family"] += w
     if action.builtin == "move" and inputs and "to" in inputs:
         parts["aimless"] = _aimless(rows, content, inputs["to"], now, hl)
+    if location and not action.builtin:
+        # a long stay in one place: everything here slowly goes stale (moving on stays fresh)
+        parts["place"] = sum(_decay(_minutes(r["ended_at"] or r["started_at"], now), hl)
+                             for r in rows if r["location"] == location and r["action_id"] not in _builtins(content))
     value = 1 - (rp["w_action"] * parts["action"] + rp["w_family"] * parts["family"]
-                 + rp["w_target"] * parts["target"] + rp["w_aimless"] * parts["aimless"])
+                 + rp["w_target"] * parts["target"] + rp["w_aimless"] * parts["aimless"]
+                 + rp["w_place"] * parts.get("place", 0.0))
     restart = None
     if sig is not None:
         for r in reversed(same_action):
@@ -119,6 +124,23 @@ def freshness(conn: sqlite3.Connection, content: Content, tuning: dict, action: 
         parts["restart"] = 1.0
     return Freshness(value=round(max(rp["freshness_min"], min(1.0, value)), 4),
                      parts={k: round(v, 4) for k, v in parts.items()}, revisit_changed=changed, restart_of=restart)
+
+
+def _builtins(content: Content) -> set[str]:
+    return {a.id for a in content.actions.values() if a.builtin}
+
+
+def stay_and_visits(conn: sqlite3.Connection, content: Content, location: str, now: str) -> tuple[float, dict[str, float]]:
+    """(sim minutes at this place since arriving, {other place: sim minutes since it was last there})."""
+    arrived = now
+    for r in conn.execute("SELECT location, started_at FROM activities WHERE status != 'rejected' ORDER BY started_at DESC, id DESC"):
+        if r["location"] != location:
+            break
+        arrived = r["started_at"]                     # the stay began with the first of the recent run of things here
+    last = {r[0]: _minutes(r[1], now) for r in conn.execute(
+        "SELECT location, MAX(ended_at) FROM activities WHERE status = 'finished' AND ended_at IS NOT NULL "
+        "GROUP BY location") if r[0] != location}
+    return _minutes(arrived, now), last
 
 
 def repetition_score(conn: sqlite3.Connection, n: int) -> float:
