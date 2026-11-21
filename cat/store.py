@@ -209,6 +209,17 @@ MIGRATIONS: list[list[str]] = [
         )""",
         "CREATE INDEX idx_artifacts_root ON artifacts(root_id)",
     ],
+    [  # 10: what each action was about, in the creature's own words, with an embedding (subject novelty, §6.6)
+        """CREATE TABLE subjects (
+            id          INTEGER PRIMARY KEY,
+            activity_id INTEGER,
+            action_id   TEXT NOT NULL,
+            sim_time    TEXT NOT NULL,
+            text        TEXT NOT NULL,
+            embedding   BLOB
+        )""",
+        "CREATE INDEX idx_subjects_time ON subjects(sim_time)",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

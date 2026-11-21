@@ -233,7 +233,8 @@ class Loop:
                              repetition=behaviour.repetition_score(self.conn, self.t["repetition"]["recent"]),
                              seed=f"{self.seed}|{now}", capability_ok=self.exec.capability_ok,
                              notes=self._notes(), core_memories=memories.core_texts(self.conn),
-                             count_done=self.exec.count_done)
+                             count_done=self.exec.count_done,
+                             dwelling=behaviour.dwelling(self.conn, self.life.sim_time, self.t))
         self.exec.perception = []
         self.scheduler.started(due, now, self.life.sim_time)
         t0 = self.clock()
@@ -258,6 +259,7 @@ class Loop:
             rep.result = self.exec.start(d, did)
             lifemod.save(self.conn, self.life)
         if rep.result.get("status") == "started":
+            self._record_subject(d, rep.result.get("activity_id"))
             self._prepare_running_activity()
         tvec = memories.embed(self.backend, self.t["models"]["embed_model"], [d.thought])[0] \
             if d.thought and not d.fallback else None
@@ -320,6 +322,11 @@ class Loop:
         if self.life.bodystate.energy <= 0.2 and decision.action != "sleep" and mind.option("sleep"):
             return ["Your energy is critically low. Sleep is available and restores energy; reconsider before continuing."]
         threshold = self.t["repetition"]["note_below"]
+        subject = behaviour.subject_text(action, decision.inputs)
+        if subject:                                          # the same subject in new words (§6.6)
+            found = behaviour.echoes(self.conn, self._subject_vec(subject), self.life.sim_time, self.t)
+            if found and behaviour.subject_freshness(found, self.t) < threshold:
+                return [self.prompts["subject_repeat"].format(count=len(found), example=found[0].text)]
         selected = behaviour.freshness(self.conn, self.life.content, self.t, action, decision.inputs,
                                        self.life.sim_time, self.life.world.values)
         if selected.value >= threshold:
@@ -341,6 +348,38 @@ class Loop:
         return [f"You chose {action.name}, whose freshness is low ({selected.value:.2f}). "
                 f"Other available actions have felt fresher: {alternatives}. Repeating may still matter; "
                 "if something has changed, say what. Otherwise reconsider and choose a different action."]
+
+    def _subject_vec(self, text: str):
+        """The embedding of a subject (cached: the reconsider guard and the record use the same words)."""
+        cache = self.__dict__.setdefault("_subjects", {})
+        if text not in cache:
+            if len(cache) > 64:
+                cache.clear()
+            cache[text] = memories.embed(self.backend, self.t["models"]["embed_model"], [text])[0]
+        return cache[text]
+
+    def _record_subject(self, d: Decision, activity_id: int | None) -> None:
+        """Remember what this activity is about; a subject close to recent ones makes it less fresh (§6.6)."""
+        action = self.life.content.actions.get(d.action)
+        text = behaviour.subject_text(action, d.inputs) if action else None
+        if not text or activity_id is None:
+            return
+        vec = self._subject_vec(text)
+        found = behaviour.echoes(self.conn, vec, self.life.sim_time, self.t)
+        sf = behaviour.subject_freshness(found, self.t)
+        with store.transaction(self.conn):
+            self.conn.execute("INSERT INTO subjects(activity_id, action_id, sim_time, text, embedding) "
+                              "VALUES (?, ?, ?, ?, ?)",
+                              (activity_id, d.action, self.life.sim_time, text, memories.to_blob(vec)))
+            row = self.conn.execute("SELECT freshness, repeat_parts FROM activities WHERE id = ?",
+                                    (activity_id,)).fetchone()
+            if row is not None and sf < row["freshness"]:
+                parts = json.loads(row["repeat_parts"] or "{}")
+                parts["subject"] = {"freshness": sf, "close_to": [e.text for e in found[:3]]}
+                self.conn.execute("UPDATE activities SET freshness = ?, repeat_parts = ? WHERE id = ?",
+                                  (sf, json.dumps(parts, ensure_ascii=False), activity_id))
+                if self.exec.running is not None and self.exec.running.id == activity_id:
+                    self.exec.running.freshness = sf
 
     def _thought(self, decision_id: int, text: str, vec) -> None:
         """Store the thought; a near-duplicate of a recent one costs a little mood and is noticed (§6.4)."""

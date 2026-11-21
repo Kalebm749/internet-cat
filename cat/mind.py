@@ -39,6 +39,8 @@ class Mind:
     letters: list[dict]
     identity: dict
     options: list[Option]
+    learned: list[str] = field(default_factory=list)     # things it chose to keep from reading, in its words (§6.6)
+    dwelling: list[str] = field(default_factory=list)    # its own words for a subject it keeps returning to (§6.6)
 
     def option(self, action_id: str) -> Option | None:
         return next((o for o in self.options if o.id == action_id), None)
@@ -186,6 +188,37 @@ def letters_on_mind(life: Life, tuning: dict) -> list[dict]:
     return out
 
 
+def learned_on_mind(life: Life, tuning: dict, seed: Any = 0) -> list[str]:
+    """What it chose to keep from its reading, in its own words: the newest, and one older one that comes back to
+    mind now and then (so learning seeds new thoughts instead of disappearing into a list)."""
+    key = life.content.world.get("learned")
+    m = tuning["memory"]
+    if not key or m["learned_k"] == 0:
+        return []
+    now = clock.parse(life.sim_time)
+    kept = []
+    for it in life.world.get(key):
+        if not isinstance(it, dict) or it.get("status") != "kept":
+            continue
+        when = it.get("reviewed_at") or it.get("read_at")
+        if when and (now - clock.parse(when)).total_seconds() / 86400 > m["learned_days"]:
+            continue
+        words = (it.get("summary") or "").strip()
+        meaning = (it.get("meaning") or "").strip()
+        text = f"{it.get('title', '')}: {words}" + (f" (what it means to you: {meaning})" if meaning else "")
+        if len(text) > m["learned_chars"]:
+            text = text[: m["learned_chars"] - 3].rstrip() + "..."
+        kept.append(text)
+    if not kept:
+        return []
+    out = [kept[-1]]
+    older = kept[:-1]
+    if older and m["learned_k"] > 1:
+        hour = life.sim_time[:13]
+        out.append(older[random.Random(f"{seed}|{hour}").randrange(len(older))])
+    return out[: m["learned_k"]]
+
+
 def _trait_words(traits: dict[str, float]) -> list[str]:
     out = []
     for name, v in sorted(traits.items(), key=lambda kv: -kv[1]):
@@ -209,7 +242,7 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
           memories: list[str] | None = None, repetition: float = 0.0, seed: Any = 0,
           notes: Callable[[ActionSpec], list[str]] | None = None,
           capability_ok: Callable[[str], bool] | None = None, core_memories: list[str] | None = None,
-          count_done: Callable[[str, float], int] | None = None) -> Mind:
+          count_done: Callable[[str, float], int] | None = None, dwelling: list[str] | None = None) -> Mind:
     rng = random.Random(f"{seed}|{life.sim_time}")
     now = clock.parse(life.sim_time)
     loc = life.content.locations[life.location]
@@ -229,4 +262,6 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
         identity=identity_block(life, core_memories),
         options=build_options(life, known, last_done or {}, rng, notes, capability_ok, count_done,
                               float(tuning.get("time_scale", 24))),
+        learned=learned_on_mind(life, tuning, seed),
+        dwelling=list(dwelling or [])
     )

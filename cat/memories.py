@@ -120,12 +120,25 @@ def recency(half_life_days: float, then: str, now: str) -> float:
     return 0.5 ** (age_days / half_life_days)
 
 
+def _minutes_since(then: str | None, now: str) -> float | None:
+    if not then:
+        return None
+    return max(0.0, (clock.parse(now) - clock.parse(then)).total_seconds() / 60)
+
+
 def score(mem: Memory, query: np.ndarray | None, now: str, m: dict) -> dict:
-    rec = recency(m["recency_half_life_days"], mem.last_recalled or mem.created_at, now)
+    """Recency is how long ago the memory was *formed*: being recalled must not keep a memory fresh, or the same
+    few memories fill every prompt and become everything the creature thinks about. A memory that was on its mind
+    in the last `recall_rest_minutes` rests (its score is damped), so others get their turn."""
+    rec = recency(m["recency_half_life_days"], mem.created_at, now)
     rel = cosine(mem.embedding, query) if query is not None else 0.0
     total = m["w_recency"] * rec + m["w_importance"] * mem.importance + m["w_relevance"] * rel
+    since = _minutes_since(mem.last_recalled, now)
+    resting = since is not None and since < m["recall_rest_minutes"]
+    if resting:
+        total *= m["recall_rest_factor"]
     return {"id": mem.id, "text": mem.text, "recency": rec, "importance": mem.importance, "relevance": rel,
-            "score": total}
+            "resting": resting, "score": total}
 
 
 def recall(conn: sqlite3.Connection, tuning: dict, query_vec: list[float] | None, now: str) -> list[dict]:
@@ -149,8 +162,22 @@ def recall(conn: sqlite3.Connection, tuning: dict, query_vec: list[float] | None
             continue
         selected.append(candidate)
         selected_items.append(item)
-        if len(selected) >= m["recall_k"]:
+        if len(selected) >= m["recall_k"] - m["wander_slots"]:
             break
+    # a mind wanders: the remaining slots go to important memories it has not thought about for a long while
+    chosen = {s["id"] for s in selected}
+    idle = []
+    for item in items:
+        if item.id in chosen:
+            continue
+        since = _minutes_since(item.last_recalled, now)
+        idle_min = since if since is not None else _minutes_since(item.created_at, now) or 0.0
+        if idle_min >= m["wander_after_minutes"]:
+            idle.append((item.importance * min(1.0, idle_min / (4 * m["wander_after_minutes"])), item))
+    idle.sort(key=lambda x: -x[0])
+    for weight, item in idle[: max(0, m["recall_k"] - len(selected))]:
+        selected.append({"id": item.id, "text": item.text, "recency": 0.0, "importance": item.importance,
+                         "relevance": 0.0, "resting": False, "wandered": True, "score": weight})
     return selected
 
 

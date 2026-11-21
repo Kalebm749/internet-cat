@@ -125,6 +125,13 @@ nit:
     recall_boost: 0.2            # retention = importance x recency x (1 + recalls x boost)
     forget_below: 0.05           # stage 7 forgets long-term memories whose retention falls below this
     dup_threshold: 0.92          # stage 7 merges memories this similar
+    recall_rest_minutes: 90      # SIM minutes a memory rests after being on its mind (so others get their turn) ...
+    recall_rest_factor: 0.3      # ... its recall score is multiplied by this while it rests
+    wander_slots: 1              # recall slots kept for an important memory not thought about for a while ...
+    wander_after_minutes: 360    # ... at least this many SIM minutes
+    learned_k: 2                 # things it kept from reading shown in the Mind (the newest, and one older one) ...
+    learned_days: 14             # ... kept within this many SIM days
+    learned_chars: 240           # each shortened to this many characters
   repetition:                    # §6: behaviour history and freshness
     half_life_minutes: 120       # SIM minutes: how fast a past instance stops counting as a repeat
     w_action: 0.25               # freshness = 1 - w_action x same action - w_family x same family
@@ -143,3 +150,8 @@ nit:
     reflection_window: 5         # a night's summary is compared with this many earlier ones
     reflection_dup_threshold: 0.9
     reflection_dup_mood: -0.03   # x the number of nights in a row it repeated itself
+    subject_floor: 0.72          # §6.6: subjects at least this similar (embeddings) count as the same subject ...
+    subject_weight: 0.45         # ... and lower freshness by weight x decayed closeness
+    subject_half_life_minutes: 480   # SIM minutes: a subject stays "recent" longer than an action does
+    subject_window: 14           # recent subjects compared
+    dwell_min: 3                 # this many close subjects recently: the Mind says it keeps coming back to it

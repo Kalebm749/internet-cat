@@ -78,6 +78,8 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
   `WorldState.append_raw` (never templated), and can be acted on only through the normal menu.
 - The engine is the only writer of `nit.db`; `cat/web` and `cat/devdash` open it with `store.open_readonly` (never an
   unmigrated life) and never call a model. The website's only write is `data/mail.db` (`cat/mail.py`).
+- **Repetition is about subjects too** (spec §6.6): recall must not feed on itself (recency = when formed; recently
+  recalled memories rest), actions declare `subject` in content, and only the creature's own words are compared.
 - Everything must run and be tested with `MockBackend`; never require Ollama in tests.
 - Adding to the content schema, a condition, an op or a capability: update the spec, the validator in
   `cat/content.py` (every problem with file:line) and the tests together.
