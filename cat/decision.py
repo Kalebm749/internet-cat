@@ -32,6 +32,7 @@ PROMPTS_PATH = CONFIG_DIR / "prompts" / "decision.yaml"
 PROMPT_FIELDS = {
     "system": {"name", "nature", "senses", "abilities", "traits", "tendencies", "background", "boundaries", "core"},
     "core": {"lines"}, "note_liked": set(), "note_disliked": set(), "note_repeated": set(),
+    "learned": {"lines"}, "dwelling": {"lines"}, "subject_repeat": {"count", "example"},
     "time": {"part_of_day", "clock", "weather"},
     "place": {"location", "description"},
     "visible": {"lines"}, "perception": {"lines"}, "body": {"lines"}, "recent": {"lines"},
@@ -143,7 +144,7 @@ def _ask(mind: Mind, kind: str, p: dict) -> str:
 
 
 def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories: list[str],
-                visible: list[str], perception: list[str]) -> str:
+                visible: list[str], perception: list[str], learned: list[str] | None = None) -> str:
     parts = [p["time"].format(part_of_day=mind.now["part_of_day"], clock=mind.now["sim_time"][-5:],
                               weather=mind.now["weather"] or "unknown"),
              p["place"].format(location=mind.location["name"], description=mind.location["description"])]
@@ -161,6 +162,11 @@ def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories:
         parts.append(p["recent"].format(lines=_lines([r["text"] for r in recent])))
     if memories:
         parts.append(p["memories"].format(lines=_lines(memories)))
+    learned = mind.learned if learned is None else learned
+    if learned:
+        parts.append(p["learned"].format(lines=_lines(learned)))
+    if mind.dwelling:
+        parts.append(p["dwelling"].format(lines=_lines([f'"{d}"' for d in mind.dwelling])))
     if mind.letters:
         parts.append(p["letters"].format(lines="\n".join(p["letter"].format(**{k: l[k] for k in ("id", "sender", "text")})
                                                         for l in mind.letters)))
@@ -178,15 +184,18 @@ def messages(mind: Mind, kind: str, p: dict, budget: int) -> tuple[list[dict], l
     """The prompt, shortened to the token budget: older recent activities first, then the least relevant
     memories, then what is visible, then older perceptions. The options are never dropped."""
     sysm = system_prompt(mind, p)
-    recent, memories = list(mind.recent), list(mind.memories)
+    recent, memories, learned = list(mind.recent), list(mind.memories), list(mind.learned)
     visible, perception = list(mind.location["visible_facts"]), list(mind.perception)
     dropped: list[str] = []
     while True:
-        user = user_prompt(mind, kind, p, recent=recent, memories=memories, visible=visible, perception=perception)
+        user = user_prompt(mind, kind, p, recent=recent, memories=memories, visible=visible, perception=perception,
+                           learned=learned)
         if tokens(sysm) + tokens(user) <= budget:
             break
         if recent:
             dropped.append("recent: " + recent.pop(0)["text"])
+        elif learned:
+            dropped.append("learned: " + learned.pop())
         elif memories:
             dropped.append("memory: " + memories.pop())
         elif visible:
