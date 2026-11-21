@@ -11,6 +11,7 @@ facts:
   mailbox: {type: list, default: [], max_len: 50, visible: summary}     # visitor letters: unread / read. Open-ended:
                                                                         # read, unanswered ones stay on Nit's mind (§4.8)
   answered: {type: list, default: [], max_len: 200, visible: summary}   # the answered pile (§4.8)
+  discarded: {type: list, default: [], max_len: 200, visible: summary} # read letters Nit chose not to answer
 
 events:
   - {id: bread_smell, text: "The smell of warm bread drifts from the stall.", sense: smell,
@@ -56,7 +57,7 @@ actions:
       world:
         - {op: update_where, fact: market.mailbox, match: {id: "{inputs.which}", status: unread},
            set: {status: read, read_at: "{now}"}}
-      discover: [reply_message]
+      discover: [reply_message, discard_message]
       remember: {importance: 0.7, text: "I read a message from {capability.sender}: {capability.summary}"}
 
   - id: reply_message
@@ -79,3 +80,21 @@ actions:
            set: {status: answered, reply: "{inputs.reply}", answered_at: "{now}"}}
       creature: {mood: 0.05}
       remember: {importance: 0.6, text: "I wrote a reply to a message: {inputs.reply}"}
+
+  - id: discard_message
+    diary: "{name} is setting a letter aside"
+    name: discard a letter without replying
+    description: "Decide whether this letter merits a reply. If you do not want to answer it, set it aside."
+    family: mail
+    discovery: hidden
+    requires:
+      - {fact_count_where: [market.mailbox, {status: read}, 1]}
+    inputs:
+      which: {type: choice, options: "{fact:market.mailbox.read.labels}"}
+    duration: {minutes: [2, 6]}
+    effort: low
+    on_finish:
+      world:
+        - {op: move_where, from: market.mailbox, to: market.discarded, match: {id: "{inputs.which}"},
+           set: {status: discarded, discarded_at: "{now}"}}
+      remember: {importance: 0.45, text: "I decided not to write back to a letter and set it aside."}

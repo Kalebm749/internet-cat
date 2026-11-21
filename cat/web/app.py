@@ -84,7 +84,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             key = content.world.get("mailbox")
             if life_conn and key:
                 location = key.split(".", 1)[0]
-                for fact_key in (key, f"{location}.answered"):
+                for fact_key in (key, f"{location}.answered", f"{location}.discarded"):
                     row = life_conn.execute("SELECT value FROM facts WHERE key = ?", (fact_key,)).fetchone()
                     if row:
                         for item in json.loads(row[0]):
@@ -95,10 +95,12 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             for item in incoming:
                 saved = records.get(mail.letter_key(item["id"]), {})
                 replied = saved.get("status") == "answered" and isinstance(saved.get("reply"), str)
+                discarded = saved.get("status") == "discarded"
                 result.append({"id": item["id"], "received_at": item["received_at"], "sender": item["sender"],
                                "text": item["text"], "reply": saved.get("reply") if replied else None,
                                "answered_at": saved.get("answered_at") if replied else None,
-                               "status": "answered" if replied else "unanswered"})
+                               "discarded_at": saved.get("discarded_at") if discarded else None,
+                               "status": "answered" if replied else "discarded" if discarded else "unanswered"})
             return result
         finally:
             if life_conn:
