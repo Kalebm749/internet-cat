@@ -23,7 +23,7 @@ actions:
     family: rest
     discovery: known_on_arrival
     requires:
-      - {hunger_lte: 0.4}
+      - {hunger_lte: 0.39}
       - {done_fewer_than: {action: sit_and_reflect, times: 2, hours: 6}}
     duration: {minutes: [10, 30]}
     continuous: true
