@@ -280,7 +280,7 @@ def identity_block(life: Life, core_memories: list[str] | None = None) -> dict:
             "boundaries": core.get("boundaries") or [], "traits": _trait_words(s.get("traits") or {}),
             "tendencies": [t for t, _ in sorted((s.get("tendencies") or {}).items(), key=lambda kv: -kv[1])]
             + [i["text"] for k in ("habits", "fears", "interests") for i in (s.get("acquired") or {}).get(k, [])]
-            + [f"hold that {h['text'][0].lower() + h['text'][1:]}" for h in (s.get("holds") or [])],
+            ,                                     # what it holds to acts on what reaches it, not on what it is told (spec §13)
             "background": s.get("background", ""), "core_memories": list(core_memories or [])}
 
 
