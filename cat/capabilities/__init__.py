@@ -45,6 +45,7 @@ class CapabilityResult:
     creature: dict = field(default_factory=dict)            # extra creature effects
     inner: dict = field(default_factory=dict)               # extra inner effects (needs and affect, cat/inner.py)
     external: bool | None = None                            # override handler default for this particular result
+    unavailable: bool = False                               # the outside world did not answer: not the creature's failure
 
 
 class Capability(Protocol):
@@ -88,6 +89,8 @@ class Registry:
     def available(self, conn: sqlite3.Connection, name: str, day: str) -> tuple[bool, str]:
         if name not in self.handlers:
             return False, "disabled"
+        if getattr(self.handlers[name], "unavailable_now", lambda: False)():
+            return False, "the outside is not answering"
         lim = self.limit(name)
         if lim is not None and self.uses(conn, name, day) >= lim:
             return False, f"used {lim} times today"

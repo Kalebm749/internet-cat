@@ -38,7 +38,7 @@ WORLD_TEXT_FIELDS = {
     "arrive": {"location"}, "inspect_found": {"hint", "name"}, "inspect_nothing": set(), "discovered": {"name"},
     "finished": {"name"}, "interrupted": {"name"}, "rejected": {"name", "reason"}, "fall_asleep": set(),
     "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_reread": {"sender", "text", "reply"}, "letter_gone": set(),
-    "capability_failed": set(), "same_thought": set(), "nothing_new": set(), "concern_back": {"text"}, **{f"belief_{k}_{o}": {"subject"} for k in ("effect", "place", "weather") for o in ("lift", "wear")},
+    "capability_failed": set(), "same_thought": set(), "nothing_new": set(), "terminal_dark": set(), "search_nothing": set(), "page_read": {"title", "text"}, "concern_back": {"text"}, **{f"belief_{k}_{o}": {"subject"} for k in ("effect", "place", "weather") for o in ("lift", "wear")},
     "habit_line": {"what", "place", "band"}, "acquired_fear": {"statement"}, "acquired_interest": {"statement"},
     "belief_failure_self": {"subject"}, "belief_failure_world": {"subject"}, "starving_go": set(), "starving_restock": set(), "mail_arrived": set(),
     "wish_granted": {"wish", "note"}, "drawing_made": {"materials", "description"},
@@ -325,8 +325,9 @@ class Executor:
                 (decision_id, act, self.life.location, _dump(decision.inputs), self.life.sim_time,
                  self.life.sim_time, text))
             self.perception.append(text)
-            innermod.rejected(self.life.inner, self._temperament(), self.t["inner"])
-            self._inner_record()
+            if not (cap is not None and cap.unavailable):          # the outside not answering is not its failure
+                innermod.rejected(self.life.inner, self._temperament(), self.t["inner"])
+                self._inner_record()
             return {"status": "rejected", "activity_id": cur.lastrowid, "text": text}
         if self.running:
             self.interrupt(note=False)                      # replaced by the new action: no extra decision
