@@ -225,7 +225,7 @@ class Loop:
         t0 = self.clock()
         try:
             res = decisionmod.decide(self.backend, self.t["models"]["decision_model"], mind, due.kind, self.prompts,
-                                     self.t)
+                                     self.t, reconsider=lambda d: self._reconsider_stale_choice(mind, d))
         except BackendError as e:
             self.scheduler.finished()
             self.doze_until = self.clock() + float(self.t["loop"]["doze_seconds"])
@@ -283,6 +283,34 @@ class Loop:
                     out.append(self.prompts["note_repeated"])
             return out
         return notes
+
+    def _reconsider_stale_choice(self, mind, decision: Decision) -> list[str]:
+        """Offer one prompt-level loop break when Nit picks a stale action despite fresh alternatives."""
+        action = self.life.content.actions.get(decision.action)
+        if action is None or decision.kind == "check_in":
+            return []
+        threshold = self.t["repetition"]["note_below"]
+        selected = behaviour.freshness(self.conn, self.life.content, self.t, action, decision.inputs,
+                                       self.life.sim_time, self.life.world.values)
+        if selected.value >= threshold:
+            return []
+        fresh = []
+        for option in mind.options:
+            if option.id == decision.action:
+                continue
+            candidate = self.life.content.actions.get(option.id)
+            if candidate is None:
+                continue
+            score = behaviour.freshness(self.conn, self.life.content, self.t, candidate, None,
+                                        self.life.sim_time, self.life.world.values)
+            if score.value >= threshold:
+                fresh.append(candidate.name)
+        if len(fresh) < 2:
+            return []
+        alternatives = ", ".join(fresh[:3])
+        return [f"You chose {action.name}, whose freshness is low ({selected.value:.2f}). "
+                f"Other available actions have felt fresher: {alternatives}. Repeating may still matter; "
+                "if something has changed, say what. Otherwise reconsider and choose a different action."]
 
     def _thought(self, decision_id: int, text: str, vec) -> None:
         """Store the thought; a near-duplicate of a recent one costs a little mood and is noticed (§6.4)."""

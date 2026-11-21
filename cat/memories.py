@@ -90,12 +90,29 @@ def last_wake(conn: sqlite3.Connection, sleep_ids: list[str]) -> str:
 
 
 def notable_today(conn: sqlite3.Connection, tuning: dict, since: str) -> list[str]:
-    """Today's notable moments (since it last woke), newest last."""
+    """Today's notable moments, with near-duplicate thoughts collapsed, newest last."""
     m = tuning["memory"]
+    if m["notable_k"] == 0:
+        return []
     rows = conn.execute(
-        "SELECT text FROM experiences WHERE sim_time >= ? AND (remember = 1 OR importance >= ?) "
-        "ORDER BY id DESC LIMIT ?", (since, m["notable_min_importance"], m["notable_k"])).fetchall()
-    return [r[0] for r in reversed(rows)]
+        "SELECT e.text, t.embedding FROM experiences e "
+        "LEFT JOIN activities a ON a.id = e.activity_id "
+        "LEFT JOIN thoughts t ON t.decision_id = a.decision_id "
+        "WHERE e.sim_time >= ? AND (e.remember = 1 OR e.importance >= ?) "
+        "ORDER BY e.id DESC LIMIT ?", (since, m["notable_min_importance"], m["notable_k"] * 4)).fetchall()
+    threshold = tuning["repetition"]["thought_dup_threshold"]
+    selected: list[tuple[str, Any]] = []
+    for row in rows:
+        text, embedding = row["text"], from_blob(row["embedding"])
+        key = " ".join(text.casefold().split())
+        if any(key == " ".join(old.casefold().split()) or
+               (embedding is not None and old_vec is not None and cosine(embedding, old_vec) >= threshold)
+               for old, old_vec in selected):
+            continue
+        selected.append((text, embedding))
+        if len(selected) >= m["notable_k"]:
+            break
+    return [text for text, _ in reversed(selected)]
 
 
 def recency(half_life_days: float, then: str, now: str) -> float:
@@ -114,10 +131,27 @@ def score(mem: Memory, query: np.ndarray | None, now: str, m: dict) -> dict:
 def recall(conn: sqlite3.Connection, tuning: dict, query_vec: list[float] | None, now: str) -> list[dict]:
     """The best long-term memories for this moment (scored; core memories are part of identity, not recalled)."""
     m = tuning["memory"]
+    if m["recall_k"] == 0:
+        return []
     q = None if query_vec is None else np.asarray(query_vec, dtype=np.float32)
-    scored = [score(x, q, now, m) for x in all_memories(conn, "long")]
+    items = all_memories(conn, "long")
+    by_id = {item.id: item for item in items}
+    scored = [score(x, q, now, m) for x in items]
     scored.sort(key=lambda s: -s["score"])
-    return scored[: m["recall_k"]]
+    selected: list[dict] = []
+    selected_items: list[Memory] = []
+    threshold = m["dup_threshold"]
+    for candidate in scored:
+        item = by_id[candidate["id"]]
+        if any(" ".join(item.text.casefold().split()) == " ".join(old.text.casefold().split()) or
+               (item.embedding is not None and old.embedding is not None and
+                cosine(item.embedding, old.embedding) >= threshold) for old in selected_items):
+            continue
+        selected.append(candidate)
+        selected_items.append(item)
+        if len(selected) >= m["recall_k"]:
+            break
+    return selected
 
 
 def mark_recalled(conn: sqlite3.Connection, ids: list[int], now: str) -> None:

@@ -39,4 +39,4 @@ note_repeated: "you have done this a lot lately"
 ask_full: "Choose one action by its id."
 ask_interrupt: 'You are in the middle of {activity}. Answer "continue" to carry on, or choose another action by its id.'
 ask_check_in: 'You have been {activity} for {elapsed} minutes. Answer "continue" to carry on or "stop" to stop.'
-retry: "That answer could not be used: {problems}. Answer again, with JSON only."
+retry: "Take another look: {problems}. Reconsider your answer and respond with JSON only."

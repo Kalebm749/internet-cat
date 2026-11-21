@@ -16,7 +16,7 @@ import json
 import string
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -317,7 +317,8 @@ def fallback(mind: Mind, kind: str) -> Decision:
     return Decision(kind=kind, action=action, fallback=True)
 
 
-def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict, tuning: dict) -> Result:
+def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict, tuning: dict,
+           reconsider: Callable[[Decision], list[str]] | None = None) -> Result:
     """Ask the model for a decision. Retries invalid answers with their problems; falls back after the last.
     Raises BackendError when the backend itself fails (offline, timeout) on the final attempt."""
     if kind not in KINDS:
@@ -326,14 +327,18 @@ def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict
     sch = schema(mind, kind, tuning)
     attempts: list[dict] = []
     retries = tuning["decisions"]["retries"]
-    for attempt in range(1, retries + 2):
+    reconsidered = False
+    # One additional attempt is reserved for a behavioral reconsideration if its guard fires.
+    for attempt in range(1, retries + 3):
+        if attempt > retries + 1 + int(reconsidered):
+            break
         backend.last_call = None
         try:
             raw = backend.chat_json("decide", model, msgs, sch)
         except BackendError as e:
             _record(backend, "decide", model, attempt, None, str(e))
             attempts.append({"raw": None, "problems": [str(e)]})
-            if attempt == retries + 1:
+            if attempt >= retries + 1 + int(reconsidered):
                 raise
             continue
         try:
@@ -344,6 +349,16 @@ def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict
             msgs = msgs + [{"role": "assistant", "content": json.dumps(raw, ensure_ascii=False)},
                            {"role": "user", "content": prompts["retry"].format(problems="; ".join(e.problems))}]
             continue
+        if reconsider and not reconsidered:
+            problems = reconsider(dec)
+            if problems:
+                issue = "; ".join(problems)
+                _record(backend, "decide", model, attempt, raw, issue)
+                attempts.append({"raw": raw, "problems": problems})
+                msgs = msgs + [{"role": "assistant", "content": json.dumps(raw, ensure_ascii=False)},
+                               {"role": "user", "content": prompts["retry"].format(problems=issue)}]
+                reconsidered = True
+                continue
         _record(backend, "decide", model, attempt, raw, None)
         attempts.append({"raw": raw, "problems": []})
         return Result(dec, attempts, msgs, dropped)
