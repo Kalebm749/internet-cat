@@ -65,7 +65,7 @@ nit:
     decision_model: qwen3:4b     # waking decisions, check-ins, capability calls
     sleep_model: qwen3:14b       # sleep stages
     embed_model: nomic-embed-text
-    art_model: qwen3:4b          # keep drawing responsive; the 4B decision model is already loaded
+    art_model: qwen3:14b         # larger model for translating Nit's own drawing intention into an image
   decisions:                     # §3
     interval_seconds: 15         # REAL seconds between decisions while no activity runs (a target, never an interrupt)
     check_in_minutes: 30         # SIM minutes an activity runs before a short "continue or stop?" check-in

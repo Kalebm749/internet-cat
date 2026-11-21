@@ -1,9 +1,9 @@
 """Carrying out decisions (docs/rewrite-contracts.md §4.5, §4.7): activities, the builtin actions, outcomes,
 consequences, events and the passing of time.
 
-    prepare(action, inputs)   outside the transaction: run the action's capability, if any
-    start(decision, ...)      inside: check the action can still happen, then start it (or reject it, or
+    start(decision, ...)      inside: check the action can still happen, then persist it as running (or reject,
                               continue / stop / idle); a new action interrupts the running one
+    prepare_running()         outside the transaction: run its capability, if any, while the running row is visible
     advance(minutes)          inside: pass sim time in steps: regrowth, the body, events, and the running
                               activity's end (or waking up)
 
@@ -193,6 +193,30 @@ class Executor:
                          sim_time=self.life.sim_time, texts=self.texts, backend=self.backend, tuning=self.t)
         return self.registry.run(a.capability, ctx, decision.inputs)
 
+    def prepare_running(self) -> CapabilityResult | None:
+        """Run a capability after its activity has been committed as running for live status views."""
+        r = self.running
+        if r is None or not r.action.capability or r.cap is not None:
+            return None
+        ctx = CapContext(content=self.c, facts=self.life.world.values, location=self.life.location,
+                         sim_time=self.life.sim_time, texts=self.texts, backend=self.backend, tuning=self.t)
+        return self.registry.run(r.action.capability, ctx, r.inputs)
+
+    def attach_capability(self, cap: CapabilityResult) -> None:
+        """Persist a completed capability result on the already-visible running activity."""
+        if self.running is None:
+            return
+        if not cap.ok:
+            text = self.texts["rejected"].format(name=self.running.action.name, reason=cap.text)
+            self.perception.append(text)
+            self._close("rejected", text, [], {"capability_failed": True}, note=False)
+            return
+        self.running.cap = asdict(cap)
+        self.conn.execute("UPDATE activities SET capability = ? WHERE id = ? AND status = 'running'",
+                          (_dump(self.running.cap), self.running.id))
+        if cap.text:
+            self.perception.append(cap.text)
+
     # ---------------------------------------------------------------- inside the transaction
 
     def start(self, decision: Decision, decision_id: int | None, cap: CapabilityResult | None = None) -> dict:
@@ -230,8 +254,9 @@ class Executor:
         else:
             planned = float(round(self.rng.uniform(*a.duration)))      # whole sim minutes
         capd = None
-        if cap is not None:
+        if a.capability:
             self.registry.record_use(self.conn, a.capability, self.day())
+        if cap is not None:
             capd = asdict(cap)
             if cap.text:
                 self.perception.append(cap.text)

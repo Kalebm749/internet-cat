@@ -16,7 +16,7 @@ events: []
 
 actions:
   - id: make_drawing
-    diary: "{name} is drawing: {inputs.intention}"
+    diary: "{name} is drawing a picture: {inputs.intention}"
     name: make a drawing
     description: "Choose for yourself what you want to draw, then spend some time at the desk making it."
     family: art
@@ -64,7 +64,7 @@ actions:
       remember: { importance: 0.55, text: "I spent time studying a drawing in the art room and formed my own thoughts about it." }
 
   - id: work_on_drawing
-    diary: "{name} is revisiting a drawing: {inputs.intention}"
+    diary: "{name} is reworking a picture: {inputs.intention}"
     name: work on an existing drawing
     description: "Return to a drawing and decide for yourself whether to change, extend, or leave it as it is."
     family: art

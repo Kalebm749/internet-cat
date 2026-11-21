@@ -9,6 +9,7 @@
   {% elif e.kind == "event" %}<p class="event-entry">{{ e.text }}</p>
   {% else %}
     {% if e.thought %}<p class="thought">{{ e.thought }}</p>{% endif %}
+    {% if e.artwork_id %}<a class="journal-art" href="/artwork/{{ e.artwork_id }}"><img src="/artwork/image/{{ e.artwork_id }}.svg" alt="Drawing made by Nit"></a>{% endif %}
     <p class="what"><b>{{ e.line }}.</b> <span class="hint">{{ e.text }}</span>{% if e.answered_letter %} <span class="tag">because of a letter</span>{% endif %}</p>
   {% endif %}
 </li>{% endif %}

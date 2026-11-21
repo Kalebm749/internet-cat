@@ -28,8 +28,8 @@
     <article class="card now" id="now">
       {% if now %}
         <h2>Now</h2>
-        <p class="doing" id="doing">
-          {% if now.asleep %}Asleep.{% elif now.doing %}{{ now.doing.name | capitalize }}.{% else %}Between things.{% endif %}
+        <p class="doing" id="doing"{% if now.doing %} data-activity-id="{{ now.doing.id }}" data-line="{{ now.doing.line }}"{% endif %}>
+          {% if now.asleep %}Asleep.{% elif now.doing %}{{ now.doing.line }}.{% else %}Between things.{% endif %}
         </p>
         {% if now.thought and not now.asleep %}<blockquote class="thought" id="thought">{{ now.thought.text }}</blockquote>{% endif %}
         <div class="meters" id="meters">
@@ -64,6 +64,7 @@
     <article class="card">
       <h2>Diary</h2>
       <ol class="diary" id="diary">
+        {% if now and now.doing %}<li class="entry current" id="current-action" data-activity-id="{{ now.doing.id }}" data-line="{{ now.doing.line }}"><p class="when">In progress</p><p class="what"><b>{{ now.doing.line }}.</b></p></li>{% endif %}
         {% for e in diary %}{% include "_entry.html" %}{% endfor %}
       </ol>
       {% if next %}<p class="more"><a href="/?before={{ next | urlencode }}#diary" id="older" data-next="{{ next }}">Older</a></p>{% endif %}

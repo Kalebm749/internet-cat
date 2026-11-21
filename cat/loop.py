@@ -5,8 +5,8 @@ Each step:
      the running activity's end                                                   (one transaction)
   2. if a decision is due (cat/scheduler.py): build the Mind, ask the decision model    (no transaction)
   3. the time spent thinking passes (the clock keeps running while it thinks)    (one transaction)
-  4. run the chosen action's capability, if any                                  (no transaction)
-  5. record the decision and act on it                                           (one transaction)
+  4. record the decision and start the chosen action                             (one transaction)
+  5. run its capability, if any, while the running activity remains visible      (no transaction)
 If the model fails (Ollama down), the creature dozes: no decisions for `doze_seconds`, while time and any
 running activity go on. The clock is injectable, so tests and `--fast` runs drive real time themselves.
 """
@@ -191,9 +191,41 @@ class Loop:
         log.info("%d new letter(s) in the mailbox", len(rows))
         return len(rows)
 
+    def _prepare_running_activity(self) -> None:
+        """Finish a capability after its running row is visible, keeping engine health fresh while it works."""
+        running = self.exec.running
+        if running is None or not running.action.capability or running.cap is not None:
+            return
+        stop = threading.Event()
+
+        def heartbeat_while_working():
+            while not stop.wait(10):
+                if self.cfg is not None:
+                    try:
+                        write_heartbeat(self.cfg.heartbeat_path)
+                    except OSError:
+                        log.warning("could not refresh heartbeat during %s", running.action.id, exc_info=True)
+
+        keepalive = threading.Thread(target=heartbeat_while_working, name="activity-heartbeat", daemon=True)
+        if self.cfg is not None:
+            keepalive.start()
+        try:
+            cap = self.exec.prepare_running()
+            if cap is not None:
+                with store.transaction(self.conn):
+                    self.exec.attach_capability(cap)
+                    lifemod.save(self.conn, self.life)
+        finally:
+            stop.set()
+            if keepalive.is_alive():
+                keepalive.join(timeout=1)
+
     def step(self) -> StepReport:
         if self.cfg is not None:
             write_heartbeat(self.cfg.heartbeat_path)
+        # A process may have restarted while a capability was being prepared. Resume it before
+        # passing sim time so the persisted activity cannot finish without its result.
+        self._prepare_running_activity()
         self._catch_up()
         self._sleep_cycle()
         self._import_mail()
@@ -238,15 +270,18 @@ class Loop:
         self.scheduler.finished()
         self._catch_up()                                                          # it thought; time passed
         d = res.decision
-        cap = self.exec.prepare(d)
-        tvec = memories.embed(self.backend, self.t["models"]["embed_model"], [d.thought])[0] \
-            if d.thought and not d.fallback else None
         with store.transaction(self.conn):
             did = self._record(due, d, res, mind, ms)
             memories.mark_recalled(self.conn, [r["id"] for r in recalled], self.life.sim_time)
+            rep.result = self.exec.start(d, did)
+            lifemod.save(self.conn, self.life)
+        if rep.result.get("status") == "started":
+            self._prepare_running_activity()
+        tvec = memories.embed(self.backend, self.t["models"]["embed_model"], [d.thought])[0] \
+            if d.thought and not d.fallback else None
+        with store.transaction(self.conn):
             if d.thought and not d.fallback:
                 self._thought(did, d.thought, tvec)
-            rep.result = self.exec.start(d, did, cap)
             lifemod.save(self.conn, self.life)
         rep.decision = d
         rep.sim_time = self.life.sim_time

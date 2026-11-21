@@ -52,12 +52,15 @@ blockquote.thought { border-left: 3px solid var(--accent); padding-left: 12px; m
 
 .diary { list-style: none; margin: 0; padding: 0; }
 .entry { padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.entry.current { border-left: 3px solid var(--accent); padding-left: 12px; }
 .entry .when { font-size: 13px; color: var(--ink-soft); margin: 0 0 .2em; }
 .entry .when time { font-weight: 600; color: var(--ink); }
 .entry .when b { font-weight: 600; color: var(--ink); }
 .entry .when .real { margin-left: 6px; opacity: .8; }
 .entry p { margin: .15em 0; }
 .entry .thought { font-size: 20px; }
+.journal-art { display: block; margin: .6rem 0; max-width: 360px; }
+.journal-art img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; background: #f7f2e8; border-radius: 6px; }
 .entry.event .event-entry { font-style: italic; color: var(--ink-soft); }
 .entry.night { background: color-mix(in srgb, var(--dusk) 10%, transparent); padding: 10px; border-radius: 8px; }
 .entry.rejected .what { color: var(--ink-soft); }

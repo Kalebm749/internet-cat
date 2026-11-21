@@ -70,7 +70,9 @@ def now(conn: sqlite3.Connection, content: Content, tuning: dict, heartbeat_age:
         "sim_time": st["sim_time"], "clock": st["sim_time"][-5:], "day": day_number(conn, st["sim_time"]),
         "part_of_day": clock.part_of_day(t), "weather": _j(weather[0]) if weather else None,
         "location": st["location"], "place": _place(content, st["location"]), "asleep": bool(st.get("asleep")),
-        "doing": ({"action": run["action_id"], "name": _name(content, run["action_id"]), "since": run["started_at"]}
+        "doing": ({"id": run["id"], "action": run["action_id"], "name": _name(content, run["action_id"]),
+                   "line": diary_line(content, sheet.get("name", "Nit"), run["action_id"], run["location"],
+                                      _j(run["inputs"], {}), "running"), "since": run["started_at"]}
                   if run else None),
         "body": {"mood": round(st["mood"], 3), "energy": round(st["energy"], 3), "hunger": round(st["hunger"], 3),
                  "words": desc.words, "derived": desc.derived, "derived_words": desc.derived_words},
@@ -117,6 +119,12 @@ def diary(conn: sqlite3.Connection, content: Content, before: str | None = None,
             "WHERE a.ended_at IS NOT NULL AND a.ended_at > ? AND a.ended_at < ? ORDER BY a.ended_at DESC, a.id DESC "
             "LIMIT ?", (lo, hi, limit + 1)):
         minutes = round((clock.parse(r["ended_at"]) - clock.parse(r["started_at"])).total_seconds() / 60)
+        action_spec = content.actions.get(r["action_id"])
+        cap_row = (conn.execute("SELECT capability FROM activities WHERE id = ?", (r["id"],)).fetchone()
+                   if action_spec and action_spec.capability == "draw" else None)
+        cap = _j(cap_row["capability"], {}) if cap_row else {}
+        artifact = cap.get("artifact") if isinstance(cap, dict) else None
+        artwork_id = artifact.get("id") if isinstance(artifact, dict) and artifact.get("type") == "drawing" else None
         rows.append({"kind": "activity", "id": f"a{r['id']}", "time": r["ended_at"], "status": r["status"],
                      "started": r["started_at"], "start_day": day_number(conn, r["started_at"]),
                      "start_clock": r["started_at"][-5:], "end_clock": r["ended_at"][-5:], "minutes": minutes,
@@ -125,6 +133,7 @@ def diary(conn: sqlite3.Connection, content: Content, before: str | None = None,
                      "place": _place(content, r["location"]), "text": r["text"],
                      "line": diary_line(content, name, r["action_id"], r["location"], _j(r["inputs"], {}), r["status"]),
                      "thought": r["thought"] or None,
+                     "artwork_id": artwork_id,
                      "answered_letter": bool(r["letter"])})
     for r in conn.execute("SELECT id, sim_time, text, location FROM experiences WHERE kind = 'event' AND sim_time > ? "
                           "AND sim_time < ? ORDER BY sim_time DESC, id DESC LIMIT ?", (lo, hi, limit + 1)):
