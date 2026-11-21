@@ -18,10 +18,11 @@ from typing import Any
 
 from cat.content import Content
 
-AUTHOR_KEYS = ("name", "pronoun", "core")
-MUTABLE_KEYS = ("traits", "tendencies", "background", "likes", "dislikes")
+AUTHOR_KEYS = ("name", "pronoun", "core", "temperament", "holds")
+MUTABLE_KEYS = ("traits", "tendencies", "background", "likes", "dislikes", "acquired")
 CHANGE_KINDS = ("add_trait", "adjust_trait", "remove_trait", "add_tendency", "adjust_tendency",
-                "remove_tendency", "background_note")
+                "remove_tendency", "background_note", "add_acquired", "drop_acquired")
+ACQUIRED = ("habits", "fears", "interests")      # what it has added to itself, each with the evidence it came from
 
 
 class IdentityError(ValueError):
@@ -53,10 +54,12 @@ def _plain(v: Any) -> Any:
 
 def seed_sheet(content: Content) -> dict:
     ch = content.character
-    sheet = {k: _plain(ch.get(k)) for k in AUTHOR_KEYS}
+    sheet = {k: _plain(ch.get(k)) for k in AUTHOR_KEYS if k not in ("temperament", "holds")}
+    sheet["temperament"] = _plain(ch.get("temperament") or {})
+    sheet["holds"] = _plain(ch.get("holds") or [])
     sheet.update({"traits": _plain(ch.get("traits") or {}), "tendencies": _plain(ch.get("tendencies") or {}),
                   "background": ch.get("background") or "", "likes": _plain(ch.get("likes") or {}),
-                  "dislikes": _plain(ch.get("dislikes") or {})})
+                  "dislikes": _plain(ch.get("dislikes") or {}), "acquired": {k: [] for k in ACQUIRED}})
     return sheet
 
 
@@ -127,7 +130,21 @@ def apply_change(sheet: dict, change: dict) -> dict:
         raise IdentityError(f"unknown change kind {kind!r}")
     new = copy.deepcopy(sheet)
     target = change.get("target")
-    if kind == "background_note":
+    if kind in ("add_acquired", "drop_acquired"):
+        value = change.get("value")
+        if target not in ACQUIRED or not isinstance(value, dict) or not value.get("key") or not value.get("text"):
+            raise IdentityError(f"{kind} needs a target in {ACQUIRED} and a value with key and text")
+        items = new.setdefault("acquired", {k: [] for k in ACQUIRED}).setdefault(target, [])
+        have = [i for i in items if i.get("key") == value["key"]]
+        if kind == "add_acquired":
+            if have:
+                raise IdentityError(f"'{value['key']}' is already among its {target}")
+            items.append({"key": value["key"], "text": value["text"], "since": change.get("since")})
+        else:
+            if not have:
+                raise IdentityError(f"'{value['key']}' is not among its {target}")
+            items[:] = [i for i in items if i.get("key") != value["key"]]
+    elif kind == "background_note":
         note = change.get("value")
         if not isinstance(note, str) or not note.strip():
             raise IdentityError("background_note needs a sentence")

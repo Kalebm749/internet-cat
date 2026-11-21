@@ -21,7 +21,8 @@ import sqlite3
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
-from cat import artifacts, behaviour, clock, conditions, knowledge, life as lifemod, memories, templating
+from cat import artifacts, behaviour, clock, conditions, inner as innermod, knowledge, life as lifemod, memories, \
+    people as peoplemod, projects as projectsmod, templating
 from cat.capabilities import CapabilityResult, CapContext, Registry
 from cat.content import ActionSpec
 from cat.decision import CONTINUE, IDLE, STOP, Decision, load_prompt_file
@@ -37,10 +38,12 @@ WORLD_TEXT_FIELDS = {
     "arrive": {"location"}, "inspect_found": {"hint", "name"}, "inspect_nothing": set(), "discovered": {"name"},
     "finished": {"name"}, "interrupted": {"name"}, "rejected": {"name", "reason"}, "fall_asleep": set(),
     "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_gone": set(),
-    "capability_failed": set(), "same_thought": set(), "nothing_new": set(), "starving_go": set(), "starving_restock": set(), "mail_arrived": set(),
+    "capability_failed": set(), "same_thought": set(), "nothing_new": set(), "concern_back": {"text"}, **{f"belief_{k}_{o}": {"subject"} for k in ("effect", "place", "weather") for o in ("lift", "wear")},
+    "habit_line": {"what", "place", "band"}, "acquired_fear": {"statement"}, "acquired_interest": {"statement"},
+    "belief_failure_self": {"subject"}, "belief_failure_world": {"subject"}, "starving_go": set(), "starving_restock": set(), "mail_arrived": set(),
     "wish_granted": {"wish", "note"}, "drawing_made": {"materials", "description"},
     "drawing_looked_at": {"title", "status", "history"}, "drawing_version": {"n", "when", "description", "materials"},
-    "drawing_seen": {"seen"},
+    "drawing_seen": {"seen"}, "drawing_feeling": {"words"},
 }
 
 
@@ -85,6 +88,7 @@ class Executor:
         self.conn, self.life, self.t, self.texts = conn, life, tuning, texts
         self.registry, self.scheduler, self.rng, self.backend = registry, scheduler, rng, backend
         self.perception: list[str] = []
+        self.formed: list[dict] = []                       # finished experiences waiting to be weighed as memories
         self.wake_gate = wake_gate or (lambda: True)        # False while the sleep cycle has not finished
         self.held = False                                    # True when the clock waited for the sleep cycle
         self.emitted: list[tuple[str, str]] = []          # (due sim time, event id), from emit_event ops
@@ -123,12 +127,15 @@ class Executor:
              importance, int(remember)))
         return cur.lastrowid
 
+    def _practice(self, action_id: str) -> float:
+        row = self.conn.execute("SELECT times_done FROM knowledge WHERE action_id = ?", (action_id,)).fetchone()
+        return innermod.practice(row[0] if row else 0, self.t["inner"])
+
     def _effort(self, a: ActionSpec) -> float:
         if a.effort is None:
             return 0.0
-        if isinstance(a.effort, str):
-            return float(self.c.world.get("effort", {}).get(a.effort, 0.0))
-        return float(a.effort)
+        base = float(self.c.world.get("effort", {}).get(a.effort, 0.0)) if isinstance(a.effort, str) else float(a.effort)
+        return base * (1.0 - self.t["inner"]["practice_ease"] * self._practice(a.id))      # practised work comes easier
 
     def _ctx(self) -> conditions.Ctx:
         return conditions.Ctx(creature=self.life.bodystate.as_dict(), facts=self.life.world.values,
@@ -148,6 +155,42 @@ class Executor:
     def _body(self, changes) -> None:
         if changes:
             lifemod.record_body(self.conn, self.life, changes)
+
+    def _relationships_and_projects(self, r) -> None:
+        """Keep the record of what it made and of who it heard from (inside the caller's transaction)."""
+        if r.action.project:
+            projectsmod.record(self.conn, r.action.project, r.inputs, r.cap, self.life.sim_time)
+        sender = ((r.cap or {}).get("fields") or {}).get("sender")
+        which = r.inputs.get("which")
+        if not sender and which and r.action.family == "mail":          # answering: whose letter was it?
+            for items in self.life.world.values.values():
+                if isinstance(items, list):
+                    sender = next((i.get("sender") for i in items if isinstance(i, dict) and str(i.get("id")) == str(which)
+                                   and i.get("sender")), sender)
+        if sender:
+            peoplemod.touch(self.conn, sender, self.life.sim_time, 0.1, self.mood_base)
+
+    def _temperament(self) -> dict:
+        return self.life.character.sheet.get("temperament") or {}
+
+    def _inner_record(self) -> None:
+        """Write the inner changes that have added up to something worth recording."""
+        changes = innermod.flush(self.life.inner, self.t["inner"]["record_min"])
+        if changes:
+            lifemod.record_body(self.conn, self.life, changes)
+
+    def _inner_pass(self, minutes: float) -> None:
+        li = self.life
+        mood = innermod.passage(li.inner, self._temperament(), self.t["inner"], minutes, asleep=li.asleep,
+                                hunger=li.bodystate.hunger, energy=li.bodystate.energy)
+        if abs(mood) > 1e-9:
+            self._body(li.body.apply(li.bodystate, {"mood": mood}, "inner"))
+        self._inner_record()
+        now = set(innermod.pressing(li.inner, self.t["inner"]))
+        if not li.asleep:
+            for need in sorted(now - getattr(self, "_pressing", now)):
+                self.scheduler.note("need", f"{need} became pressing")
+        self._pressing = now
 
     def _band_indexes(self) -> dict[str, int]:
         out = {}
@@ -223,7 +266,7 @@ class Executor:
             return None
         ctx = CapContext(content=self.c, facts=self.life.world.values, location=self.life.location,
                          sim_time=self.life.sim_time, texts=self.texts, backend=self.backend, tuning=self.t,
-                         artifact=lambda i: artifacts.load(self.conn, i))
+                         artifact=lambda i: artifacts.load(self.conn, i), temperament=self._temperament())
         return self.registry.run(a.capability, ctx, decision.inputs)
 
     def prepare_running(self) -> CapabilityResult | None:
@@ -233,7 +276,7 @@ class Executor:
             return None
         ctx = CapContext(content=self.c, facts=self.life.world.values, location=self.life.location,
                          sim_time=self.life.sim_time, texts=self.texts, backend=self.backend, tuning=self.t,
-                         artifact=lambda i: artifacts.load(self.conn, i))
+                         artifact=lambda i: artifacts.load(self.conn, i), temperament=self._temperament())
         return self.registry.run(r.action.capability, ctx, r.inputs)
 
     def attach_capability(self, cap: CapabilityResult) -> None:
@@ -282,6 +325,8 @@ class Executor:
                 (decision_id, act, self.life.location, _dump(decision.inputs), self.life.sim_time,
                  self.life.sim_time, text))
             self.perception.append(text)
+            innermod.rejected(self.life.inner, self._temperament(), self.t["inner"])
+            self._inner_record()
             return {"status": "rejected", "activity_id": cur.lastrowid, "text": text}
         if self.running:
             self.interrupt(note=False)                      # replaced by the new action: no extra decision
@@ -355,6 +400,7 @@ class Executor:
                                               cause=r.action.id))
         else:
             self._body(self.life.body.passage(self.life.bodystate, minutes))
+        self._inner_pass(minutes)
         self._roll_events(minutes)
         bands = self._band_indexes()
         if not self.life.asleep:
@@ -389,8 +435,9 @@ class Executor:
         senses = self.c.character.get("core", {}).get("senses") or []
         if here and ev.sense in senses and not self.life.asleep:
             self.perception.append(ev.text)
-            self.scheduler.note("event", ev.text, ev.salience)
-            self._experience("event", ev.text, data={"event": ev.id, "sense": ev.sense}, importance=ev.salience * 0.5)
+            sal = min(1.0, ev.salience + innermod.hold_boost(self.life.character.sheet.get("holds"), ev.text, self.t["inner"]))
+            self.scheduler.note("event", ev.text, sal)             # what it holds to reaches it more easily
+            self._experience("event", ev.text, data={"event": ev.id, "sense": ev.sense}, importance=sal * 0.5)
 
     # ---------------------------------------------------------------- endings
 
@@ -474,6 +521,17 @@ class Executor:
                 log.warning("could not preserve interrupted drawing: %s", e)
         if not changes:
             self.mood_base = 0.0
+        if status == "finished":                           # what it did inside: needs eased, affect moved (inner.py)
+            effects = dict(r.action.inner or {})
+            for k, v in ((r.cap or {}).get("inner") or {}).items():
+                effects[k] = effects.get(k, 0.0) + v
+            self._relationships_and_projects(r)
+            bonus = innermod.finished(self.life.inner, self._temperament(), self.t["inner"], effects, r.freshness)
+            if bonus > 1e-9:
+                extra = self.life.body.apply(self.life.bodystate, {"mood": bonus}, "relief")
+                self._body(extra)
+                changes = list(changes) + extra
+            self._inner_record()
         gained = any((c.var == "hunger" and c.delta < 0) or (c.var == "energy" and c.delta > 0) or
                      (c.var == "mood" and c.delta > 0.02) for c in changes) or bool((r.cap or {}).get("artifact"))
         if status == "finished" and r.action.builtin not in ("move", "sleep", "inspect") and not gained \
@@ -485,11 +543,16 @@ class Executor:
             knowledge.done(self.conn, r.action.id, self.life.sim_time, text)
         cap_external = (r.cap or {}).get("external")
         external = self.registry.is_external(r.action.capability) if cap_external is None else cap_external
-        self._experience("activity", remember_text or text, action_id=r.action.id, activity_id=r.id,
-                         data={"status": status, "inputs": r.inputs, "minutes": round(r.elapsed(self.life.sim_time), 1),
-                               "changes": [asdict(c) for c in changes], "mood_base": round(self.mood_base, 5),
-                               **({"external": True} if external else {}), **data},
-                         thought=r.thought or None, importance=importance, remember=remember)
+        eid = self._experience("activity", remember_text or text, action_id=r.action.id, activity_id=r.id,
+                               data={"status": status, "inputs": r.inputs, "minutes": round(r.elapsed(self.life.sim_time), 1),
+                                     "changes": [asdict(c) for c in changes], "mood_base": round(self.mood_base, 5),
+                                     "weather": self.life.world.values.get("world.weather"),
+                                     **({"external": True} if external else {}), **data},
+                               thought=r.thought or None, importance=importance, remember=remember)
+        if status == "finished":                                    # the loop decides whether it leaves an impression
+            self.formed.append({"id": eid, "text": remember_text or text, "action_id": r.action.id,
+                                "location": self.life.location, "importance": importance, "remember": remember,
+                                "mood_base": self.mood_base, "freshness": r.freshness})
         self.running = None
         if note:
             self.scheduler.note("activity_finished", r.action.id)

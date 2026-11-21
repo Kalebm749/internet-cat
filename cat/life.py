@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from cat import identity, knowledge, store
 from cat.body import Body, BodyState, Change
+from cat.inner import Inner, VARS as INNER_VARS
 from cat.content import Content
 from cat.worldstate import SyncReport as WorldSync
 from cat.worldstate import WorldState
@@ -35,10 +36,11 @@ class Life:
     notes: list[str] = field(default_factory=list)      # what the sync changed, for the log and dashboard
     exit_notes: dict = field(default_factory=dict)      # place id -> a note from its own history (set before deciding)
     stay_minutes: float = 0.0                           # sim minutes at this place since arriving
+    inner: Inner | None = None                          # needs and affect (cat/inner.py)
 
     def state_data(self) -> dict:
         return {"sim_time": self.sim_time, "location": self.location, "asleep": self.asleep,
-                **self.bodystate.as_dict()}
+                **self.bodystate.as_dict(), **(self.inner.state() if self.inner else {})}
 
 
 def _save_state(conn: sqlite3.Connection, life: Life) -> None:
@@ -56,7 +58,9 @@ def save(conn: sqlite3.Connection, life: Life) -> None:
 def record_body(conn: sqlite3.Connection, life: Life, changes: list[Change]) -> None:
     """Store body changes with their causes (inside the caller's transaction)."""
     conn.executemany("INSERT INTO body_changes(sim_time, var, delta, value, cause) VALUES (?, ?, ?, ?, ?)",
-                     [(life.sim_time, c.var, c.delta, life.bodystate.get(c.var), c.cause) for c in changes])
+                     [(life.sim_time, c.var, c.delta,
+                       life.inner.get(c.var) if c.var in INNER_VARS and life.inner else life.bodystate.get(c.var), c.cause)
+                      for c in changes])
 
 
 def _world_notes(rep: WorldSync) -> list[str]:
@@ -79,7 +83,7 @@ def open_life(conn: sqlite3.Connection, content: Content, tuning: dict) -> Life:
             world.save(conn, all=True)
             ver_rep = identity.ensure(conn, content, sim_time)
             life = Life(content, body, Body.start(tuning["body"]), world, identity.current(conn), sim_time,
-                        content.character["start_location"], spawned=True)
+                        content.character["start_location"], spawned=True, inner=Inner.start(tuning["inner"]))
             knowledge.ensure_innate(conn, content, sim_time)
             knowledge.arrive(conn, content, life.location, sim_time)
             life.notes.append(f"spawned at {life.location}, {sim_time}, character version {ver_rep.version}")
@@ -89,7 +93,8 @@ def open_life(conn: sqlite3.Connection, content: Content, tuning: dict) -> Life:
             world.save(conn)
             ver_rep = identity.ensure(conn, content, data["sim_time"])
             life = Life(content, body, BodyState(data["mood"], data["energy"], data["hunger"]), world,
-                        identity.current(conn), data["sim_time"], data["location"], bool(data.get("asleep")))
+                        identity.current(conn), data["sim_time"], data["location"], bool(data.get("asleep")),
+                        inner=Inner.load(data, tuning["inner"]))
             life.notes += _world_notes(wrep)
             if ver_rep.author_changes:
                 life.notes.append(f"author edited {', '.join(ver_rep.author_changes)}: character version {ver_rep.version}")

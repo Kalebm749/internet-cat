@@ -69,7 +69,60 @@ nit:
     embed_model: nomic-embed-text
     art_model: qwen3:14b         # larger model for translating Nit's own drawing intention into an image
     vision_model: qwen2.5vl:3b   # Nit's eyes on its own drawings; loaded for one look, then unloaded
+  inner:                         # needs and affect (individuality plan §5): rates are per SIM hour, 0..1
+    start: {novelty: 0.2, social: 0.2, solitude: 0.1, expression: 0.2, accomplishment: 0.2, belonging: 0.1,
+            security: 0.1, stress: 0.1, confidence: 0.5, curiosity: 0.3, loneliness: 0.1, frustration: 0.0,
+            satisfaction: 0.3}
+    rise_per_hour: {novelty: 0.07, social: 0.05, expression: 0.06, accomplishment: 0.04, belonging: 0.02}   # x temperament
+    fall_per_hour: {solitude: 0.04, security: 0.03}   # these ease on their own when it is left quiet
+    loud: 0.65                   # a need this high is pressing: felt in words, noted on options, may start a decision
+    note_min: 0.5                # an option is noted as easing a need from this level
+    max_words: 3                 # at most this many inner feelings are put into words
+    record_min: 0.03             # inner changes are written to body_changes once they add up to this
+    affect_rate_per_hour: 0.3    # how fast stress, curiosity and loneliness move toward what the body and needs imply
+    frustration_decay_per_hour: 0.25
+    satisfaction_rest: 0.2       # satisfaction fades toward this ...
+    satisfaction_decay_per_hour: 0.08
+    confidence_drift_per_hour: 0.03   # ... and confidence toward 0.5
+    mood_from_stress: 0.1        # mood drag per hour per unit of stress above 0.4 ...
+    mood_from_frustration: 0.08  # ... of frustration above 0.4 ...
+    mood_from_satisfaction: 0.05 # ... and lift per unit of satisfaction above 0.5
+    fresh_novelty_relief: 0.08   # an activity with freshness >= 0.8 eases novelty by this
+    stale_below: 0.4             # an activity this stale frustrates (x (1.5 - persistence)) and raises novelty ...
+    stale_frustration: 0.06
+    stale_novelty_rise: 0.04
+    relief_mood: 0.5             # mood lifted per unit of pressing need relieved (appraisal) ...
+    relief_mood_cap: 0.15        # ... at most this much
+    reject_frustration: 0.1      # an action that could not happen
+    reject_confidence: 0.03
+    reject_stress: 0.03
+    gut_scale: 0.6               # chance of going with the first pull = impulsiveness x this (a shorter, faster answer)
+    practice_k: 20               # practice with an action = 1 - exp(-goes / this): 0 (new) .. 1 (practised)
+    practice_ease: 0.3           # a fully practised action costs this much less effort
+    hold_boost: 0.3              # what it holds to makes an event this much (x strength) more likely to reach it
+    temperature_span: 0.3        # decision temperature moves by +-span/2 with impulsiveness
+  beliefs:                       # what it comes to think things do to it (cat/beliefs.py)
+    lift_mood: 0.03              # an outcome is "lifted" / "wore it down" when its mood effect is beyond +-this
+    min_days: 3                  # a belief about an action or a place needs this many different days bearing it out ...
+    min_days_loose: 2            # ... weather needs fewer: it reads too much into it
+    min_for: 3                   # ... and this many times
+    ratio: 0.6                   # ... and at least this share of the evidence for it
+    drop_ratio: 0.4              # a belief gives way when the share falls below this (x0.75 once borne out 10 times)
+    prior: 2                     # strength = for / (for + against + prior)
+    expire_days: 12              # SIM days with nothing bearing it out: it is let go
+    half_life_days: 20           # its strength fades with the time since it was last borne out
+    fail_min: 2                  # a failure repeated on this many days becomes a belief about why
+    note_min: 0.4                # a belief this strong puts a note on the action it is about
+    max_shown: 3                 # place and weather beliefs put into the prompt
+    habit_days: 5                # done on this many different days in the same part of the day at the same place: a habit
+    habit_expire_days: 12        # SIM days with no sign of it: the habit is let go
+    fear_min: 6                  # a belief that something wears it down, borne out this often, becomes an acquired fear
+    interest_min: 8              # one that something lifts it, borne out this often, becomes an acquired interest
   decisions:                     # §3
+    queue_max: 2                 # moves a decision may queue after its own; they run with no model while nothing new happens
+    menu_size: 3                 # actions drawn (uniformly, by chance) from those genuinely available; 0 = offer all
+    sleep_offer_energy: 0.3      # below this energy sleep is always among the options (offered, never chosen for it)
+    food_offer_hunger: 0.6       # from this hunger the food action is always among them
     interval_seconds: 15         # REAL seconds between decisions while no activity runs (a target, never an interrupt)
     check_in_minutes: 30         # SIM minutes an activity runs before a short "continue or stop?" check-in
     event_salience_min: 0.4      # a perceived event at least this salient may interrupt an activity
@@ -136,12 +189,34 @@ nit:
     learned_days: 14             # ... kept within this many SIM days
     learned_chars: 240           # each shortened to this many characters
     long_cap: 80                 # long-term memories kept at most: a new one pushes out the weakest (stage 7)
+    short_cap: 14                # short-term memories (the day's lasting impressions): a new one must beat the weakest
+    faded_cap: 60                # faded (liminal) memories: one worn sentence each
+    short_half_life_days: 1.5    # short-term strength halves in this many SIM days since it was last touched ...
+    long_half_life_days: 14      # ... long-term in this many
+    short_min: 0.3               # an experience this significant (importance, emotion, novelty) becomes a short memory
+    long_direct: 0.9             # ... and this significant goes straight to long-term
+    emotion_scale: 8             # significance from emotion = |mood effect| x this x (0.5 + volatility)
+    novelty_bonus: 0.1           # a fresh experience (freshness >= 0.8) adds this to its significance
+    remember_bonus: 0.2          # one it asked to remember adds this
+    reinforce_gain: 0.15         # meeting the same thing again strengthens its memory by this (no duplicate is made)
+    recall_gain: 0.04            # being recalled strengthens a memory by this
+    promote_days: 2              # a short memory that came back on this many different days becomes long-term ...
+    promote_occurrences: 3       # ... or one met this many times ...
+    promote_strength: 0.75       # ... or one that is this strong
+    short_forget: 0.05           # a short memory weaker than this is forgotten
+    fade_min_strength: 0.5       # a long memory that was this strong leaves a faded gist; a weaker one is just forgotten
+    faded_cue: 0.55              # a faded memory comes back only when what is in front of it is this similar
+    recall_min_relevance: 0.15   # a memory is recalled only when it is at least this relevant to the moment
+    memory_note_min: 0.3         # memories about an action at least this strong put a note on it ("it went well")
   loops:                         # open loops (§5.8): things on its mind that are not settled yet
     max_open: 5                  # at most this many open; a new one pushes out the oldest
     per_night: 2                 # sleep may open at most this many a night
     expire_days: 10              # SIM days: an open loop nobody settled fades
     on_mind: 5                   # shown in the Mind
     text_chars: 160              # each loop's words are shortened to this
+    salience_decay_per_day: 0.05 # an untouched concern gets quieter by this per SIM day (never below 0.1)
+    resurface_hours: 3           # every this many SIM hours ...
+    resurface_chance: 0.5        # ... an open concern may come back to mind by itself (the louder, the likelier)
   repetition:                    # §6: behaviour history and freshness
     half_life_minutes: 120       # SIM minutes: how fast a past instance stops counting as a repeat
     w_action: 0.25               # freshness = 1 - w_action x same action - w_family x same family

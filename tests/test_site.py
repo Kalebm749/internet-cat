@@ -126,7 +126,7 @@ def test_the_website_never_writes_the_life(cfg):
 
 # ---------------------------------------------------------------- the dev dashboard
 
-PAGES = ["/", "/decisions", "/decisions/3", "/character", "/memory", "/knowledge", "/repetition", "/world", "/sleep",
+PAGES = ["/", "/decisions", "/decisions/3", "/character", "/inner", "/memory", "/knowledge", "/repetition", "/world", "/sleep",
          "/mail", "/content"]
 
 
@@ -150,7 +150,7 @@ def test_every_dashboard_page_and_its_json_twin(dash):
     assert dash.get("/decisions/999999").status_code == 404
     assert dash.get("/api/dev/content").json()["content"] == "ok"
     m = dash.get("/api/dev/mail").json()
-    assert [l["sender"] for l in m["mailbox"] + m["answered"]] == ["Ann"]          # still there, or answered
+    assert len(m["imports"]) == 1                          # imported (then read, answered, set aside or still there)
 
 
 def test_dashboard_access_rules(cfg, monkeypatch):

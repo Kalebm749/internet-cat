@@ -26,7 +26,7 @@ from typing import Any
 
 import numpy as np
 
-from cat import clock, identity, knowledge, loops as loopsmod, memories
+from cat import beliefs as beliefsmod, clock, identity, knowledge, loops as loopsmod, memories
 from cat.config import CONFIG_DIR
 from cat.content import Content
 from cat.decision import load_prompt_file
@@ -66,11 +66,15 @@ class SleepPlan:
     learned: dict[str, str] = field(default_factory=dict)     # action id -> own words
     prefs: list[dict] = field(default_factory=list)           # rows to upsert
     prefs_drop: list[tuple[str, str]] = field(default_factory=list)
+    texts: dict = field(default_factory=dict)                 # world texts used when committing beliefs
+    beliefs: dict = field(default_factory=dict)               # what the night adds to its beliefs (cat/beliefs.py)
     loops: dict = field(default_factory=dict)                 # {close, open, fade, push}: see _loops
     proposal: dict | None = None
     verdicts: list[dict] = field(default_factory=list)
     accepted: bool = False
     merges: list[tuple[int, int]] = field(default_factory=list)   # (keep, drop)
+    promote: list[int] = field(default_factory=list)          # short-term memories that become long-term
+    fade: list[tuple[int, str]] = field(default_factory=list)  # long-term memories that fade to a gist: (id, gist)
     forget: list[int] = field(default_factory=list)
     cursor: int | None = None                                  # new experience cursor, if stages 1-3 covered the window
     summary_embedding: list[float] | None = None
@@ -129,7 +133,7 @@ def _days_ago(now: str, days: float) -> str:
 # ---------------------------------------------------------------- the stages
 
 def plan(conn: sqlite3.Connection, content: Content, tuning: dict, backend: LLMBackend, prompts: dict,
-         sheet: dict, now: str) -> SleepPlan:
+         sheet: dict, now: str, texts: dict | None = None) -> SleepPlan:
     sl = tuning["sleep"]
     model = tuning["models"]["sleep_model"]
     retries = sl["retries"]
@@ -289,6 +293,15 @@ def plan(conn: sqlite3.Connection, content: Content, tuning: dict, backend: LLMB
 
     # 4b open loops
     stage("loops", lambda: _loops(conn, tuning, backend, prompts, system, name, now, by_id, p))
+
+    # 4c beliefs (code): what the experiences bore out and what they contradicted
+    def beliefs_stage():
+        from cat.execute import load_texts
+        p.texts = texts or load_texts()
+        p.beliefs = beliefsmod.plan_updates(conn, content, p.texts, tuning["beliefs"], sheet.get("temperament"), now)
+        n = len(p.beliefs["rows"]) + len(p.beliefs["failures"])
+        return {"evidence_rows": n} if n else None
+    stage("beliefs", beliefs_stage)
 
     # 5 preferences
     stage("preferences", lambda: _preferences(conn, content, tuning, backend, prompts, system, name, now, p))
@@ -599,24 +612,47 @@ def _maintenance(conn, tuning, now, p: SleepPlan):
                 dropped.add(drop.id)
                 if drop.id == a.id:
                     break
+    def leave(x):
+        """It no longer fits. What was once strong leaves a worn sentence (faded); what never mattered is forgotten."""
+        if (x.strength or x.importance) >= m["fade_min_strength"]:
+            p.fade.append((x.id, x.gist or memories.gist_of(x.text)))
+        else:
+            p.forget.append(x.id)
+    # short-term: what came back on different days, was met again and again, or is strong becomes long-term; what has
+    # faded away is forgotten
+    for x in memories.all_memories(conn, "short"):
+        now_s = memories.strength_now(x, now, m)
+        if x.recall_days >= m["promote_days"] or x.occurrences >= m["promote_occurrences"] or now_s >= m["promote_strength"]:
+            p.promote.append(x.id)
+        elif now_s < m["short_forget"]:
+            p.forget.append(x.id)
+    gone = set(p.forget)
     for x in longs:
         if x.id in dropped or set(x.sources) & protected:
             continue
         if memories.retention(x, now, m) < m["forget_below"]:
-            p.forget.append(x.id)
+            leave(x)
     # a full memory: what the night adds pushes the weakest out (never the ones its character changes rest on)
-    adding = sum(1 for x in p.long_term if not x.get("merge_into"))
-    left = [x for x in longs if x.id not in dropped and x.id not in p.forget]
+    adding = sum(1 for x in p.long_term if not x.get("merge_into")) + len(p.promote)
+    faded_now = {i for i, _ in p.fade}
+    left = [x for x in longs if x.id not in dropped and x.id not in p.forget and x.id not in faded_now]
     over = len(left) + adding - m["long_cap"]
     if over > 0:
         weakest = sorted((x for x in left if not set(x.sources) & protected), key=lambda x: memories.retention(x, now, m))
-        p.forget.extend(x.id for x in weakest[:over])
-    return {"merges": p.merges, "forget": p.forget} if (p.merges or p.forget) else None
+        for x in weakest[:over]:
+            leave(x)
+    # the faded have room for only so many: the oldest worn sentences go
+    old_faded = memories.all_memories(conn, "faded")
+    excess = len(old_faded) + len(p.fade) - m["faded_cap"]
+    if excess > 0:
+        p.forget.extend(x.id for x in old_faded[:excess])
+    out = {"promote": p.promote, "fade": [i for i, _ in p.fade], "merges": p.merges, "forget": p.forget}
+    return out if any(out.values()) else None
 
 
 # ---------------------------------------------------------------- commit
 
-def commit(conn: sqlite3.Connection, p: SleepPlan, now: str) -> int:
+def commit(conn: sqlite3.Connection, p: SleepPlan, now: str, tuning: dict | None = None) -> int:
     """Write the whole night (inside the caller's transaction). Returns the sleep_runs id."""
     for c in p.core:
         conn.execute("INSERT INTO memories(kind, text, importance, created_at, sources) VALUES ('core', ?, 1.0, ?, ?)",
@@ -660,8 +696,16 @@ def commit(conn: sqlite3.Connection, p: SleepPlan, now: str) -> int:
         conn.execute("UPDATE memories SET sources = ?, recall_count = ? WHERE id = ?",
                      (json.dumps(src), a["recall_count"] + b["recall_count"], keep))
         conn.execute("DELETE FROM memories WHERE id = ?", (drop,))
+    if p.promote:
+        conn.executemany("UPDATE memories SET kind = 'long' WHERE id = ? AND kind = 'short'", [(i,) for i in p.promote])
+    for mid, gist in p.fade:                                    # one worn sentence, the detail gone; the cue stays
+        conn.execute("UPDATE memories SET kind = 'faded', gist = ?, text = ? WHERE id = ? AND kind = 'long'",
+                     (gist, gist, mid))
     if p.forget:
-        conn.executemany("DELETE FROM memories WHERE id = ? AND kind = 'long'", [(i,) for i in p.forget])
+        conn.executemany("DELETE FROM memories WHERE id = ? AND kind IN ('long', 'short', 'faded')",
+                         [(i,) for i in p.forget])
+    if p.beliefs and tuning is not None:
+        p.stages.setdefault("beliefs", {})["changes"] = beliefsmod.apply(conn, p.beliefs, tuning["beliefs"], now, p.texts)
     lp = p.loops or {}
     for c in lp.get("close", []):
         conn.execute("UPDATE loops SET status = 'closed', closed_at = ?, why_closed = ?, sources = ? WHERE id = ?",

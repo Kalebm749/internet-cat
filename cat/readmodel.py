@@ -252,6 +252,51 @@ def decisions(conn: sqlite3.Connection, before_id: int | None = None, limit: int
             for r in conn.execute(q, args + (limit,))]
 
 
+def inner_view(conn: sqlite3.Connection, content: Content, tuning: dict, sim_time: str) -> dict:
+    """The creature's inner life as structured state (not what the model says about it): needs and affect with their
+    history, temperament, beliefs and the evidence behind them, memory by layer with what each is worth now and what is
+    first to go, concerns, projects, people, and what it has acquired (with the character versions that added it)."""
+    from cat import beliefs as beliefsmod, inner as innermod
+    sheet = _j((conn.execute("SELECT sheet FROM character_versions ORDER BY version DESC LIMIT 1").fetchone() or [None])[0], {})
+    state = _j((conn.execute("SELECT data FROM state WHERE id = 1").fetchone() or [None])[0], {})
+    cur = state.get("inner") or {}
+    series = {}
+    for var in innermod.VARS:
+        rows = conn.execute("SELECT sim_time, value FROM body_changes WHERE var = ? ORDER BY id DESC LIMIT 200", (var,)).fetchall()
+        series[var] = sparkline([(r[0], r[1]) for r in reversed(rows)], 0, 1)
+    needs = [{"var": v, "value": round(cur.get(v, 0), 2), "spark": series[v], "pressing": cur.get(v, 0) >= tuning["inner"]["loud"]}
+             for v in innermod.NEEDS]
+    affect = [{"var": v, "value": round(cur.get(v, 0), 2), "spark": series[v]} for v in innermod.AFFECT]
+    m = tuning["memory"]
+    layers: dict[str, list] = {"short": [], "long": [], "faded": [], "core": []}
+    for x in memories.all_memories(conn):
+        layers[x.kind].append({"id": x.id, "text": x.text, "worth": round(memories.strength_now(x, sim_time, m), 3),
+                               "went_in": round(x.strength or x.importance, 2), "occurrences": x.occurrences,
+                               "recalls": x.recall_count, "recall_days": x.recall_days, "feeling": x.feeling,
+                               "action": x.action_id, "created_at": x.created_at, "sources": x.sources})
+    for k in ("short", "long"):
+        layers[k].sort(key=lambda r: -r["worth"])
+    first_to_go = {k: layers[k][-1] for k in ("short", "long") if layers[k]}
+    bel = [{"kind": r["kind"], "statement": r["statement"], "status": r["status"], "for": r["for_count"],
+            "against": r["against_count"], "days": r["days"], "strength": round(r["strength"], 2),
+            "last_reinforced": r["last_reinforced"], "sources": _j(r["sources"], []), "note": _j(r["note"], {})}
+           for r in conn.execute("SELECT * FROM beliefs WHERE status != 'dropped' ORDER BY status, strength DESC, for_count DESC")]
+    dropped = [{"statement": r["statement"], "for": r["for_count"], "against": r["against_count"]}
+               for r in conn.execute("SELECT * FROM beliefs WHERE status = 'dropped' ORDER BY last_reinforced DESC LIMIT 20")]
+    concerns = [dict(r) | {"embedding": None} for r in conn.execute("SELECT * FROM loops ORDER BY status, id DESC LIMIT 60")]
+    projects = [dict(r) | {"history": _j(r["history"], [])} for r in conn.execute("SELECT * FROM projects ORDER BY updated_at DESC")]
+    people = [dict(r) for r in conn.execute("SELECT * FROM people ORDER BY familiarity DESC")]
+    acquired = [{"version": r["version"], "created_at": r["created_at"], "reason": r["reason"], "evidence": _j(r["evidence"], [])}
+                for r in conn.execute("SELECT * FROM character_versions WHERE reason LIKE 'acquired %' OR reason LIKE 'let go of %' "
+                                      "ORDER BY version DESC")]
+    return {"needs": needs, "affect": affect, "temperament": sheet.get("temperament") or {},
+            "holds": sheet.get("holds") or [], "acquired_now": sheet.get("acquired") or {}, "acquired_history": acquired,
+            "memory": layers, "first_to_go": first_to_go,
+            "caps": {"short": m["short_cap"], "long": m["long_cap"], "faded": m["faded_cap"]},
+            "beliefs": bel, "dropped_beliefs": dropped, "concerns": concerns, "projects": projects, "people": people,
+            "queue": _j((conn.execute("SELECT value FROM meta WHERE key = 'queue'").fetchone() or [None])[0], [])}
+
+
 def decision(conn: sqlite3.Connection, did: int) -> dict | None:
     r = conn.execute("SELECT * FROM decisions WHERE id = ?", (did,)).fetchone()
     if r is None:
@@ -266,7 +311,7 @@ def decision(conn: sqlite3.Connection, did: int) -> dict | None:
             "thought": r["thought"], "reasoning": r["reasoning"], "preserve": bool(r["preserve"]), "letter": r["letter"],
             "fallback": bool(r["fallback"]), "notes": _j(r["notes"], []), "attempts": _j(r["attempts"], []),
             "messages": _j(r["messages"], []), "mind": _j(r["mind"], {}), "dropped": _j(r["dropped"], []),
-            "ms": r["ms"], "activities": acts}
+            "ms": r["ms"], "activities": acts, "factors": _j(r["factors"], {})}
 
 
 def body_series(conn: sqlite3.Connection, hours: float, sim_time: str) -> dict[str, list[tuple[str, float]]]:

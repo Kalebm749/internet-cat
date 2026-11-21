@@ -74,9 +74,9 @@ def test_check_in_allows_only_continue_or_stop(m, t):
     assert decision.schema(m, "interrupt", t)["properties"]["action"]["enum"][0] == "continue"
 
 
-def test_schema_lists_options_and_thinks_first(m, t):
+def test_schema_lists_options_and_chooses_before_it_explains(m, t):
     s = decision.schema(m, "full", t)
-    assert list(s["properties"])[:3] == ["thought", "reasoning", "action"]
+    assert list(s["properties"])[:4] == ["action", "inputs", "thought", "reasoning"]
     assert sorted(s["properties"]["action"]["enum"]) == sorted(o.id for o in m.options)
     assert s["properties"]["inputs"]["properties"]["what"] == {"type": "string", "maxLength": 80}
     assert "market" in s["properties"]["inputs"]["properties"]["to"]["enum"]

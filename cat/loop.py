@@ -26,7 +26,7 @@ import threading
 
 from cat import clock as clock_mod, mail as mailmod
 from cat import behaviour, content as contentmod, decision as decisionmod, identity, knowledge, life as lifemod, loops as loopsmod, memories
-from cat import mind as mindmod, sleepcycle, starving, store, wishes
+from cat import beliefs as beliefsmod, inner as innermod, mind as mindmod, people as peoplemod, projects as projectsmod, sleepcycle, starving, store, wishes
 from cat.capabilities import Registry
 from cat.config import Config
 from cat.healthcheck import write_heartbeat
@@ -72,7 +72,7 @@ class Sleeper:
         conn = store.connect(path, readonly=True) if path else lp.conn
         try:
             self.plan = sleepcycle.plan(conn, lp.life.content, lp.t, lp.backend, lp.sleep_prompts,
-                                        lp.life.character.sheet, lp.life.sim_time)
+                                        lp.life.character.sheet, lp.life.sim_time, lp.texts)
         except Exception as e:                               # a broken night must never keep it asleep
             log.exception("the sleep cycle failed")
             self.error = str(e)
@@ -124,7 +124,7 @@ class Loop:
         if sp.done and not sp.committed:
             with store.transaction(self.conn):
                 if sp.plan is not None:
-                    sleepcycle.commit(self.conn, sp.plan, self.life.sim_time)
+                    sleepcycle.commit(self.conn, sp.plan, self.life.sim_time, self.t)
                     if sp.plan.summary_repeated:                  # the same entry again: progressively flatter
                         streak = sleepcycle.repeat_streak(self.conn)
                         mood = self.t["repetition"]["reflection_dup_mood"] * streak
@@ -183,6 +183,7 @@ class Loop:
             for r in rows:
                 self.life.world.append_raw(key, {"id": mailmod.letter_key(r["id"]), "sender": r["sender"],
                                                  "text": r["text"], "status": "unread", "received": self.life.sim_time})
+                peoplemod.touch(self.conn, r["sender"], self.life.sim_time, 0.05, 0.0, 0)
                 self.conn.execute("INSERT INTO mail_imports(letter_id, sim_time, real_time) VALUES (?, ?, ?)",
                                   (r["id"], self.life.sim_time, r["received_at"]))
             lifemod.save(self.conn, self.life)
@@ -210,6 +211,8 @@ class Loop:
         # passing sim time so the persisted activity cannot finish without its result.
         self._prepare_running_activity()
         self._catch_up()
+        self._form_memories()
+        self._resurface()
         self._sleep_cycle()
         self._import_mail()
         rep = StepReport(self.life.sim_time)
@@ -231,25 +234,40 @@ class Loop:
                              last_done=knowledge.minutes_since_done(self.conn, self.life.sim_time),
                              perception=self.exec.perception, activity=view,
                              recent=self.exec.recent(self.t["decisions"]["recent_activities"]),
-                             memories=list(dict.fromkeys([r["text"] for r in recalled] + notable)),
+                             memories=list(dict.fromkeys([r["text"] for r in recalled] + notable
+                                                         + [self.prompts["faded"].format(gist=g)
+                                                            for g in getattr(self, "_faded", [])])),
                              repetition=behaviour.repetition_score(self.conn, self.t["repetition"]["recent"]),
                              seed=f"{self.seed}|{now}", capability_ok=self.exec.capability_ok,
                              notes=self._notes(), core_memories=memories.core_texts(self.conn),
                              count_done=self.exec.count_done,
                              dwelling=behaviour.dwelling(self.conn, self.life.sim_time, self.t),
                              loops=loopsmod.on_mind(self.conn, self.t),
-                             mulling=behaviour.mulling(self.conn, self.t))
+                             mulling=behaviour.mulling(self.conn, self.t),
+                             inner=innermod.describe(self.life.inner, self.life.content.world.get("inner_words"),
+                                                     self.t["inner"]),
+                             temperament_words=self._temperament_words(),
+                             projects=projectsmod.on_mind(self.conn, self.prompts),
+                             people=peoplemod.on_mind(self.conn, self.prompts),
+                             beliefs=beliefsmod.lines_for_now(self.conn, self.t["beliefs"], self.life.location,
+                                                              self.life.world.values.get("world.weather")),
+                             menu_size=self.t["decisions"]["menu_size"], protected=self._protected_options(),
+                             carry=self._carry_on(view))
         self.exec.perception = []
         self.scheduler.started(due, now, self.life.sim_time)
         t0 = self.clock()
-        forced = starving.decide(self.life, self.exec, self.t)       # hunger takes over: no model, no menu (§2.5)
+        forced = self._unthinking(due, mind)       # starving, a planned move, or nothing new: no model asked
         try:
             if forced is not None:
                 res = decisionmod.Result(forced[0], [], [], [])
             else:
+                gut, temp = self._manner(due.kind)
                 res = decisionmod.decide(self.backend, self.t["models"]["decision_model"], mind, due.kind,
                                          self.prompts, self.t,
-                                         reconsider=lambda d: self._reconsider_stale_choice(mind, d))
+                                         reconsider=lambda d: self._reconsider_stale_choice(mind, d), gut=gut,
+                                         options={"temperature": temp} if temp is not None else None)
+                if gut:
+                    res.decision.notes.append("gut")
         except BackendError as e:
             self.scheduler.finished()
             self.doze_until = self.clock() + float(self.t["loop"]["doze_seconds"])
@@ -262,16 +280,23 @@ class Loop:
         self.scheduler.finished()
         self._catch_up()                                                          # it thought; time passed
         d = res.decision
+        if d.action == "continue" and mind.carry and view is None:        # "carry on" is the same action again
+            d.action, d.inputs = mind.carry["action"], dict(mind.carry["inputs"])
+            d.notes.append("carried on")
         with store.transaction(self.conn):
             did = self._record(due, d, res, mind, ms)
-            if forced is not None:
+            if forced is not None and starving.NOTE in d.notes:
                 if forced[1]:
                     self.life.world.apply(forced[1], {"now": self.life.sim_time}, self.rng, by="world")
                     self.exec.perception.append(self.texts["starving_restock"])
                 if d.action != "continue":
                     self.exec.perception.append(self.texts["starving_go"])
-            memories.mark_recalled(self.conn, [r["id"] for r in recalled], self.life.sim_time)
+            memories.mark_recalled(self.conn, [r["id"] for r in recalled], self.life.sim_time,
+                                   self.t["memory"]["recall_gain"])
             rep.result = self.exec.start(d, did)
+            started = rep.result.get("status") in ("started", "continue")
+            self._queue_set(forced[2] if forced is not None else (d.then if started else []))
+            self._sig = self._signature()
             lifemod.save(self.conn, self.life)
         if rep.result.get("status") == "started":
             self._record_subject(d, rep.result.get("activity_id"))
@@ -296,6 +321,7 @@ class Loop:
         loc = self.life.content.locations[self.life.location].name
         q = memories.query_text(loc, view, self.exec.perception, mindmod.letters_on_mind(self.life, self.t))
         vec = memories.embed(self.backend, self.t["models"]["embed_model"], [q])[0]
+        self._faded = memories.faded_cue(self.conn, self.t["memory"], vec)
         return memories.recall(self.conn, self.t, vec, self.life.sim_time)
 
     def _notes(self):
@@ -305,8 +331,18 @@ class Loop:
         minimum = self.t["sleep"]["pref_note_min"]
         below = self.t["repetition"]["note_below"]
 
+        felt = memories.feelings_by_action(self.conn, self.t["memory"], self.life.sim_time)
+        thinks = beliefsmod.notes_by_action(self.conn, self.t["beliefs"])
+        done = {k: v.times_done for k, v in knowledge.all_known(self.conn).items()}
+
         def notes(action):
             out = []
+            out += [self.prompts["belief_note"].format(statement=s) for s in thinks.get(action.id, [])[:1]]
+            if innermod.practice(done.get(action.id, 0), self.t["inner"]) >= 0.6:
+                out.append(self.prompts["practised"])
+            f = felt.get(action.id, 0.0)
+            if abs(f) >= self.t["memory"]["memory_note_min"]:
+                out.append(self.prompts["memory_good" if f > 0 else "memory_bad"])
             n = memories.note_for(prefs, action, minimum) if prefs else 0
             if n:
                 out.append(words[n])
@@ -317,6 +353,8 @@ class Loop:
                     out.append("your energy is low; sleep restores it")
                 elif night:
                     out.append("it is night; sleeping now will restore your energy")
+            out += innermod.relief_notes(self.life.inner, self.life.content.world.get("inner_words"), self.t["inner"],
+                                         action.inner, self.prompts["need_relief"])
             if not action.builtin:
                 f = behaviour.freshness(self.conn, self.life.content, self.t, action, None, self.life.sim_time,
                                         self.life.world.values, location=self.life.location)
@@ -330,6 +368,118 @@ class Loop:
         subject it keeps coming back to. Never about its thoughts: quoting a thought back made a small model copy it
         (spec §6.4), and each retry is another full model call."""
         return self._stale_action_problems(mind, decision)
+
+    # ---------------------------------------------------------------- deciding without a model (event-driven)
+
+    def _signature(self) -> tuple:
+        """What its situation amounts to: where, which body bands, which needs press, what it is doing."""
+        ex = self.exec
+        return (self.life.location, tuple(sorted(ex._band_indexes().items())),
+                tuple(innermod.pressing(self.life.inner, self.t["inner"])), ex.running.action.id if ex.running else None)
+
+    def _queue(self) -> list[dict]:
+        row = self.conn.execute("SELECT value FROM meta WHERE key = 'queue'").fetchone()
+        return json.loads(row[0]) if row else []
+
+    def _queue_set(self, items: list[dict]) -> None:
+        """Persist the moves it has planned (inside the caller's transaction)."""
+        self.conn.execute("INSERT INTO meta(key, value) VALUES ('queue', ?) ON CONFLICT(key) DO UPDATE SET "
+                          "value = excluded.value", (json.dumps(items),))
+
+    def _unthinking(self, due, mind) -> tuple[Decision, list, list] | None:
+        """A decision made without asking the model, with the world ops to apply first and the queue left after:
+        hunger taking over (§2.5); the next move it planned, when nothing new has happened; carrying on with a long
+        activity at a check-in when its situation has not changed. Anything new (an event, a letter, a need that
+        became pressing, something it noticed) drops the plan and it decides again."""
+        s = starving.decide(self.life, self.exec, self.t)
+        if s is not None:
+            return s[0], s[1], []
+        kinds = {t.kind for t in due.triggers}
+        quiet = not mind.perception
+        queue = self._queue()
+        if due.kind == "check_in" and kinds == {"check_in"} and quiet and getattr(self, "_sig", None) == self._signature():
+            return Decision(kind="check_in", action="continue", notes=["unchanged"]), [], queue
+        if queue and due.kind == "full" and kinds <= {"activity_finished", "interval"} and quiet:
+            item = queue[0]
+            if self.exec.check(item["action"], item["inputs"]) is None:
+                return Decision(kind="full", action=item["action"], inputs=dict(item["inputs"]), notes=["queued"]), \
+                    [], queue[1:]
+        return None
+
+    def _protected_options(self) -> set[str]:
+        """What must always be among the options: sleep when worn out, food when hungry. Offered, never chosen for it."""
+        dec = self.t["decisions"]
+        out: set[str] = set()
+        if self.life.bodystate.energy <= dec["sleep_offer_energy"]:
+            out |= {a.id for a in self.life.content.actions.values() if a.builtin == "sleep"}
+        food = (self.life.content.world.get("starving") or {}).get("eat")
+        if food and self.life.bodystate.hunger >= dec["food_offer_hunger"]:
+            out.add(food)
+        return out
+
+    def _carry_on(self, view) -> dict | None:
+        """The last thing it did here, if it could simply carry on with it (nothing running, no words to repeat)."""
+        if view is not None:
+            return None
+        row = self.conn.execute("SELECT action_id, inputs, location FROM activities WHERE status = 'finished' "
+                                "ORDER BY id DESC LIMIT 1").fetchone()
+        spec = self.life.content.actions.get(row["action_id"]) if row else None
+        if spec is None or row["location"] != self.life.location or spec.builtin in ("move", "sleep", "inspect") \
+                or any(s["type"] == "text" for s in spec.inputs.values()):
+            return None
+        return {"action": spec.id, "inputs": json.loads(row["inputs"] or "{}"), "name": spec.name}
+
+    def _manner(self, kind: str) -> tuple[bool, float | None]:
+        """How it decides this time: by its first pull (a short, fast answer) with a chance that grows with
+        impulsiveness, and a temperature that rises with it (a cautious creature is steadier)."""
+        if kind == "check_in":
+            return False, None
+        inner_t = self.t["inner"]
+        imp = innermod.trait(self.life.character.sheet.get("temperament"), "impulsiveness")
+        base = float(self.cfg.settings["llm_temperature"]["decide"]) if self.cfg is not None else 0.8
+        return self.rng.random() < imp * inner_t["gut_scale"], round(max(0.2, base + inner_t["temperature_span"] * (imp - 0.5)), 3)
+
+    def _resurface(self) -> None:
+        """Now and then an unsettled concern comes back to mind by itself and asks for a decision (never a task)."""
+        if self.life.asleep:
+            return
+        with store.transaction(self.conn):
+            pick = loopsmod.resurface(self.conn, self.t, self.life.sim_time, self.rng)
+        if pick is not None:
+            self.exec.perception.append(self.texts["concern_back"].format(text=pick["text"]))
+            self.scheduler.note("concern", pick["text"])
+
+    def _form_memories(self) -> None:
+        """What just happened leaves an impression only if it mattered to *this* creature (its significance), and the
+        same thing again strengthens the impression it already has. The embedding is made outside the transaction."""
+        if not self.exec.formed:
+            return
+        batch, self.exec.formed = self.exec.formed, []
+        m = self.t["memory"]
+        temp = self.life.character.sheet.get("temperament")
+        keep = []
+        for f in batch:
+            s = memories.significance(f["importance"], f["mood_base"], f["remember"], f["freshness"], temp, m)
+            if s >= m["short_min"]:
+                keep.append((f, s))
+        if not keep:
+            return
+        vecs = memories.embed(self.backend, self.t["models"]["embed_model"], [f["text"] for f, _ in keep])
+        with store.transaction(self.conn):
+            for (f, s), v in zip(keep, vecs):
+                memories.add_memory(self.conn, m, self.life.sim_time, f["text"], v, s,
+                                    feeling=memories.feeling_of(f["mood_base"]), action_id=f["action_id"],
+                                    location=f["location"], source=f["id"])
+
+    def _temperament_words(self) -> list[str]:
+        """The few ways it is strongly inclined, as clauses for "You tend to: ..." (high >= 0.65, low <= 0.35)."""
+        temp = self.life.character.sheet.get("temperament") or {}
+        out = []
+        for d in innermod.DIMENSIONS:
+            v = temp.get(d)
+            if v is not None and (v >= 0.65 or v <= 0.35):
+                out.append(self.prompts[f"temp_{d}_{'high' if v >= 0.65 else 'low'}"])
+        return out
 
     def _stale_action_problems(self, mind, decision: Decision) -> list[str]:
         if decision.kind == "check_in":
@@ -442,14 +592,26 @@ class Loop:
     def _record(self, due, d: Decision, res, mind, ms: int) -> int:
         cur = self.conn.execute(
             "INSERT INTO decisions(sim_time, real_time, kind, triggers, action, inputs, thought, reasoning, preserve, "
-            "letter, fallback, notes, attempts, messages, mind, dropped, ms) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "letter, fallback, notes, attempts, messages, mind, dropped, ms, factors) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (self.life.sim_time, datetime.now().isoformat(timespec="seconds"), due.kind,
              json.dumps([t.__dict__ for t in due.triggers]), d.action, json.dumps(d.inputs, ensure_ascii=False),
              d.thought, d.reasoning, int(d.preserve), d.letter, int(d.fallback), json.dumps(d.notes),
              json.dumps(res.attempts, ensure_ascii=False, default=str), json.dumps(res.messages, ensure_ascii=False),
-             json.dumps(mind.to_dict(), ensure_ascii=False, default=str), json.dumps(res.dropped), ms))
+             json.dumps(mind.to_dict(), ensure_ascii=False, default=str), json.dumps(res.dropped), ms,
+             json.dumps(self._factors(d, mind), ensure_ascii=False, default=str)))
         return cur.lastrowid
+
+    def _factors(self, d: Decision, mind) -> dict:
+        """The structured facts behind a decision (not the model's own explanation): how it was made, what was drawn,
+        what it felt, what bore on which option. The dashboard reads this."""
+        tier = next((n for n in ("queued", "unchanged", "gut", "carried on", starving.NOTE) if n in d.notes), "full")
+        return {"tier": tier, "menu": mind.menu_info, "inner": self.life.inner.as_dict(),
+                "pressing": innermod.pressing(self.life.inner, self.t["inner"]),
+                "body": {k: round(v, 3) for k, v in self.life.bodystate.as_dict().items()},
+                "option_notes": {o.id: o.notes for o in mind.options if o.notes},
+                "memories": list(mind.memories), "beliefs": list(mind.beliefs), "projects": list(mind.projects),
+                "concerns": list(mind.loops), "people": list(mind.people), "mulling": mind.mulling, "queue": d.then}
 
     def reload(self) -> None:
         """After an error: the transaction rolled back, so rebuild the in-memory state from the database."""

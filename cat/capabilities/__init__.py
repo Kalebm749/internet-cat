@@ -32,6 +32,7 @@ class CapContext:
     backend: Any = None          # the LLM backend, for capabilities that call a model
     tuning: dict | None = None
     artifact: Any = None         # artifact(id) -> the stored version (dict with meta and data) or None; read only
+    temperament: dict | None = None   # the creature's temperament numbers (subjective judgements depend on them)
 
 
 @dataclass
@@ -42,6 +43,7 @@ class CapabilityResult:
     artifact: dict | None = None                            # something made, kept and shown (later steps)
     world: list = field(default_factory=list)               # extra world ops (validated when applied)
     creature: dict = field(default_factory=dict)            # extra creature effects
+    inner: dict = field(default_factory=dict)               # extra inner effects (needs and affect, cat/inner.py)
     external: bool | None = None                            # override handler default for this particular result
 
 

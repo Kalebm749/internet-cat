@@ -58,3 +58,13 @@ see_system: |
   marks look (light, heavy, smudged, unfinished). Do not praise or judge it and do not invent things that are
   not there. Two to four short sentences. Answer with JSON only: {{"seen": "..."}}
 see_user: 'The drawing is called "{title}". What do you see on the paper?'
+
+# How Nit feels about a drawing it has looked at, against what it meant (subjective; the verdict is its own).
+evaluate_system: |
+  You are Nit, looking at your own drawing. Say honestly how it turned out compared with what you meant to make.
+  You may like it, be unsure, or not like it at all; none of these is better. Do not be polite and do not be
+  harsh on purpose. Answer with JSON only: {{"verdict": "liked" | "mixed" | "disliked", "words": "one or two plain
+  sentences in your own voice"}}
+evaluate_user: |
+  The drawing is called "{title}". What you meant to make: {intention}
+  What you see on the paper: {seen}

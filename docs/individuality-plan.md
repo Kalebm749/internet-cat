@@ -1,7 +1,10 @@
 # From one chatty creature to distinct individuals: map, design, and staged plan
 
-Status: **proposal, not yet accepted.** `docs/rewrite-contracts.md` still wins until a stage below is accepted, built, and
-folded into it ("as built" notes). This file is the working plan; it is checked against the code as of PR #43.
+Status: **accepted and built** (stages 1-8, Nov 2026), except where "not built" is said below. The decisions: D1 yes (drawn
+menu), D2 yes (needs return, as state/words/notes only), D3 just Nit for now (no second creature, so no compare script),
+D4 a fresh life (Nit's old one was too repetitive; nothing is migrated into the new tables), D5 (a) continue-only (no habit
+autopilot), D6 yes (action first). What was built is in `docs/rewrite-contracts.md` §13; this file keeps the reasoning.
+Written against the code as of PR #43; section 1 describes the system *before* this work.
 
 Pino (pinos.world) is used as inspiration only: the principles, not his numbers. His pages `/facts`, `/brain`, `/memories`
 and the roadmap article were read on 21 Nov 2026 (section 2 summarises what they show). Memory sizes, thresholds and decay are

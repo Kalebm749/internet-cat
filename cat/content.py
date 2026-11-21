@@ -37,13 +37,13 @@ FACT_KEYS = {"type", "default", "visible", "min", "max", "max_len", "choices", "
 EVENT_KEYS = {"id", "text", "sense", "chance_per_hour", "salience", "hours", "weather_in", "world"}
 ACTION_KEYS = {"id", "name", "description", "family", "discovery", "inspect_hint", "requires", "inputs",
                "duration", "continuous", "per_minute", "on_finish", "outcomes", "on_interrupt", "capability",
-               "revisit_key", "effort", "builtin", "diary", "subject", "distinct"}
+               "revisit_key", "effort", "builtin", "diary", "subject", "distinct", "inner", "project"}
 EFFECT_KEYS = {"world", "creature", "discover", "remember", "reflection"}
 OUTCOME_KEYS = EFFECT_KEYS | {"when", "text"}
 WORLD_KEYS = {"name", "sim_start", "senses", "facts", "events", "effort", "body_words", "derived_conditions",
-              "mailbox", "wishes", "granted_wishes", "learned", "starving"}
+              "mailbox", "wishes", "granted_wishes", "learned", "starving", "inner_words"}
 CHARACTER_KEYS = {"name", "pronoun", "core", "traits", "tendencies", "background", "likes", "dislikes",
-                  "innate_knowledge", "start_location"}
+                  "innate_knowledge", "start_location", "temperament", "holds"}
 CORE_KEYS = {"nature", "senses", "abilities", "boundaries", "prohibited_actions"}
 CAPABILITY_KEYS = {"enabled", "handler", "permissions", "limits"}
 
@@ -143,6 +143,8 @@ class ActionSpec:
     diary: str | None = None      # the website's third-person line, e.g. "{name} is walking to {inputs.to}"
     subject: str | None = None    # what the action is about, in Nit's own words, e.g. "{inputs.intention}" (§6.6)
     distinct: dict | None = None  # {fact, field, value, match?, reason}: not if the list already holds the same thing
+    inner: dict | None = None     # {need or affect: delta}: what finishing it does inside (negative eases a need)
+    project: str | None = None    # made | reworked | studied | finished | abandoned: what it does to a project (cat/projects.py)
     source: str = ""
 
 
@@ -351,7 +353,7 @@ def _parse_action(owner: str | None, d: Any, path: Path, probs: _Problems, line:
                    per_minute=d.get("per_minute") or {}, on_finish=d.get("on_finish"),
                    outcomes=d.get("outcomes"), on_interrupt=d.get("on_interrupt"),
                    capability=d.get("capability"), revisit_key=d.get("revisit_key") or [],
-                   effort=d.get("effort"), builtin=builtin, diary=d.get("diary"), subject=d.get("subject"), distinct=d.get("distinct"),
+                   effort=d.get("effort"), builtin=builtin, diary=d.get("diary"), subject=d.get("subject"), distinct=d.get("distinct"), inner=d.get("inner"), project=d.get("project"),
                    source=f"{path.name}:{line}")
     if a.per_minute and not a.continuous:
         probs.add(path, line_of(d, "per_minute"), f"{what}: per_minute needs continuous: true")
@@ -612,6 +614,18 @@ def _check_world_tables(world: Mapping, path: Path, probs: _Problems) -> None:
         if not froms or not all(_is_num(f) for f in froms) or froms != sorted(froms) \
                 or not all(isinstance(b.get("words"), str) and set(b) == {"from", "words"} for b in bands):
             probs.add(path, ln, f"body_words.{var}: a list of {{from, words}} sorted by 'from'")
+    from cat import inner as innermod
+    iw = world.get("inner_words") or {}
+    if not isinstance(iw, dict):
+        probs.add(path, line_of(world, "inner_words"), "world: inner_words must be a mapping")
+        iw = {}
+    for var, spec in iw.items():
+        ok = var in innermod.VARS and isinstance(spec, dict) and isinstance(spec.get("words"), str) \
+            and (("from" in spec) != ("below" in spec)) and _is_num(spec.get("from", spec.get("below"))) \
+            and set(spec) <= {"from", "below", "words", "short"}
+        if not ok:
+            probs.add(path, line_of(iw, var), f"inner_words.{var}: needs words and either from or below "
+                                              f"(a known need or affect: {', '.join(innermod.VARS)}); short is optional")
     for dc in world.get("derived_conditions") or []:
         ln = line_of(dc)
         if not isinstance(dc, dict) or not isinstance(dc.get("name"), str) or not isinstance(dc.get("words"), str):
@@ -651,6 +665,17 @@ def _check_character(c: Content, path: Path, probs: _Problems) -> None:
         for aid in core.get("prohibited_actions") or []:
             if aid not in c.actions:
                 probs.add(path, line_of(core, "prohibited_actions"), f"core: prohibited action '{aid}' does not exist")
+    from cat import inner as innermod
+    temp = ch.get("temperament") or {}
+    if not isinstance(temp, dict) or not set(temp) <= set(innermod.DIMENSIONS) \
+            or not all(_is_num(v) and 0 <= v <= 1 for v in temp.values()):
+        probs.add(path, line_of(ch, "temperament"),
+                  f"character: temperament must map {', '.join(innermod.DIMENSIONS)} to 0..1")
+    holds = ch.get("holds") or []
+    if not isinstance(holds, list) or not all(
+            isinstance(h, dict) and isinstance(h.get("text"), str) and _is_num(h.get("strength", 0.5))
+            and 0 <= h.get("strength", 0.5) <= 1 and isinstance(h.get("keywords", []), list) for h in holds):
+        probs.add(path, line_of(ch, "holds"), "character: holds is a list of {text, keywords: [words], strength: 0..1}")
     traits = ch["traits"]
     if not isinstance(traits, dict) or not all(_is_num(v) and 0 <= v <= 1 for v in traits.values()):
         probs.add(path, line_of(ch, "traits"), "character: traits must map names to strengths 0..1")
@@ -729,6 +754,15 @@ def _check_action(c: Content, a: ActionSpec, path: Path, line: int, probs: _Prob
                 p = tmpl(ph)
                 if p:
                     probs.add(path, line, f"{w} subject: {p}")
+    if a.project is not None:
+        from cat import projects as projectsmod
+        if a.project not in projectsmod.EVENTS:
+            probs.add(path, line_of(d, "project"), f"{w}: project must be one of {', '.join(projectsmod.EVENTS)}")
+    if a.inner is not None:
+        from cat import inner as innermod
+        if not isinstance(a.inner, dict) or not all(k in innermod.VARS and _is_num(v) and -1 <= v <= 1
+                                                      for k, v in a.inner.items()):
+            probs.add(path, line_of(d, "inner"), f"{w}: inner must map needs or affect ({', '.join(innermod.VARS)}) to -1..1")
     if a.distinct is not None:
         dd = a.distinct
         ok = isinstance(dd, dict) and set(dd) <= {"fact", "field", "value", "match", "reason"} \

@@ -68,3 +68,19 @@ starving:
   eat: eat_offering
   restock:
     - {op: add, fact: market.offerings, value: 1}
+
+# Inner life in words (cat/inner.py): the strongest few, when felt. `short` completes "this could ease ..." on options.
+inner_words:
+  novelty:        {from: 0.6, words: "You are hungry for something you have not seen before.", short: "your wish for something new"}
+  social:         {from: 0.6, words: "You wish someone would write to you.", short: "your wish for company"}
+  solitude:       {from: 0.6, words: "You want to be left alone for a while.", short: "your wish to be alone"}
+  expression:     {from: 0.6, words: "There is something in you that wants to be made or said.", short: "your wish to make something"}
+  accomplishment: {from: 0.6, words: "You want to finish something properly.", short: "your wish to get something done"}
+  belonging:      {from: 0.6, words: "You wonder whether you matter to anyone.", short: "your wish to belong"}
+  security:       {from: 0.6, words: "Nothing feels settled; you want things to hold still.", short: "your need for things to feel safe"}
+  stress:         {from: 0.55, words: "You are tense."}
+  frustration:    {from: 0.5, words: "You are irritated that things keep not working out."}
+  loneliness:     {from: 0.55, words: "You feel alone."}
+  curiosity:      {from: 0.65, words: "You are curious."}
+  satisfaction:   {from: 0.6, words: "You feel quietly pleased with how things have gone."}
+  confidence:     {below: 0.3, words: "You doubt yourself."}

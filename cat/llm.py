@@ -406,6 +406,8 @@ class MockBackend(LLMBackend):
                     "points": [[40, 430], [180, 410 + r.random() * 30], [330, 420], [470, 405]], "pressure": 0.8}]
             return {"title": r.choice(["The round thing", "Something by the water", "A small sun"]),
                     "description": "A round shape coloured in, above a long line.", "operations": ops}
+        if task == "evaluate_drawing":
+            return {"verdict": r.choice(["liked", "mixed", "disliked"]), "words": "It is only partly what I meant."}
         if task == "look_at_drawing":      # Nit's eyes (cat/capabilities/look_at_drawing.py)
             return {"seen": "A round shape coloured in, above a long wavy line."}
         if task == "decide":       # the rewrite's waking decision (cat/decision.py): pick from the schema

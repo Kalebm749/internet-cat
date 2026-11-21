@@ -6,6 +6,7 @@
   name: go somewhere else
   description: "Walk to a neighbouring place."
   family: move
+  inner: {novelty: -0.05}
   discovery: innate
   inputs:
     to: {type: choice, options: "{exits}"}
@@ -18,6 +19,7 @@
   name: look around carefully
   description: "Look carefully around here for something you have not noticed."
   family: inspect
+  inner: {novelty: -0.1}
   discovery: innate
   duration: {minutes: [5, 15]}
   effort: low
@@ -28,6 +30,7 @@
   name: go to sleep
   description: "Lie down and sleep. Your energy will recover while you rest."
   family: sleep
+  inner: {stress: -0.3, security: -0.1}
   discovery: innate
   requires:
     - any_of:
