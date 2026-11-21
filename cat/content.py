@@ -37,7 +37,7 @@ FACT_KEYS = {"type", "default", "visible", "min", "max", "max_len", "choices", "
 EVENT_KEYS = {"id", "text", "sense", "chance_per_hour", "salience", "hours", "weather_in", "world"}
 ACTION_KEYS = {"id", "name", "description", "family", "discovery", "inspect_hint", "requires", "inputs",
                "duration", "continuous", "per_minute", "on_finish", "outcomes", "on_interrupt", "capability",
-               "revisit_key", "effort", "builtin", "diary", "subject", "distinct", "inner", "project", "forgets"}
+               "revisit_key", "effort", "builtin", "diary", "subject", "distinct", "inner", "project", "forgets", "repeat_limit"}
 EFFECT_KEYS = {"world", "creature", "discover", "remember", "reflection", "inner"}
 OUTCOME_KEYS = EFFECT_KEYS | {"when", "text"}
 WORLD_KEYS = {"name", "sim_start", "senses", "facts", "events", "effort", "body_words", "derived_conditions",
@@ -144,6 +144,7 @@ class ActionSpec:
     subject: str | None = None    # what the action is about, in Nit's own words, e.g. "{inputs.intention}" (§6.6)
     distinct: dict | None = None  # {fact, field, value, match?, reason}: not if the list already holds the same thing
     inner: dict | None = None     # {need or affect: delta}: what finishing it does inside (negative eases a need)
+    repeat_limit: Any = None      # "off", or {max: N}: how many times within the window before the hard stop (cat/behaviour.py)
     forgets: str | None = None    # name of an input: what it remembers of the thing that input chose is forgotten
     project: str | None = None    # made | reworked | studied | finished | abandoned: what it does to a project (cat/projects.py)
     source: str = ""
@@ -354,7 +355,7 @@ def _parse_action(owner: str | None, d: Any, path: Path, probs: _Problems, line:
                    per_minute=d.get("per_minute") or {}, on_finish=d.get("on_finish"),
                    outcomes=d.get("outcomes"), on_interrupt=d.get("on_interrupt"),
                    capability=d.get("capability"), revisit_key=d.get("revisit_key") or [],
-                   effort=d.get("effort"), builtin=builtin, diary=d.get("diary"), subject=d.get("subject"), distinct=d.get("distinct"), inner=d.get("inner"), project=d.get("project"), forgets=d.get("forgets"),
+                   effort=d.get("effort"), builtin=builtin, diary=d.get("diary"), subject=d.get("subject"), distinct=d.get("distinct"), inner=d.get("inner"), project=d.get("project"), forgets=d.get("forgets"), repeat_limit=d.get("repeat_limit"),
                    source=f"{path.name}:{line}")
     if a.per_minute and not a.continuous:
         probs.add(path, line_of(d, "per_minute"), f"{what}: per_minute needs continuous: true")
@@ -761,6 +762,9 @@ def _check_action(c: Content, a: ActionSpec, path: Path, line: int, probs: _Prob
                 p = tmpl(ph)
                 if p:
                     probs.add(path, line, f"{w} subject: {p}")
+    rl = a.repeat_limit
+    if rl is not None and rl != "off" and not (isinstance(rl, dict) and set(rl) == {"max"} and isinstance(rl["max"], int) and rl["max"] >= 1):
+        probs.add(path, line_of(d, "repeat_limit"), f'{w}: repeat_limit must be "off" or {{max: <whole number>}}')
     if a.forgets is not None and a.forgets not in a.inputs:
         probs.add(path, line_of(d, "forgets"), f"{w}: forgets must name one of its inputs ({', '.join(a.inputs) or 'none'})")
     if a.project is not None:

@@ -207,6 +207,54 @@ def subject_freshness(found: list[Echo], tuning: dict) -> float:
     return round(max(rp["freshness_min"], min(1.0, 1 - rp["subject_weight"] * weight)), 4)
 
 
+def hard_stops(conn: sqlite3.Connection, content: Content, tuning: dict, now: str, exempt: set[str] | None = None) -> set[str]:
+    """Actions that are not offered at all because it has done them too often (spec §13.4). Silent: the creature is never
+    told; the action is just not on the menu until the history clears. Four rules (0 turns each off):
+      in a row     the same action this many times running                       (hard_in_a_row)
+      in a window  more than this many times within `hard_window_hours`          (hard_in_window; per action `repeat_limit`)
+      subject      the same subject (embeddings) this many times lately          (hard_same_subject)
+      failures     it could not be done this many times within the window        (hard_failed)
+    Moving, sleeping and anything in `exempt` (food when hungry, a letter waiting for a decision) are never stopped."""
+    rp = tuning["repetition"]
+    exempt = set(exempt or ())
+    since = clock.fmt(clock.parse(now) - timedelta(hours=rp["hard_window_hours"]))
+    rows = conn.execute("SELECT action_id, status, started_at FROM activities WHERE status IN ('finished', 'rejected') "
+                        "AND started_at >= ? ORDER BY id DESC", (since,)).fetchall()
+    stopped: set[str] = set()
+    per: dict[str, list] = {}
+    for r in rows:
+        per.setdefault(r["action_id"], []).append(r)
+    for aid, mine in per.items():
+        a = content.actions.get(aid)
+        if a is None or a.builtin in ("move", "sleep") or aid in exempt or a.repeat_limit == "off":
+            continue
+        cap = a.repeat_limit if isinstance(a.repeat_limit, dict) else {}
+        if rp["hard_in_window"] and len(mine) > cap.get("max", rp["hard_in_window"]):
+            stopped.add(aid)
+        if rp["hard_failed"] and sum(1 for r in mine if r["status"] == "rejected") >= rp["hard_failed"]:
+            stopped.add(aid)
+    n = rp["hard_in_a_row"]
+    if n and rows:
+        for aid in {r["action_id"] for r in rows[:n]}:
+            a = content.actions.get(aid)
+            if a is not None and a.builtin not in ("move", "sleep") and aid not in exempt and a.repeat_limit != "off" \
+                    and len(rows) >= n and all(r["action_id"] == aid for r in rows[:n]):
+                stopped.add(aid)
+    m = rp["hard_same_subject"]
+    if m:
+        from cat.memories import cosine, from_blob
+        for aid in {r["action_id"] for r in rows}:
+            a = content.actions.get(aid)
+            if a is None or not a.subject or aid in exempt or a.repeat_limit == "off":
+                continue
+            subs = conn.execute("SELECT embedding FROM subjects WHERE action_id = ? AND sim_time >= ? AND embedding IS NOT NULL "
+                                "ORDER BY id DESC LIMIT ?", (aid, since, m + 2)).fetchall()
+            vecs = [from_blob(r["embedding"]) for r in subs]
+            if len(vecs) >= m and sum(1 for v in vecs[1:] if cosine(v, vecs[0]) >= rp["subject_floor"]) >= m - 1:
+                stopped.add(aid)
+    return stopped
+
+
 def thought_theme(conn: sqlite3.Connection, vec, tuning: dict, exclude_latest: bool = False) -> list[str]:
     """Recent thoughts that go the same way as `vec` (cosine >= thought_theme_threshold), newest first: the same
     theme in other words, which the near-copy check (thought_dup_threshold) lets through. Needs at least

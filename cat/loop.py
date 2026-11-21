@@ -226,6 +226,8 @@ class Loop:
         if due is None:
             return rep
         self._place_awareness()
+        self._hidden = behaviour.hard_stops(self.conn, self.life.content, self.t, self.life.sim_time,
+                                            self._protected_options())      # silently not offered (spec §13.4)
         recalled = self._recall(view)
         sleep_ids = [a.id for a in self.life.content.actions.values() if a.builtin == "sleep"]
         notable = memories.notable_today(self.conn, self.t, memories.last_wake(self.conn, sleep_ids))
@@ -252,7 +254,7 @@ class Loop:
                              beliefs=beliefsmod.lines_for_now(self.conn, self.t["beliefs"], self.life.location,
                                                               self.life.world.values.get("world.weather")),
                              menu_size=self.t["decisions"]["menu_size"], protected=self._protected_options(),
-                             carry=self._carry_on(view))
+                             carry=self._carry_on(view), hidden=self._hidden)
         self.exec.perception = []
         self.scheduler.started(due, now, self.life.sim_time)
         t0 = self.clock()
@@ -401,7 +403,7 @@ class Loop:
             return Decision(kind="check_in", action="continue", notes=["unchanged"]), [], queue
         if queue and due.kind == "full" and kinds <= {"activity_finished", "interval"} and quiet:
             item = queue[0]
-            if self.exec.check(item["action"], item["inputs"]) is None:
+            if item["action"] not in getattr(self, "_hidden", ()) and self.exec.check(item["action"], item["inputs"]) is None:
                 return Decision(kind="full", action=item["action"], inputs=dict(item["inputs"]), notes=["queued"]), \
                     [], queue[1:]
         return None
@@ -428,7 +430,8 @@ class Loop:
         row = self.conn.execute("SELECT action_id, inputs, location FROM activities WHERE status = 'finished' "
                                 "ORDER BY id DESC LIMIT 1").fetchone()
         spec = self.life.content.actions.get(row["action_id"]) if row else None
-        if spec is None or row["location"] != self.life.location or spec.builtin in ("move", "sleep", "inspect") \
+        if spec is None or spec.id in getattr(self, "_hidden", ()) or row["location"] != self.life.location \
+                or spec.builtin in ("move", "sleep", "inspect") \
                 or any(s["type"] == "text" for s in spec.inputs.values()):
             return None
         inputs = json.loads(row["inputs"] or "{}")

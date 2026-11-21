@@ -65,7 +65,8 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 - **The menu is a draw from knowledge ∩ world.** An action is available only if Nit knows it, it is here (or universal),
   its `requires` hold, it is not prohibited by `core`, and its capability is enabled and under its limit. Of those a
   uniform draw of `decisions.menu_size` is offered (plus sleep when worn out, food when hungry, and "carry on"). Options
-  are never ranked or removed for repetition or by needs (stale ones get a note).
+  are never ranked or removed by needs; stale ones get a note, and past a hard limit an action is silently not offered
+  (`behaviour.hard_stops`, spec §13.4).
 - **Inner life is state, not a driver** (spec §13): temperament, needs, affect, beliefs, memory layers, concerns,
   projects and acquired identity are code-owned, persisted, and update without a model; they reach behaviour through
   appraisal (how outcomes land), words and notes on options, what is noticed, and what is remembered, never by choosing.

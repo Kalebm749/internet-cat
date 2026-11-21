@@ -640,3 +640,76 @@ def test_blocked_queries_and_titles_find_nothing(lp, monkeypatch):
     assert blocked_q.ok and "finds nothing" in blocked_q.text and not called                   # never even asked
     res = wikipedia.CAPABILITY.run(wiki_ctx(lp), {"operation": "search", "query": "birds"})
     assert "Herons" in res.text and "Erotica" not in res.text                                    # a blocked title is dropped
+
+
+# ---------------------------------------------------------------- the silent hard stop (spec §13.4)
+
+def log_activity(lp, action, minutes_ago, status="finished", location="fountain"):
+    from cat import clock
+    when = clock.fmt(clock.parse(lp.life.sim_time) - __import__("datetime").timedelta(minutes=minutes_ago))
+    with store.transaction(lp.conn):
+        return lp.conn.execute("INSERT INTO activities(action_id, location, inputs, started_at, planned_minutes, ended_at, status) "
+                               "VALUES (?, ?, '{}', ?, 5, ?, ?)", (action, location, when, when, status)).lastrowid
+
+
+def stopped(lp, exempt=None):
+    from cat import behaviour
+    return behaviour.hard_stops(lp.conn, lp.life.content, lp.t, lp.life.sim_time, exempt)
+
+
+def test_the_same_thing_twice_running_is_silently_not_offered(lp):
+    lp.life.sim_time = "2026-11-21T12:00"
+    for m in (50, 35, 20):
+        log_activity(lp, "inspect", m)
+    assert "inspect" in stopped(lp)
+    learn(lp, "sit_and_reflect")
+    log_activity(lp, "sit_and_reflect", 5)                                 # something else in between: the run is broken
+    assert "inspect" not in stopped(lp)
+    log_activity(lp, "inspect", 2)
+    log_activity(lp, "inspect", 1)
+    log_activity(lp, "inspect", 0)
+    stop = stopped(lp)
+    m = mind_of(lp, menu_size=0, hidden=stop)
+    assert "inspect" in stop and "inspect" not in [o.id for o in m.options]
+    assert all("repeat" not in n and "lately" not in n for o in m.options for n in o.notes)       # and it is never mentioned
+
+
+def test_too_many_in_a_window_failures_and_close_subjects_each_stop_an_action(lp):
+    lp.life.sim_time = "2026-11-21T12:00"
+    for m, a in ((150, "inspect"), (130, "sit_and_reflect"), (110, "inspect"), (90, "sit_and_reflect"), (70, "inspect"),
+                 (50, "sit_and_reflect"), (30, "inspect"), (10, "sit_and_reflect")):
+        log_activity(lp, a, m)                                             # interleaved, so never "in a row"
+    assert not {"inspect", "sit_and_reflect"} & stopped(lp)                 # 4 each within 3 hours is still allowed
+    log_activity(lp, "inspect", 5)
+    stop = stopped(lp)
+    assert "inspect" in stop and "sit_and_reflect" not in stop              # the fifth is one too many
+    log_activity(lp, "make_drawing", 100, status="rejected")
+    log_activity(lp, "make_drawing", 60, status="rejected")
+    assert "make_drawing" in stopped(lp)                                    # could not be done twice: left alone for a while
+    from cat.llm import hash_embed
+    from cat import memories
+    with store.transaction(lp.conn):
+        for k, when in enumerate(("2026-11-21T10:00", "2026-11-21T11:00", "2026-11-21T11:40")):
+            lp.conn.execute("INSERT INTO subjects(action_id, sim_time, text, embedding) VALUES ('search_wikipedia', ?, 'coins water', ?)",
+                            (when, memories.to_blob(hash_embed("coins water"))))
+    log_activity(lp, "search_wikipedia", 20, location="terminal")
+    assert "search_wikipedia" in stopped(lp)                                # the third search for the same thing
+
+
+def test_moving_sleeping_the_protected_and_opted_out_are_never_stopped(lp):
+    lp.life.sim_time = "2026-11-21T12:00"
+    for m in (50, 35, 20):
+        log_activity(lp, "move", m)
+        log_activity(lp, "sleep", m - 1)
+    assert not {"move", "sleep"} & stopped(lp)
+    for m in (50, 35, 20):
+        log_activity(lp, "eat_offering", m, location="market")
+    assert "eat_offering" in stopped(lp) and "eat_offering" not in stopped(lp, exempt={"eat_offering"})
+    assert lp.life.content.actions["work_on_drawing"].repeat_limit == {"max": 8}                       # more passes are allowed
+
+
+def test_a_stopped_action_leaves_the_drawn_menu_but_the_rest_is_still_drawn(lp):
+    learn(lp, "sit_and_reflect")
+    m = mind_of(lp, menu_size=0, hidden={"inspect"})
+    ids = [o.id for o in m.options]
+    assert "inspect" not in ids and {"sit_and_reflect", "move"} <= set(ids) and m.menu_info["stopped"] == ["inspect"]
