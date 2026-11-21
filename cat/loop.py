@@ -23,8 +23,10 @@ from typing import Any, Callable
 
 import threading
 
+import numpy as np
+
 from cat import clock as clock_mod, mail as mailmod
-from cat import behaviour, content as contentmod, decision as decisionmod, identity, knowledge, life as lifemod, memories
+from cat import behaviour, content as contentmod, decision as decisionmod, identity, knowledge, life as lifemod, loops as loopsmod, memories
 from cat import mind as mindmod, sleepcycle, store, wishes
 from cat.capabilities import Registry
 from cat.config import Config
@@ -235,7 +237,8 @@ class Loop:
                              seed=f"{self.seed}|{now}", capability_ok=self.exec.capability_ok,
                              notes=self._notes(), core_memories=memories.core_texts(self.conn),
                              count_done=self.exec.count_done,
-                             dwelling=behaviour.dwelling(self.conn, self.life.sim_time, self.t))
+                             dwelling=behaviour.dwelling(self.conn, self.life.sim_time, self.t),
+                             loops=loopsmod.on_mind(self.conn, self.t))
         self.exec.perception = []
         self.scheduler.started(due, now, self.life.sim_time)
         t0 = self.clock()
@@ -312,7 +315,28 @@ class Loop:
         return notes
 
     def _reconsider_stale_choice(self, mind, decision: Decision) -> list[str]:
-        """Offer one prompt-level loop break when Nit picks a stale action despite fresh alternatives."""
+        """One extra attempt when the choice is stale: a thought that is a copy of a recent one, an action that
+        cannot happen or has felt tired lately, a subject it keeps coming back to."""
+        if decision.kind == "check_in":
+            return self._stale_action_problems(mind, decision)
+        return self._thought_problems(decision) + self._stale_action_problems(mind, decision)
+
+    def _thought_problems(self, decision: Decision) -> list[str]:
+        """A new thought that is almost the same as a recent one: quote the earlier one and ask once (§6.4)."""
+        rp = self.t["repetition"]
+        if not decision.thought or not rp["thought_window"]:
+            return []
+        vec = self._subject_vec(decision.thought)
+        if vec is None:
+            return []
+        v = np.asarray(vec, dtype=np.float32)
+        for r in self.conn.execute("SELECT text, embedding FROM thoughts WHERE embedding IS NOT NULL ORDER BY id DESC "
+                                   "LIMIT ?", (rp["thought_window"],)):
+            if memories.cosine(memories.from_blob(r["embedding"]), v) > rp["thought_dup_threshold"]:
+                return [self.prompts["thought_repeat"].format(example=r["text"])]
+        return []
+
+    def _stale_action_problems(self, mind, decision: Decision) -> list[str]:
         if decision.kind == "check_in":
             if self.life.bodystate.energy <= 0.2 and decision.action != "stop":
                 return ["Your energy is critically low. Stop this activity so you can consider sleep."]

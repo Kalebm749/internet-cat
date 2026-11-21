@@ -4,9 +4,10 @@
     2 core          thoughts it chose to keep -> at most core_per_night core memories   (LLM chooses, code caps)
     3 long_term     what mattered -> lasting memories linked to real experiences  (LLM writes, code checks links)
     4 learned       provisional discoveries -> confirmed, in its own words        (code facts, LLM words)
+    4b loops        open a few wants and questions, close the ones settled      (LLM proposes, code checks citations)
     5 preferences   code measures how things went by mood -> likes and dislikes   (code proposes, LLM may reject)
     6 develop       at most one small character change, checked by code          (LLM proposes, code decides)
-    7 maintenance   merge near-duplicate memories, forget faded ones             (code)
+    7 maintenance   merge near-duplicate memories, forget faded ones, keep within the cap   (code)
 
 `plan` only reads (it may run on its own connection beside the loop) and asks the sleep model; `commit` writes
 the whole night in one transaction. A stage that fails leaves its part for the next night (stages 1-3 keep a
@@ -25,7 +26,7 @@ from typing import Any
 
 import numpy as np
 
-from cat import clock, identity, knowledge, memories
+from cat import clock, identity, knowledge, loops as loopsmod, memories
 from cat.config import CONFIG_DIR
 from cat.content import Content
 from cat.decision import load_prompt_file
@@ -41,6 +42,7 @@ PROMPT_FIELDS = {
     "long_term": {"summary", "lines", "max", "name"},
     "learned": {"name", "lines"},
     "preferences": {"name", "lines"},
+    "loops": {"name", "lines", "open", "max"},
     "develop": {"name", "sheet", "behaviour", "preferences", "memories", "lines"},
     "conflict": {"name", "boundaries", "change"},
     "repeated": {"name", "day"},
@@ -64,6 +66,7 @@ class SleepPlan:
     learned: dict[str, str] = field(default_factory=dict)     # action id -> own words
     prefs: list[dict] = field(default_factory=list)           # rows to upsert
     prefs_drop: list[tuple[str, str]] = field(default_factory=list)
+    loops: dict = field(default_factory=dict)                 # {close, open, fade, push}: see _loops
     proposal: dict | None = None
     verdicts: list[dict] = field(default_factory=list)
     accepted: bool = False
@@ -284,6 +287,9 @@ def plan(conn: sqlite3.Connection, content: Content, tuning: dict, backend: LLMB
         return p.learned
     stage("learned", learned)
 
+    # 4b open loops
+    stage("loops", lambda: _loops(conn, tuning, backend, prompts, system, name, now, by_id, p))
+
     # 5 preferences
     stage("preferences", lambda: _preferences(conn, content, tuning, backend, prompts, system, name, now, p))
 
@@ -293,6 +299,67 @@ def plan(conn: sqlite3.Connection, content: Content, tuning: dict, backend: LLMB
     # 7 maintenance
     stage("maintenance", lambda: _maintenance(conn, tuning, now, p))
     return p
+
+
+def _loops(conn, tuning, backend, prompts, system, name, now, by_id, p: SleepPlan):
+    """Open a few wants and questions from the day's own experiences, close the ones those experiences settled.
+    Every id the model cites must be a real own experience of the day (or an open loop); what is not is dropped."""
+    lp = tuning["loops"]
+    rows = loopsmod.open_rows(conn)
+    fade = loopsmod.expired(rows, tuning, now)
+    own = {i: r for i, r in by_id.items() if _own(r)}
+    close: list[dict] = []
+    new: list[dict] = []
+    if own and (lp["per_night"] > 0 or rows):
+        have = {r["id"] for r in rows}
+        user = prompts["loops"].format(
+            name=name, lines=_lines([_exp_line(r) for r in own.values()]), max=lp["per_night"],
+            open=_lines([f"[l{r['id']}] {r['kind']}: {r['text']}" for r in rows]))
+        schema = {"type": "object", "properties": {
+            "close": {"type": "array", "items": {"type": "object", "properties": {
+                "id": {"type": "integer"}, "why": {"type": "string"},
+                "sources": {"type": "array", "items": {"type": "integer"}}}, "required": ["id", "sources"]}},
+            "open": {"type": "array", "items": {"type": "object", "properties": {
+                "kind": {"type": "string", "enum": list(loopsmod.KINDS)}, "text": {"type": "string"},
+                "sources": {"type": "array", "items": {"type": "integer"}}}, "required": ["kind", "text", "sources"]}}},
+            "required": ["close", "open"]}
+
+        def parse(raw):
+            c_out, n_out, seen = [], [], set()
+            for c in raw["close"]:
+                i = int(c["id"])
+                src = sorted({int(s) for s in c.get("sources", []) if int(s) in own})
+                if i in have and i not in seen and src:
+                    seen.add(i)
+                    c_out.append({"id": i, "why": str(c.get("why") or "")[:200], "sources": src})
+            for o in raw["open"]:
+                text = " ".join(str(o["text"]).split())[: lp["text_chars"]]
+                src = sorted({int(s) for s in o.get("sources", []) if int(s) in own})
+                if o["kind"] in loopsmod.KINDS and text and src:
+                    n_out.append({"kind": o["kind"], "text": text, "sources": src})
+            return c_out, n_out[: lp["per_night"]]
+        close, new = _ask(backend, tuning["models"]["sleep_model"], "sleep_loops", system, user, schema, parse,
+                          tuning["sleep"]["retries"])
+    # not the same thing twice: a new loop close to an open one (or to another new one) is not opened
+    vecs = memories.embed(backend, tuning["models"]["embed_model"], [n["text"] for n in new])
+    kept_vecs = [memories.from_blob(r["embedding"]) for r in rows if r["id"] not in {c["id"] for c in close}]
+    keep: list[dict] = []
+    for n, v in zip(new, vecs):
+        vec = None if v is None else np.asarray(v, dtype=np.float32)
+        if vec is not None and any(memories.cosine(k, vec) > tuning["memory"]["dup_threshold"] for k in kept_vecs):
+            continue
+        n["embedding"] = v
+        keep.append(n)
+        kept_vecs.append(vec)
+    new = keep[: lp["max_open"]]
+    gone = {c["id"] for c in close} | set(fade)
+    staying = [r["id"] for r in rows if r["id"] not in gone]
+    push = staying[: max(0, len(staying) + len(new) - lp["max_open"])]        # the oldest make room
+    p.loops = {"close": close, "open": new, "fade": fade, "push": push}
+    if not (close or new or fade or push):
+        return None
+    return {"close": close, "open": [{k: v for k, v in n.items() if k != "embedding"} for n in new],
+            "fade": fade, "push": push}
 
 
 def _preferences(conn, content, tuning, backend, prompts, system, name, now, p: SleepPlan):
@@ -537,6 +604,13 @@ def _maintenance(conn, tuning, now, p: SleepPlan):
             continue
         if memories.retention(x, now, m) < m["forget_below"]:
             p.forget.append(x.id)
+    # a full memory: what the night adds pushes the weakest out (never the ones its character changes rest on)
+    adding = sum(1 for x in p.long_term if not x.get("merge_into"))
+    left = [x for x in longs if x.id not in dropped and x.id not in p.forget]
+    over = len(left) + adding - m["long_cap"]
+    if over > 0:
+        weakest = sorted((x for x in left if not set(x.sources) & protected), key=lambda x: memories.retention(x, now, m))
+        p.forget.extend(x.id for x in weakest[:over])
     return {"merges": p.merges, "forget": p.forget} if (p.merges or p.forget) else None
 
 
@@ -588,6 +662,16 @@ def commit(conn: sqlite3.Connection, p: SleepPlan, now: str) -> int:
         conn.execute("DELETE FROM memories WHERE id = ?", (drop,))
     if p.forget:
         conn.executemany("DELETE FROM memories WHERE id = ? AND kind = 'long'", [(i,) for i in p.forget])
+    lp = p.loops or {}
+    for c in lp.get("close", []):
+        conn.execute("UPDATE loops SET status = 'closed', closed_at = ?, why_closed = ?, sources = ? WHERE id = ?",
+                     (now, c["why"], json.dumps(c["sources"]), c["id"]))
+    for ids, why in ((lp.get("fade", []), "faded"), (lp.get("push", []), "pushed out by newer ones")):
+        conn.executemany("UPDATE loops SET status = 'dropped', closed_at = ?, why_closed = ? WHERE id = ?",
+                         [(now, why, i) for i in ids])
+    for n in lp.get("open", []):
+        conn.execute("INSERT INTO loops(kind, text, embedding, opened_at, sources) VALUES (?, ?, ?, ?, ?)",
+                     (n["kind"], n["text"], memories.to_blob(n.get("embedding")), now, json.dumps(n["sources"])))
     if p.cursor is not None:
         conn.execute("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                      (CURSOR, str(p.cursor)))

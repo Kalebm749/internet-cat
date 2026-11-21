@@ -41,6 +41,7 @@ class Mind:
     options: list[Option]
     learned: list[str] = field(default_factory=list)     # things it chose to keep from reading, in its words (§6.6)
     dwelling: list[str] = field(default_factory=list)    # its own words for a subject it keeps returning to (§6.6)
+    loops: list[str] = field(default_factory=list)       # open loops: wants and questions not settled yet (§5.8)
 
     def option(self, action_id: str) -> Option | None:
         return next((o for o in self.options if o.id == action_id), None)
@@ -244,7 +245,8 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
           memories: list[str] | None = None, repetition: float = 0.0, seed: Any = 0,
           notes: Callable[[ActionSpec], list[str]] | None = None,
           capability_ok: Callable[[str], bool] | None = None, core_memories: list[str] | None = None,
-          count_done: Callable[[str, float], int] | None = None, dwelling: list[str] | None = None) -> Mind:
+          count_done: Callable[[str, float], int] | None = None, dwelling: list[str] | None = None,
+          loops: list[str] | None = None) -> Mind:
     rng = random.Random(f"{seed}|{life.sim_time}")
     now = clock.parse(life.sim_time)
     loc = life.content.locations[life.location]
@@ -266,5 +268,6 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
         options=build_options(life, known, last_done or {}, rng, notes, capability_ok, count_done,
                               float(tuning.get("time_scale", 24))),
         learned=learned_on_mind(life, tuning, seed),
-        dwelling=list(dwelling or [])
+        dwelling=list(dwelling or []),
+        loops=list(loops or []),
     )

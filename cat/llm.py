@@ -374,6 +374,9 @@ class MockBackend(LLMBackend):
             if task == "sleep_preferences":
                 return {"verdicts": [{"subject": s, "keep": True, "words": ""}
                                      for s in re.findall(r"\[p:([a-z_]+:[a-z0-9_]+)\]", text)]}
+            if task == "sleep_loops":
+                return {"close": [], "open": ([{"kind": "question", "text": "What else is there in this place?",
+                                                "sources": ids[:1]}] if ids else [])}
             if task == "sleep_develop":
                 return {"change": False, "kind": "background_note", "target": "", "value": "", "rationale": "",
                         "evidence": []}

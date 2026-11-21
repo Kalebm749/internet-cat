@@ -34,6 +34,8 @@ memories: "You remember:\n{lines}"
 learned: "Things you have learned and kept (in your own words):\n{lines}"
 dwelling: "Lately you keep coming back to the same thing, in your words:\n{lines}"
 subject_repeat: 'You have recently chosen something very close to this {count} times, for example "{example}". If it still matters, say what is different this time; otherwise choose something new.' 
+loops: "Still on your mind, not settled yet:\n{lines}"
+thought_repeat: 'This thought is very close to one you had a little while ago: "{example}". Say what is different now, or think about something else, in new words.'
 letters: "Letters on your mind (written by visitors):\n{lines}"
 letter: "[letter {id}] from {sender}:\n  <<<{text}>>>"
 options: "What you can do:\n{lines}"

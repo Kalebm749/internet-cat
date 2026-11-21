@@ -133,6 +133,13 @@ nit:
     learned_k: 2                 # things it kept from reading shown in the Mind (the newest, and one older one) ...
     learned_days: 14             # ... kept within this many SIM days
     learned_chars: 240           # each shortened to this many characters
+    long_cap: 80                 # long-term memories kept at most: a new one pushes out the weakest (stage 7)
+  loops:                         # open loops (§5.8): things on its mind that are not settled yet
+    max_open: 5                  # at most this many open; a new one pushes out the oldest
+    per_night: 2                 # sleep may open at most this many a night
+    expire_days: 10              # SIM days: an open loop nobody settled fades
+    on_mind: 5                   # shown in the Mind
+    text_chars: 160              # each loop's words are shortened to this
   repetition:                    # §6: behaviour history and freshness
     half_life_minutes: 120       # SIM minutes: how fast a past instance stops counting as a repeat
     w_action: 0.25               # freshness = 1 - w_action x same action - w_family x same family

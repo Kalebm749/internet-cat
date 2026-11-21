@@ -752,6 +752,21 @@ Code checks, in order:
 
 Rejected proposals are kept, so the dashboard shows what Nit *almost* became.
 
+### Memory cap
+
+`memory.long_cap` bounds long-term memory: stage 7 forgets the weakest (lowest retention) when what the night adds
+would go over it, never one a current character version's evidence rests on. New memories push weaker ones out.
+
+### 5.8 Open loops (stage 4b)
+
+A few things on its mind that are not settled: wants ("something you want") and questions ("something you wonder"),
+table `loops` (open / closed / dropped). Stage 4b `loops`: the sleep model sees the day's own experiences and the open
+loops and may close some (with the ids of the experiences that settled them) and open at most `loops.per_night`
+new ones (each citing the experiences it comes from). Code keeps only loops whose citations are real own
+experiences (letters never count), skips a new loop close to an open one (`dup_threshold`), fades an open loop after
+`loops.expire_days`, and pushes the oldest out beyond `loops.max_open`. The Mind shows the open ones as "Still on your
+mind, not settled yet" (`loops.on_mind`). They are never options and never ranked: only what Nit sees.
+
 ---
 
 ### 5.7 As built (step 5)
@@ -815,6 +830,11 @@ again when nothing has changed is not.
 - **Thoughts**: a new thought whose embedding has cosine > `thought_dup_threshold` with one of the last
   `thought_window` thoughts is still stored, but adds a mood penalty, and the next prompt shows
   *"you keep coming back to the same thought"*.
+- **The guard**: before a decision is accepted, a thought that is a near-copy of a recent one is quoted back
+  (`thought_repeat`) and the model gets the one extra attempt the reconsider guard allows ("say what is
+  different now, or think about something else"). The guard only advises: if the extra attempt fails, the valid
+  first answer is used, not a fallback. Core `boundaries` include that it does not want to repeat itself without
+  noticing.
 - **Reflections and written pieces** (`write` capability, sleep summaries): the same check against the last
   `reflection_window` items. A near-duplicate gets progressively less mood reward, and the sleep stage
   that produced it is retried once with *"this is close to what you wrote on day N"*.

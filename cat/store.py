@@ -220,6 +220,20 @@ MIGRATIONS: list[list[str]] = [
         )""",
         "CREATE INDEX idx_subjects_time ON subjects(sim_time)",
     ],
+    [  # 11: open loops: wants and questions on its mind that sleep opened from its own experiences (§5.8)
+        """CREATE TABLE loops (
+            id          INTEGER PRIMARY KEY,
+            kind        TEXT NOT NULL,
+            text        TEXT NOT NULL,
+            embedding   BLOB,
+            status      TEXT NOT NULL DEFAULT 'open',
+            opened_at   TEXT NOT NULL,
+            closed_at   TEXT,
+            why_closed  TEXT,
+            sources     TEXT NOT NULL DEFAULT '[]'
+        )""",
+        "CREATE INDEX idx_loops_status ON loops(status)",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 
