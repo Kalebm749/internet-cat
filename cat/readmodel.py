@@ -114,7 +114,7 @@ def diary(conn: sqlite3.Connection, content: Content, before: str | None = None,
     rows: list[dict] = []
     for r in conn.execute(
             "SELECT a.id, a.started_at, a.ended_at, a.action_id, a.location, a.status, a.text, a.inputs, d.thought, "
-            "d.letter, d.real_time "
+            "d.letter, d.real_time, d.notes "
             "FROM activities a LEFT JOIN decisions d ON d.id = a.decision_id "
             "WHERE a.ended_at IS NOT NULL AND a.ended_at > ? AND a.ended_at < ? ORDER BY a.ended_at DESC, a.id DESC "
             "LIMIT ?", (lo, hi, limit + 1)):
@@ -134,7 +134,8 @@ def diary(conn: sqlite3.Connection, content: Content, before: str | None = None,
                      "line": diary_line(content, name, r["action_id"], r["location"], _j(r["inputs"], {}), r["status"]),
                      "thought": r["thought"] or None,
                      "artwork_id": artwork_id,
-                     "answered_letter": bool(r["letter"])})
+                     "answered_letter": bool(r["letter"]),
+                     "forced": "forced: starving" in (r["notes"] or "")})
     for r in conn.execute("SELECT id, sim_time, text, location FROM experiences WHERE kind = 'event' AND sim_time > ? "
                           "AND sim_time < ? ORDER BY sim_time DESC, id DESC LIMIT ?", (lo, hi, limit + 1)):
         rows.append({"kind": "event", "id": f"e{r['id']}", "time": r["sim_time"], "text": r["text"],

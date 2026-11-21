@@ -37,7 +37,7 @@ WORLD_TEXT_FIELDS = {
     "arrive": {"location"}, "inspect_found": {"hint", "name"}, "inspect_nothing": set(), "discovered": {"name"},
     "finished": {"name"}, "interrupted": {"name"}, "rejected": {"name", "reason"}, "fall_asleep": set(),
     "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_gone": set(),
-    "capability_failed": set(), "same_thought": set(), "nothing_new": set(), "mail_arrived": set(),
+    "capability_failed": set(), "same_thought": set(), "nothing_new": set(), "starving_go": set(), "starving_restock": set(), "mail_arrived": set(),
     "wish_granted": {"wish", "note"}, "drawing_made": {"materials", "description"},
     "drawing_looked_at": {"title", "status", "history"}, "drawing_version": {"n", "when", "description", "materials"},
     "drawing_seen": {"seen"},

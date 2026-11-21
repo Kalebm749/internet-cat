@@ -164,6 +164,16 @@ derived_conditions:        # first match wins; ranges are inclusive
 
 Adding a derived condition is content, not code.
 
+### 2.5 Hunger takes over (the one exception)
+
+By decision of the author, "code never picks the move" has exactly one exception. When hunger reaches
+`body.starving_at` (0.8), `cat/starving.py` issues the move toward the food (shortest way over the exits) and then
+the eating action named by world `starving.eat`, without asking the model and replacing whatever it was doing.
+The decision is recorded like any other with the note `forced: starving` (the diary tags it "hunger took over") and
+Nit perceives why. If the food is gone when it arrives, the world leaves one (`starving.restock`, ordinary world
+ops), so it is never left to starve. Nothing else, and no other need, takes over; below the threshold hunger only
+shapes the prompt and mood as before.
+
 ### 2.4 Likes and dislikes (learned)
 
 ```
@@ -969,7 +979,8 @@ All accepted. CLAUDE.md is rewritten together with the step-1 code:
   that carries old long-term memories and the drawings into the new tables, at real cost.
 - **"No config field, prompt or doc may state what the entity is" / "starts with no self-image".** You want
   Nit to be something at spawn, so `core.nature` states it.
-- **Innate drives / feeding reflex** (`cat/impulses.py`): removed. Code never picks the move (§2.2).
+- **Innate drives / feeding reflex** (`cat/impulses.py`): removed. Code never picks the move (§2.2), except the
+  starving takeover the author added later (§2.5).
 - **"All tuning numbers live in `config/settings.yaml`"** and **"fixed prompt text lives in `config/prompts.yaml`"**:
   world content moves to `content/`. Engine tuning stays in `config/settings.yaml`, and prompts sit next to
   the stage that uses them under `config/prompts/`.

@@ -58,7 +58,8 @@ docker compose config -q            # validate compose.yaml (safe, starts nothin
 ## Conventions
 - Python 3.11+ (image: 3.12-slim); keep dependencies light and pure-Python.
 - **Code never picks the move.** The decision model chooses from the Mind's options; mood, energy, hunger, preferences
-  and repetition shape the prompt and the consequences, never the choice. No drives, reflexes or overrides.
+  and repetition shape the prompt and the consequences, never the choice. No drives, reflexes or overrides, with
+  one exception by the author: at `body.starving_at` hunger `cat/starving.py` walks it to the food and eats (spec §2.5).
 - **The menu is knowledge ∩ world.** An action is offered only if Nit knows it, it is here (or universal), its
   `requires` hold, it is not prohibited by `core`, and its capability is enabled and under its limit. Options are
   shuffled with a seed and never ranked or removed for repetition (stale ones get a note).

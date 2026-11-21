@@ -41,7 +41,7 @@ ACTION_KEYS = {"id", "name", "description", "family", "discovery", "inspect_hint
 EFFECT_KEYS = {"world", "creature", "discover", "remember", "reflection"}
 OUTCOME_KEYS = EFFECT_KEYS | {"when", "text"}
 WORLD_KEYS = {"name", "sim_start", "senses", "facts", "events", "effort", "body_words", "derived_conditions",
-              "mailbox", "wishes", "granted_wishes", "learned"}
+              "mailbox", "wishes", "granted_wishes", "learned", "starving"}
 CHARACTER_KEYS = {"name", "pronoun", "core", "traits", "tendencies", "background", "likes", "dislikes",
                   "innate_knowledge", "start_location"}
 CORE_KEYS = {"nature", "senses", "abilities", "boundaries", "prohibited_actions"}
@@ -522,6 +522,22 @@ def load(content_dir: Path | str = CONTENT_DIR) -> Content:
         mb = world.get(key)
         if mb is not None and (not isinstance(mb, str) or facts.get(mb) is None or facts[mb].type != "list"):
             probs.add(wpath, line_of(world, key), f"world: {key} must name a list fact, got {mb!r}")
+    sv = world.get("starving")
+    if sv is not None:                                  # hunger takes over (docs/rewrite-contracts.md §2.5)
+        sl = line_of(world, "starving")
+        if not isinstance(sv, dict) or not set(sv) <= {"eat", "restock"} or "eat" not in sv:
+            probs.add(wpath, sl, "world: starving is {eat: <action id>, restock: [world ops]?}")
+        else:
+            food = actions.get(sv["eat"]) if isinstance(sv["eat"], str) else None
+            if food is None or not food.location or food.inputs:
+                probs.add(wpath, sl, "world: starving.eat must be an action with a location and no inputs")
+            if not isinstance(sv.get("restock", []), list):
+                probs.add(wpath, sl, "world: starving.restock must be a list of world ops")
+            else:
+                for op in sv.get("restock", []):
+                    for p in ops.validate(op, fact=content.fact, event_exists=lambda e: e in events,
+                                          check_template=lambda t: None):
+                        probs.add(wpath, sl, f"world: starving.restock: {p}")
     gw = world.get("granted_wishes")
     if gw is not None:
         if "wishes" not in world:

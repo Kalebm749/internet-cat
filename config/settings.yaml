@@ -58,6 +58,7 @@ nit:
     hunger_per_effort: 0.5       # hunger added per unit of energy spent on effort
     hunger_mood_threshold: 0.6   # above this hunger, mood is dragged down ...
     hunger_mood_drag: 0.15       # ... by drag x (hunger - threshold) per hour
+    starving_at: 0.8             # from this hunger code takes over: it walks to the food and eats (world `starving`, §2.5)
     awake_energy_per_hour: 0.03  # being awake costs this much energy per hour (effort comes on top)
     sleep_energy_per_hour: 0.12  # an 8-hour night restores about 0.96 ...
     hungry_sleep_penalty: 0.5    # ... less by penalty x hunger (fully hungry: half as much)
