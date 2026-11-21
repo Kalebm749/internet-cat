@@ -364,3 +364,64 @@ def counts(conn: sqlite3.Connection) -> dict:
     tables = ("decisions", "activities", "experiences", "memories", "knowledge", "preferences", "character_versions",
               "sleep_runs", "thoughts", "mail_imports")
     return {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in tables}
+
+
+# ---------------------------------------------------------------- artwork (§4.10)
+
+ARTWORKS_FACT = "art_room.artworks"
+
+
+def artworks(conn: sqlite3.Connection) -> list[dict]:
+    """Every drawing, newest first, with where its image is. Old drawings carry their SVG inline; new ones are
+    PNGs in the artifacts table. Nothing is converted or lost."""
+    r = conn.execute("SELECT value FROM facts WHERE key = ?", (ARTWORKS_FACT,)).fetchone()
+    items = [dict(x) for x in (_j(r[0], []) if r else []) if isinstance(x, dict)]
+    stored = {row[0] for row in conn.execute("SELECT id FROM artifacts WHERE kind = 'drawing'")}
+    for x in items:
+        x["format"] = "svg" if x.get("svg") else ("png" if x.get("id") in stored else None)
+        x["image"] = f"/artwork/image/{x['id']}" if x["format"] else None
+        mats = x.get("materials")
+        x["materials"] = mats if isinstance(mats, str) else ", ".join(mats or [])
+    return sorted(items, key=lambda x: x.get("created_at", ""), reverse=True)
+
+
+def artwork_versions(conn: sqlite3.Connection, artwork_id: str) -> list[dict]:
+    """All versions of the drawing this one belongs to, first pass first (each still its own artifact)."""
+    items = {x["id"]: x for x in artworks(conn)}
+    cur = items.get(artwork_id)
+    if cur is None:
+        return []
+    while cur.get("revision_of") and cur["revision_of"] in items:
+        cur = items[cur["revision_of"]]
+    chain, frontier = [cur], [cur["id"]]
+    while frontier:
+        nxt = [x for x in items.values() if x.get("revision_of") in frontier and x not in chain]
+        nxt.sort(key=lambda x: x.get("created_at", ""))
+        chain += nxt
+        frontier = [x["id"] for x in nxt]
+    return chain
+
+
+def artwork_image(conn: sqlite3.Connection, artwork_id: str) -> tuple[bytes | str, str] | None:
+    """(data, media type) of a drawing's image: the stored PNG, or an old drawing's inline SVG."""
+    r = conn.execute("SELECT data, mime FROM artifacts WHERE id = ?", (artwork_id,)).fetchone()
+    if r is not None:
+        return bytes(r["data"]), r["mime"]
+    for x in artworks(conn):
+        if x.get("id") == artwork_id and x.get("svg"):
+            return x["svg"], "image/svg+xml"
+    return None
+
+
+def artwork_detail(conn: sqlite3.Connection, artwork_id: str) -> dict | None:
+    item = next((x for x in artworks(conn) if x.get("id") == artwork_id), None)
+    if item is None:
+        return None
+    r = conn.execute("SELECT intention, thoughts, materials, meta, created_at FROM artifacts WHERE id = ?",
+                     (artwork_id,)).fetchone()
+    if r is not None:
+        meta = _j(r["meta"], {})
+        item.update(intention=r["intention"], effort=meta.get("effort"), operations=len(meta.get("ops", [])),
+                    pass_operations=meta.get("pass_ops"), materials_words=meta.get("materials_words"))
+    item["versions"] = artwork_versions(conn, artwork_id)
+    return item

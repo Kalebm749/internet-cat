@@ -18,10 +18,10 @@ import logging
 import math
 import random
 import sqlite3
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
-from cat import behaviour, clock, conditions, knowledge, life as lifemod, memories, templating
+from cat import artifacts, behaviour, clock, conditions, knowledge, life as lifemod, memories, templating
 from cat.capabilities import CapabilityResult, CapContext, Registry
 from cat.content import ActionSpec
 from cat.decision import CONTINUE, IDLE, STOP, Decision, load_prompt_file
@@ -38,7 +38,8 @@ WORLD_TEXT_FIELDS = {
     "finished": {"name"}, "interrupted": {"name"}, "rejected": {"name", "reason"}, "fall_asleep": set(),
     "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_gone": set(),
     "capability_failed": set(), "same_thought": set(), "mail_arrived": set(),
-    "wish_granted": {"wish", "note"},
+    "wish_granted": {"wish", "note"}, "drawing_made": {"materials", "description"},
+    "drawing_looked_at": {"title", "status", "history"}, "drawing_version": {"n", "when", "description", "materials"},
 }
 
 
@@ -190,7 +191,8 @@ class Executor:
         if a is None or not a.capability or self.check(a.id, decision.inputs):
             return None
         ctx = CapContext(content=self.c, facts=self.life.world.values, location=self.life.location,
-                         sim_time=self.life.sim_time, texts=self.texts, backend=self.backend, tuning=self.t)
+                         sim_time=self.life.sim_time, texts=self.texts, backend=self.backend, tuning=self.t,
+                         artifact=lambda i: artifacts.load(self.conn, i))
         return self.registry.run(a.capability, ctx, decision.inputs)
 
     def prepare_running(self) -> CapabilityResult | None:
@@ -199,7 +201,8 @@ class Executor:
         if r is None or not r.action.capability or r.cap is not None:
             return None
         ctx = CapContext(content=self.c, facts=self.life.world.values, location=self.life.location,
-                         sim_time=self.life.sim_time, texts=self.texts, backend=self.backend, tuning=self.t)
+                         sim_time=self.life.sim_time, texts=self.texts, backend=self.backend, tuning=self.t,
+                         artifact=lambda i: artifacts.load(self.conn, i))
         return self.registry.run(r.action.capability, ctx, r.inputs)
 
     def attach_capability(self, cap: CapabilityResult) -> None:
@@ -211,6 +214,10 @@ class Executor:
             self.perception.append(text)
             self._close("rejected", text, [], {"capability_failed": True}, note=False)
             return
+        if isinstance(cap.artifact, dict) and "data" in cap.artifact:
+            # the made thing is kept whole in its own table; the activity and the world keep a reference
+            artifacts.save(self.conn, cap.artifact, self.running.id)
+            cap = replace(cap, artifact=artifacts.reference(cap.artifact))
         self.running.cap = asdict(cap)
         self.conn.execute("UPDATE activities SET capability = ? WHERE id = ? AND status = 'running'",
                           (_dump(self.running.cap), self.running.id))
@@ -256,7 +263,10 @@ class Executor:
         capd = None
         if a.capability:
             self.registry.record_use(self.conn, a.capability, self.day())
+        made = None
         if cap is not None:
+            if isinstance(cap.artifact, dict) and "data" in cap.artifact:
+                made, cap = cap.artifact, replace(cap, artifact=artifacts.reference(cap.artifact))
             capd = asdict(cap)
             if cap.text:
                 self.perception.append(cap.text)
@@ -270,6 +280,8 @@ class Executor:
              _dump(capd) if capd else None, a.family, behaviour.input_signature(decision.inputs),
              behaviour.revisit_signature(a, self.life.world.values), fr.restart_of, fr.value,
              _dump({**fr.parts, "revisit_changed": fr.revisit_changed})))
+        if made is not None:
+            artifacts.save(self.conn, made, cur.lastrowid)
         self.running = Running(cur.lastrowid, a, dict(decision.inputs), self.life.sim_time, planned, capd,
                                decision.thought, fr.value)
         if planned <= 0:

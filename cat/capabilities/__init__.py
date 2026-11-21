@@ -31,6 +31,7 @@ class CapContext:
     texts: dict                  # config/prompts/world.yaml: fixed wording
     backend: Any = None          # the LLM backend, for capabilities that call a model
     tuning: dict | None = None
+    artifact: Any = None         # artifact(id) -> the stored version (dict with meta and data) or None; read only
 
 
 @dataclass

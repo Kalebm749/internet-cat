@@ -188,6 +188,27 @@ MIGRATIONS: list[list[str]] = [
     [  # 8: persistent creative artifacts are carried in each activity's capability result
         "CREATE INDEX idx_activities_action_time ON activities(action_id, started_at)",
     ],
+    [  # 9: things the creature made, kept whole (drawings: the PNG and every drawing operation, §4.10)
+        # One row per version; a revision is a new row whose revision_of names the version before it and whose
+        # root_id names the first. meta: JSON (operations, supplies snapshot, seed, size, effort, ...).
+        """CREATE TABLE artifacts (
+            id          TEXT PRIMARY KEY,
+            kind        TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            activity_id INTEGER,
+            root_id     TEXT NOT NULL,
+            revision_of TEXT,
+            title       TEXT NOT NULL,
+            description TEXT NOT NULL,
+            intention   TEXT NOT NULL DEFAULT '',
+            thoughts    TEXT NOT NULL DEFAULT '',
+            materials   TEXT NOT NULL DEFAULT '[]',
+            meta        TEXT NOT NULL DEFAULT '{}',
+            mime        TEXT NOT NULL,
+            data        BLOB NOT NULL
+        )""",
+        "CREATE INDEX idx_artifacts_root ON artifacts(root_id)",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

@@ -20,6 +20,10 @@ docs (replaced November 2026); nothing there describes current code.
   conditions, `mailbox`), `locations/*.yaml` (one place each: facts, events, actions), `actions/universal.yaml` (move,
   inspect, sleep), `capabilities.yaml`. **Growing the world is content, not code**; only a new world op
   (`cat/ops.py`), condition (`cat/conditions.py`) or capability (`cat/capabilities/`) needs code.
+- Drawing (`docs/rewrite-contracts.md` §4.10): `cat/art/` (materials, operation checks, the CPU drawing simulator),
+  `cat/capabilities/draw.py` (Gwen: Nit's intention and chosen supplies -> checked operations -> PNG),
+  `cat/capabilities/look_at_drawing.py`, `cat/artifacts.py` (versions: PNG + every operation, never overwritten).
+  Supplies are world facts (`art_room.supplies`). `scripts/art_samples.py` renders example sheets per material.
 - `config/settings.yaml` — engine-wide settings (`cat/config.py`) and the `nit:` block with every tuning number of the
   creature (`cat/tuning.py`). `config/prompts/{decision,world,sleep}.yaml` — every fixed text the model or the diary sees.
 - `cat/` — `loop.py` (the engine loop) · `execute.py` (activities, builtins, outcomes, events) · `decision.py` (prompt,

@@ -1,4 +1,15 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ artwork.title }} · Nit</title><link rel="stylesheet" href="/static/css/site.css"><link rel="icon" href="/static/img/nit/nit.svg"></head>
 <body><header class="top"><img class="portrait" src="/static/img/nit/nit.svg" alt=""><div><h1>{{ artwork.title }}</h1><p class="where">{{ artwork.created_at }} · <a href="/artwork">Back to artwork</a></p></div><nav class="tabs"><a href="/">Now &amp; diary</a> <a href="/places">Places &amp; wishes</a> <a href="/artwork" class="on">Artwork</a> <a href="/letters">Letters</a> <a href="/internet">Internet</a></nav></header>
-<main class="layout"><section class="col" style="grid-column: span 2"><article class="card art-detail"><img src="/artwork/image/{{ artwork.id }}.svg" alt="{{ artwork.description }}"><p>{{ artwork.description }}</p><p class="hint">{{ artwork.subject }}{% if artwork.status == "unfinished" %} · In progress{% elif artwork.status == "superseded" %} · Earlier pass{% endif %}</p>{% if artwork.thoughts %}<blockquote class="thought">{{ artwork.thoughts }}</blockquote>{% endif %}{% if artwork.revision_of %}<p class="hint">Revisited from an earlier drawing.</p>{% endif %}</article></section></main></body></html>
+<main class="layout"><section class="col" style="grid-column: span 2"><article class="card art-detail">
+{% if artwork.image %}<img src="{{ artwork.image }}" alt="{{ artwork.description }}">{% endif %}
+<p>{{ artwork.description }}</p>
+<p class="hint">{% if artwork.status == "unfinished" %}In progress{% elif artwork.status == "superseded" %}An earlier version{% elif artwork.status == "completed" %}Finished{% endif %}{% if artwork.materials %} · with {{ artwork.materials }}{% endif %}{% if artwork.effort %} · a {{ artwork.effort }} pass{% endif %}</p>
+{% if artwork.intention or artwork.subject %}<p><b>What Nit wanted:</b> {{ artwork.intention or artwork.subject }}</p>{% endif %}
+{% if artwork.materials_words %}<p class="hint">In its words: {{ artwork.materials_words }}</p>{% endif %}
+{% if artwork.thoughts %}<blockquote class="thought">{{ artwork.thoughts }}</blockquote>{% endif %}
+</article>
+{% if artwork.versions | length > 1 %}<article class="card"><h2>How it developed</h2><div class="art-gallery">
+{% for v in artwork.versions %}<div class="art-piece{{ ' current' if v.id == artwork.id }}">{% if v.image %}<a href="/artwork/{{ v.id }}"><img src="{{ v.image }}" alt="{{ v.description }}" loading="lazy"></a>{% endif %}<p class="when">Version {{ loop.index }} · {{ v.created_at }}{% if v.id == artwork.id %} · this one{% endif %}</p><p class="hint">{{ v.description }}</p></div>{% endfor %}
+</div></article>{% endif %}
+</section></main></body></html>

@@ -77,12 +77,14 @@ SLEEP_NUMBERS = {
     "dev_min_days": (1, 60), "dev_max_step": (0, 1), "dev_new_strength": (0, 1), "dev_cooldown_days": (0, 60),
 }
 SLEEP_OTHER = {"night_hours", "threaded", "dev_forbidden_words"}
-INTEGER_KEYS = {"day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
+INTEGER_KEYS = {"canvas", "max_points", "max_points_per_pass", "max_total", "max_tokens", "day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
                 "dev_min_evidence", "dev_min_days", "recall_k", "notable_k", "recent", "thought_window",
                 "reflection_window", "retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
                 "on_mind", "on_mind_chars"}
 MODEL_KEYS = ("decision_model", "sleep_model", "embed_model", "art_model")
-TOP = {"db_path", "content_dir", "time_scale", "body", "models", "sleep"} | set(SECTIONS)
+TOP = {"db_path", "content_dir", "time_scale", "body", "models", "sleep", "art"} | set(SECTIONS)
+ART_NUMBERS = {"canvas": (128, 2048), "max_points": (2, 1000), "max_points_per_pass": (10, 100000),
+               "max_total": (1, 10000), "max_tokens": (200, 32000)}
 
 
 def _num(x: Any) -> bool:
@@ -125,6 +127,16 @@ def validate(nit: Any) -> list[str]:
     for name, spec in SECTIONS.items():
         if name in nit:
             _check_numbers(name, nit[name], spec, probs)
+    art = nit.get("art")
+    if "art" in nit:
+        if not isinstance(art, dict):
+            probs.append("art must be a mapping")
+        else:
+            _check_numbers("art", {k: v for k, v in art.items() if k != "effort_ops"}, ART_NUMBERS, probs)
+            eo = art.get("effort_ops")
+            if not (isinstance(eo, dict) and eo and all(isinstance(k, str) and isinstance(v, int) and 1 <= v <= 400
+                                                        for k, v in eo.items())):
+                probs.append("art.effort_ops must map effort names to 1..400 operations")
     sl = nit.get("sleep")
     if "sleep" in nit:
         if not isinstance(sl, dict):
