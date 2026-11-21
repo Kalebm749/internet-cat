@@ -225,13 +225,14 @@ def thought_theme(conn: sqlite3.Connection, vec, tuning: dict, exclude_latest: b
     return near if len(near) >= rp["thought_theme_min"] else []
 
 
-def mulling(conn: sqlite3.Connection, tuning: dict) -> list[str]:
-    """When its recent thoughts keep going the same way: its latest thought of that theme, in its own words."""
-    row = conn.execute("SELECT text, embedding FROM thoughts WHERE embedding IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+def mulling(conn: sqlite3.Connection, tuning: dict) -> bool:
+    """Do its recent thoughts keep going the same way? Only a yes/no: the words are never quoted back (a small model
+    copies what it is shown)."""
+    row = conn.execute("SELECT embedding FROM thoughts WHERE embedding IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
     if row is None:
-        return []
+        return False
     from cat.memories import from_blob
-    return [row["text"]] if thought_theme(conn, from_blob(row["embedding"]), tuning, exclude_latest=True) else []
+    return bool(thought_theme(conn, from_blob(row["embedding"]), tuning, exclude_latest=True))
 
 
 def dwelling(conn: sqlite3.Connection, now: str, tuning: dict) -> list[str]:

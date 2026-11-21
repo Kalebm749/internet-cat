@@ -23,7 +23,6 @@ from typing import Any, Callable
 
 import threading
 
-import numpy as np
 
 from cat import clock as clock_mod, mail as mailmod
 from cat import behaviour, content as contentmod, decision as decisionmod, identity, knowledge, life as lifemod, loops as loopsmod, memories
@@ -327,29 +326,10 @@ class Loop:
         return notes
 
     def _reconsider_stale_choice(self, mind, decision: Decision) -> list[str]:
-        """One extra attempt when the choice is stale: a thought that is a copy of a recent one, an action that
-        cannot happen or has felt tired lately, a subject it keeps coming back to."""
-        if decision.kind == "check_in":
-            return self._stale_action_problems(mind, decision)
-        return self._thought_problems(decision) + self._stale_action_problems(mind, decision)
-
-    def _thought_problems(self, decision: Decision) -> list[str]:
-        """A new thought that is almost the same as a recent one: quote the earlier one and ask once (§6.4)."""
-        rp = self.t["repetition"]
-        if not decision.thought or not rp["thought_window"]:
-            return []
-        vec = self._subject_vec(decision.thought)
-        if vec is None:
-            return []
-        v = np.asarray(vec, dtype=np.float32)
-        for r in self.conn.execute("SELECT text, embedding FROM thoughts WHERE embedding IS NOT NULL ORDER BY id DESC "
-                                   "LIMIT ?", (rp["thought_window"],)):
-            if memories.cosine(memories.from_blob(r["embedding"]), v) > rp["thought_dup_threshold"]:
-                return [self.prompts["thought_repeat"].format(example=r["text"])]
-        theme = behaviour.thought_theme(self.conn, vec, self.t)          # the same theme in other words
-        if theme:
-            return [self.prompts["thought_theme"].format(count=len(theme), example=theme[0])]
-        return []
+        """One extra attempt when the choice is stale: an action that cannot happen or has felt tired lately, a
+        subject it keeps coming back to. Never about its thoughts: quoting a thought back made a small model copy it
+        (spec §6.4), and each retry is another full model call."""
+        return self._stale_action_problems(mind, decision)
 
     def _stale_action_problems(self, mind, decision: Decision) -> list[str]:
         if decision.kind == "check_in":
