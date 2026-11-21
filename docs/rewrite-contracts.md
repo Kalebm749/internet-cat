@@ -634,6 +634,46 @@ actions:
 
 ---
 
+### 4.10 Drawing with physical supplies
+
+Nit has paper and a desk of supplies in the art room: pencils (HB, 2B, 4B), markers, crayons and an eraser. It
+decides what to draw, which supplies to pick up, how much effort to give a pass (`quick`, `careful`, `patient`),
+when to come back to a drawing, and when it is finished. Nothing in the system chooses a subject or a style.
+
+- **Supplies are world state.** `art_room.supplies` lists each physical thing (`id`, `kind`, `name`, `color` and
+  `color_name`, or `hardness`). Wear, running out, new colours or new paper are changes to that list (world ops),
+  not code. A new *kind* of material is code: an entry in `cat/art/materials.py` and a renderer in `cat/art/render.py`.
+- **Nit picks them up in its own words** (`materials` input). `cat/capabilities/draw.py` `picked_up` turns those
+  words into the supplies Gwen may use (kinds, then colours or hardness when Nit names them; words that name no
+  supply leave everything within reach). Code drops any operation with another supply.
+- **Gwen** (`art_model`, qwen3:14b, prompts in `config/prompts/art.yaml`) translates Nit's intention into drawing
+  operations. She gets the intention, Nit's thoughts, the place, the supplies it picked up, its effort, and on a
+  new pass the earlier operations; she returns a title, a description of what is visibly on the paper, and the
+  operations. She does not choose a subject, add things, change materials, decide it is finished or impose a style.
+- **Operations** (`cat/art/operations.py`): `stroke`, `shape` (line, rect, ellipse, polygon), `fill` (colours the
+  area around a point up to the drawn lines), `erase`; 512 x 512 coordinates; the supply fixes material and colour.
+  Every operation is checked (fields, supplies, coordinates, widths, counts: `nit.art` limits); a bad one is
+  dropped and recorded. Nothing a model writes is executed.
+- **The simulator** (`cat/art/render.py`, Pillow + NumPy, no GPU) keeps the paper's tooth and separate graphite,
+  ink, wax and line layers. Pencil: thin, pressure- and hardness-dependent graphite that catches on the grain and
+  builds up; hatching and cross-hatching. Marker: even, saturated dye that darkens where it overlaps. Crayon: wax
+  that reaches only the tooth peaks the pressure allows, in streaks along the stroke, covering what is under it.
+  Eraser: lifts graphite well, wax partly, marker hardly, leaving a ghost. Fills stop at drawn lines (small gaps
+  closed), not at earlier colouring. Everything random is seeded: the same operations on the same sheet give the
+  same pixels.
+- **Versions** (`artifacts` table, nit.db migration 9): one row per version with the PNG, every operation so far,
+  a snapshot of the supplies used, the sheet's seed, the intention, thoughts and materials. A new pass replays the
+  earlier operations on the same sheet and adds the new ones; it is a new row (`revision_of`, `root_id`), and the
+  earlier row is never changed. The world (`art_room.artworks`) and the activity keep only a small reference.
+- **Looking back**: `study_drawing` uses `look_at_drawing`, which tells Nit what each version shows, with what,
+  and when, from the first pass to the one it is looking at.
+- **Old drawings** (inline SVG from before) stay in `art_room.artworks` and are still shown, sandboxed, at
+  `/artwork/image/<id>`; a new pass on one starts a fresh sheet that carries it forward.
+- **Growing later** without redesign: supply wear and running out (a field on the supply and a world op on use),
+  paper types and sizes (a `paper` supply and the sheet's `size`), and preferences for particular supplies. Every
+  drawing experience already records the supplies used, so preferences can learn from them the way they learn
+  from actions and places.
+
 ## 5. Sleep and memory
 
 ### 5.1 Memory stores

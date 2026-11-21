@@ -75,6 +75,13 @@ nit:
     reasoning_max_chars: 400
     recent_activities: 5         # completed activities shown in the Mind
     prompt_tokens: 1500          # budget for the decision prompt (about 4 characters per token)
+  art:                           # §4.10: the drawing simulator and Gwen's limits
+    canvas: 512                  # px; operations use this coordinate space
+    max_points: 120              # per stroke or polygon
+    max_points_per_pass: 3000    # all points Gwen may place in one pass
+    max_total: 600               # operations on one sheet across all its versions
+    max_tokens: 3500             # Gwen's answer, in tokens
+    effort_ops: {quick: 14, careful: 32, patient: 56}   # operations per pass, by the effort Nit chooses
   mail:                          # §4.8
     on_mind: 3                   # read, unanswered letters shown in the Mind (newest first)
     on_mind_chars: 300           # each shortened to this many characters

@@ -68,7 +68,7 @@
     }
     if (e.kind === "activity" && e.artwork_id) {
       const a = document.createElement("a"); a.className = "journal-art"; a.href = `/artwork/${encodeURIComponent(e.artwork_id)}`;
-      const img = document.createElement("img"); img.src = `/artwork/image/${encodeURIComponent(e.artwork_id)}.svg`;
+      const img = document.createElement("img"); img.src = `/artwork/image/${encodeURIComponent(e.artwork_id)}`;
       img.alt = "Drawing made by Nit"; a.appendChild(img); li.appendChild(a);
     }
     const p = document.createElement("p");

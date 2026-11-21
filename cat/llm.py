@@ -371,6 +371,18 @@ class MockBackend(LLMBackend):
                         "evidence": []}
             if task == "sleep_conflict":
                 return {"conflict": False, "why": "it fits"}
+        if task == "capability" and "operations" in (schema or {}).get("properties", {}):
+            # Gwen (cat/capabilities/draw.py): a small, valid drawing with the supplies the schema allows
+            tools = schema["properties"]["operations"]["items"]["properties"]["tool"]["enum"]
+            draw = [t for t in tools if not t.startswith("eraser")] or tools
+            cx, cy, rad = 180 + r.random() * 150, 170 + r.random() * 150, 50 + r.random() * 60
+            ops = [{"op": "shape", "tool": draw[0], "shape": "ellipse", "cx": cx, "cy": cy, "rx": rad, "ry": rad * 0.8,
+                    "pressure": 0.7},
+                   {"op": "fill", "tool": draw[-1], "x": cx, "y": cy, "pressure": 0.6, "angle": r.random() * 180},
+                   {"op": "stroke", "tool": draw[r.randrange(len(draw))],
+                    "points": [[40, 430], [180, 410 + r.random() * 30], [330, 420], [470, 405]], "pressure": 0.8}]
+            return {"title": r.choice(["The round thing", "Something by the water", "A small sun"]),
+                    "description": "A round shape coloured in, above a long line.", "operations": ops}
         if task == "decide":       # the rewrite's waking decision (cat/decision.py): pick from the schema
             props = (schema or {}).get("properties", {})
             ids = props.get("action", {}).get("enum") or ["idle"]

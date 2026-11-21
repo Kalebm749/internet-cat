@@ -82,3 +82,4 @@ blockquote.thought { border-left: 3px solid var(--accent); padding-left: 12px; m
 .correspondence { max-width: 900px; }
 .correspondence .entry { margin-bottom: 1.25rem; }
 .letter-text { white-space: pre-wrap; }
+.art-piece.current img { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -2,15 +2,39 @@ id: art_room
 name: the art room
 description: >
   A small, quiet room opens off the fountain court. Natural light moves across an old wooden desk
-  beneath a broad window. Paper rests beside pencils, charcoal, ink and brushes; a few older drawings
-  hang on the walls, and a shelf holds work set aside. There is a chair pulled close to the desk, with
-  room to sit, look, and let the place settle around you.
+  beneath a broad window. A stack of paper rests beside a cup of pencils, a box of crayons, a row of
+  markers and a soft eraser; a few older drawings hang on the walls, and a shelf holds work set aside.
+  There is a chair pulled close to the desk, with room to sit, look, and let the place settle around you.
 exits: [fountain]
 sheltered: true
 
 facts:
   artworks: { type: list, default: [], visible: summary }
   paper: { type: int, default: 12, min: 0, max: 12, visible: full, regrow: { amount: 1, every_hours: 24 } }
+  # The art supplies on the desk (cat/art/materials.py). Each is one physical thing: what it is, its colour or
+  # hardness. Wear, running out and new supplies are changes to this list, not to code.
+  supplies:
+    type: list
+    visible: summary
+    default:
+      - { id: pencil_hb, kind: pencil, name: "an HB pencil", hardness: HB }
+      - { id: pencil_2b, kind: pencil, name: "a 2B pencil", hardness: 2B }
+      - { id: pencil_4b, kind: pencil, name: "a 4B pencil", hardness: 4B }
+      - { id: marker_black, kind: marker, name: "a black marker", color: "#1f1d22", color_name: black }
+      - { id: marker_red, kind: marker, name: "a red marker", color: "#d4313a", color_name: red }
+      - { id: marker_blue, kind: marker, name: "a blue marker", color: "#2a5fb8", color_name: blue }
+      - { id: marker_green, kind: marker, name: "a green marker", color: "#23864a", color_name: green }
+      - { id: marker_yellow, kind: marker, name: "a yellow marker", color: "#f3c623", color_name: yellow }
+      - { id: marker_orange, kind: marker, name: "an orange marker", color: "#ee7d22", color_name: orange }
+      - { id: crayon_red, kind: crayon, name: "a red crayon", color: "#c8372d", color_name: red }
+      - { id: crayon_orange, kind: crayon, name: "an orange crayon", color: "#e8792b", color_name: orange }
+      - { id: crayon_yellow, kind: crayon, name: "a yellow crayon", color: "#f2c43a", color_name: yellow }
+      - { id: crayon_green, kind: crayon, name: "a green crayon", color: "#3f8f4a", color_name: green }
+      - { id: crayon_blue, kind: crayon, name: "a blue crayon", color: "#2f63b5", color_name: blue }
+      - { id: crayon_purple, kind: crayon, name: "a purple crayon", color: "#6d3f9e", color_name: purple }
+      - { id: crayon_brown, kind: crayon, name: "a brown crayon", color: "#7a4a2a", color_name: brown }
+      - { id: crayon_black, kind: crayon, name: "a black crayon", color: "#26232a", color_name: black }
+      - { id: eraser, kind: eraser, name: "a soft eraser" }
 
 events: []
 
@@ -27,6 +51,8 @@ actions:
     inputs:
       intention: { type: text, max_chars: 500, prompt: "What do you want to draw? Choose your own subject and describe your intention." }
       thoughts: { type: text, max_chars: 1000, prompt: "What thoughts, feelings, observations, or memories are with you as you draw?" }
+      materials: { type: text, max_chars: 300, prompt: "Which supplies do you pick up, and how will you use them? (pencils HB, 2B, 4B; markers black, red, blue, green, yellow, orange; crayons red, orange, yellow, green, blue, purple, brown, black; an eraser)" }
+      effort: { type: choice, options: [quick, careful, patient] }
     duration: { minutes: [5, 12] }
     effort: low
     capability: draw
@@ -42,11 +68,13 @@ actions:
             subject: "{capability.subject}"
             description: "{capability.description}"
             thoughts: "{capability.thoughts}"
-            svg: "{capability.svg}"
+            materials: "{capability.materials}"
+            format: "{capability.format}"
+            root_id: "{capability.root_id}"
             status: "{capability.status}"
             revision_of: "{capability.revision_of}"
       creature: { mood: 0.02 }
-      remember: { importance: 0.65, text: "I spent time drawing {capability.title}. I was thinking: {capability.thoughts}" }
+      remember: { importance: 0.65, text: "I spent time drawing {capability.title} with {capability.materials}. I was thinking: {capability.thoughts}" }
 
   - id: study_drawing
     diary: "{name} is studying a drawing"
@@ -59,9 +87,10 @@ actions:
       artwork: { type: choice, options: "{fact:art_room.artworks.labels}" }
     duration: { minutes: [10, 30] }
     effort: none
+    capability: look_at_drawing
     revisit_key: [art_room.artworks]
     on_finish:
-      remember: { importance: 0.55, text: "I spent time studying a drawing in the art room and formed my own thoughts about it." }
+      remember: { importance: 0.55, text: "I studied my drawing {capability.title} ({capability.versions} versions) and formed my own thoughts about it." }
 
   - id: work_on_drawing
     diary: "{name} is making another pass on a picture: {inputs.intention}"
@@ -77,6 +106,8 @@ actions:
       artwork: { type: choice, options: "{fact:art_room.artworks.unfinished.labels}" }
       intention: { type: text, max_chars: 500, prompt: "What, if anything, do you want to do with this drawing? You may change your mind." }
       thoughts: { type: text, max_chars: 1000, prompt: "What are you thinking or feeling as you return to it?" }
+      materials: { type: text, max_chars: 300, prompt: "Which supplies do you pick up this time, and how will you use them? (pencils HB, 2B, 4B; markers; crayons; an eraser)" }
+      effort: { type: choice, options: [quick, careful, patient] }
     duration: { minutes: [5, 12] }
     effort: low
     capability: draw
@@ -97,11 +128,13 @@ actions:
             subject: "{capability.subject}"
             description: "{capability.description}"
             thoughts: "{capability.thoughts}"
-            svg: "{capability.svg}"
+            materials: "{capability.materials}"
+            format: "{capability.format}"
+            root_id: "{capability.root_id}"
             status: "{capability.status}"
             revision_of: "{capability.revision_of}"
       creature: { mood: 0.01 }
-      remember: { importance: 0.7, text: "I returned to a drawing and made another version: {capability.title}. I was thinking: {capability.thoughts}" }
+      remember: { importance: 0.7, text: "I returned to a drawing and made another version: {capability.title}, with {capability.materials}. I was thinking: {capability.thoughts}" }
 
   - id: finish_drawing
     diary: "{name} is finishing a drawing"

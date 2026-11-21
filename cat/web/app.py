@@ -71,8 +71,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if conn is None:
             return []
         try:
-            row = conn.execute("SELECT value FROM facts WHERE key = 'art_room.artworks'").fetchone()
-            return sorted(json.loads(row[0]), key=lambda x: x.get("created_at", ""), reverse=True) if row else []
+            return readmodel.artworks(conn)
         finally:
             conn.close()
 
@@ -141,7 +140,12 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.get("/artwork/{artifact_id}", response_class=HTMLResponse)
     def artwork_detail(request: Request, artifact_id: str):
-        item = next((a for a in artwork_rows() if a.get("id") == artifact_id), None)
+        conn = open_db()
+        try:
+            item = readmodel.artwork_detail(conn, artifact_id) if conn else None
+        finally:
+            if conn:
+                conn.close()
         if item is None:
             return Response(status_code=404)
         return templates.TemplateResponse(request, "artwork_detail.html", {"artwork": item})
@@ -158,13 +162,23 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def api_internet():
         return internet_history()
 
-    @app.get("/artwork/image/{artifact_id}.svg")
-    def artwork_image(artifact_id: str):
-        item = next((a for a in artwork_rows() if a.get("id") == artifact_id), None)
-        if item is None or not item.get("svg"):
+    @app.get("/artwork/image/{name}")
+    def artwork_image(name: str):
+        """A drawing's image: /artwork/image/<id>, <id>.png or <id>.svg (old drawings were SVG)."""
+        artifact_id = name.rsplit(".", 1)[0] if name.endswith((".png", ".svg")) else name
+        conn = open_db()
+        try:
+            found = readmodel.artwork_image(conn, artifact_id) if conn else None
+        finally:
+            if conn:
+                conn.close()
+        if found is None:
             return Response(status_code=404)
-        return Response(item["svg"], media_type="image/svg+xml",
-                        headers={"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
+        data, mime = found
+        headers = {"Cache-Control": "public, max-age=86400"}          # a version never changes
+        if mime == "image/svg+xml":
+            headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+        return Response(data, media_type=mime, headers=headers)
 
     @app.get("/letters", response_class=HTMLResponse)
     def letters_page(request: Request):

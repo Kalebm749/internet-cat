@@ -4,6 +4,10 @@ read_message:
   enabled: true
   handler: cat.capabilities.read_message    # gives the chosen visitor message to the creature as perception
   limits: {per_day: 50}
+look_at_drawing:
+  enabled: true
+  handler: cat.capabilities.look_at_drawing   # what is on a drawing and how it developed (read only)
+  limits: {per_day: 200}
 draw:
   enabled: true
   handler: cat.capabilities.draw
