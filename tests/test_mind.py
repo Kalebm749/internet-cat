@@ -126,4 +126,4 @@ def test_options_are_shuffled_with_a_seed(conn, lf, t):
 def test_identity_block(conn, lf, t):
     i = build(lf, conn, t).identity
     assert i["name"] == "Nit" and i["senses"] == ["sight", "smell", "touch"]
-    assert i["traits"] == ["very curious", "very truthful", "inward"]
+    assert i["traits"] == ["very curious", "very truthful", "practical"]
