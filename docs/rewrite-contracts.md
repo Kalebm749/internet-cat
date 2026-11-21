@@ -842,15 +842,14 @@ again when nothing has changed is not.
 - **Thoughts**: a new thought whose embedding has cosine > `thought_dup_threshold` with one of the last
   `thought_window` thoughts is still stored, but adds a mood penalty, and the next prompt shows
   *"you keep coming back to the same thought"*.
-- **The guard**: before a decision is accepted, a thought that is a near-copy of a recent one is quoted back
-  (`thought_repeat`) and the model gets the one extra attempt the reconsider guard allows ("say what is
-  different now, or think about something else"). The guard only advises: if the extra attempt fails, the valid
-  first answer is used, not a fallback. Core `boundaries` include that it does not want to repeat itself without
-  noticing.
-- **Themes, not only copies**: a thought that is not a near-copy can still go the same way as the recent ones.
-  When at least `thought_theme_min` of the last `thought_theme_window` thoughts have cosine >=
-  `thought_theme_threshold` with it, the guard quotes one (`thought_theme`) and asks once; and when its latest
-  thought has such a theme, the Mind shows *"Lately your thoughts keep going the same way"* with that thought.
+- **Never quote a thought back.** A guard that quoted a repeated thought and retried made it worse: on the real
+  model the stored thoughts that repeat went from 42 of 99 to about 85 of the next 144, and 2 in 3 decisions cost a
+  second model call. A small model copies what it is shown, and the "Earlier"/memory lines never held its thoughts, so
+  showing them added the channel. Thoughts are therefore only measured (the mood penalty above); no guard retries on
+  them and none of their words reach a prompt. Core `boundaries` say it does not want to repeat itself without noticing.
+- **Themes, not only copies**: when its latest thought and at least `thought_theme_min` of the last
+  `thought_theme_window` have cosine >= `thought_theme_threshold`, the Mind adds one fixed line (`mulling`: look at
+  what is here right now), quoting nothing.
 - **Plain outcome for an empty repeat**: a finished activity whose freshness is below `empty_below` and that
   gave nothing (no hunger/energy relief, no mood gain over 0.02, nothing made; not move, sleep or inspect) ends with
   `nothing_new` ("Nothing new came of it ..."), in the diary and in what it perceives next.

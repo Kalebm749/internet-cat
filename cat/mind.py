@@ -41,7 +41,7 @@ class Mind:
     options: list[Option]
     learned: list[str] = field(default_factory=list)     # things it chose to keep from reading, in its words (§6.6)
     dwelling: list[str] = field(default_factory=list)    # its own words for a subject it keeps returning to (§6.6)
-    mulling: list[str] = field(default_factory=list)     # its own words for a theme its thoughts keep going back to
+    mulling: bool = False                                # its recent thoughts keep going the same way (no words quoted)
     loops: list[str] = field(default_factory=list)       # open loops: wants and questions not settled yet (§5.8)
 
     def option(self, action_id: str) -> Option | None:
@@ -247,7 +247,7 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
           notes: Callable[[ActionSpec], list[str]] | None = None,
           capability_ok: Callable[[str], bool] | None = None, core_memories: list[str] | None = None,
           count_done: Callable[[str, float], int] | None = None, dwelling: list[str] | None = None,
-          loops: list[str] | None = None, mulling: list[str] | None = None) -> Mind:
+          loops: list[str] | None = None, mulling: bool = False) -> Mind:
     rng = random.Random(f"{seed}|{life.sim_time}")
     now = clock.parse(life.sim_time)
     loc = life.content.locations[life.location]
@@ -271,5 +271,5 @@ def build(life: Life, tuning: dict, *, known: set[str], last_done: dict[str, flo
         learned=learned_on_mind(life, tuning, seed),
         dwelling=list(dwelling or []),
         loops=list(loops or []),
-        mulling=list(mulling or []),
+        mulling=bool(mulling),
     )

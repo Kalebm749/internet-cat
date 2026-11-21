@@ -33,8 +33,7 @@ PROMPT_FIELDS = {
     "system": {"name", "nature", "senses", "abilities", "traits", "tendencies", "background", "boundaries", "core"},
     "core": {"lines"}, "note_liked": set(), "note_disliked": set(), "note_repeated": set(),
     "learned": {"lines"}, "dwelling": {"lines"}, "subject_repeat": {"count", "example"},
-    "loops": {"lines"}, "thought_repeat": {"example"}, "thought_theme": {"count", "example"},
-    "mulling": {"lines"},
+    "loops": {"lines"}, "mulling": set(),
     "stay": {"hours"}, "exit_never": set(), "exit_recent": set(), "exit_ago": {"hours"},
     "time": {"part_of_day", "clock", "weather"},
     "place": {"location", "description"},
@@ -172,7 +171,7 @@ def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories:
     if learned:
         parts.append(p["learned"].format(lines=_lines(learned)))
     if mind.mulling:
-        parts.append(p["mulling"].format(lines=_lines([f'"{m}"' for m in mind.mulling])))
+        parts.append(p["mulling"])
     if mind.loops:
         parts.append(p["loops"].format(lines=_lines(mind.loops)))
     if mind.dwelling:
