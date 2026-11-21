@@ -1007,7 +1007,8 @@ The aim: behaviour that comes from a persistent inner life and accumulated exper
 - **Temperament** (`content/character.yaml`, the author's numbers, 0..1, never changed by the creature): novelty,
   sociability, solitude, caution, impulsiveness, persistence, volatility, self_criticism, expressiveness, ambition. Code
   reads them (`cat/inner.py`); the strongly high or low ones also become clauses in "You tend to". `holds` are sentences with
-  keywords and a strength: an event naming one of them is more salient (`inner.hold_boost`).
+  keywords and a strength: an event naming one of them is more salient (`inner.hold_boost`). They are *not* written into the
+  prompt: when they were ("hold that what moves is more alive...") a fresh Nit's thoughts were all about the moving water.
 - **Inner state** (`cat/inner.py`, persisted in the `state` row, changes recorded in `body_changes`): needs (novelty, social,
   solitude, expression, accomplishment, belonging, security; rest is the body's energy) and affect (stress, confidence,
   curiosity, loneliness, frustration, satisfaction). Updated by code with no model call: needs rise by rate x temperament and
