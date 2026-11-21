@@ -57,8 +57,10 @@ SECTIONS = {
         "recall_boost": (0, 10), "forget_below": (0, 1), "dup_threshold": (0.5, 1),
         "recall_rest_minutes": (0, 24 * 60 * 7), "recall_rest_factor": (0, 1), "wander_slots": (0, 10),
         "wander_after_minutes": (1, 24 * 60 * 30), "learned_k": (0, 10), "learned_days": (0, 365),
-        "learned_chars": (40, 4000),
+        "learned_chars": (40, 4000), "long_cap": (5, 1000),
     },
+    "loops": {"max_open": (1, 20), "per_night": (0, 5), "expire_days": (1, 90), "on_mind": (0, 10),
+              "text_chars": (20, 400)},
     "repetition": {
         "half_life_minutes": (1, 10000), "w_action": (0, 2), "w_family": (0, 2), "w_target": (0, 2),
         "w_aimless": (0, 2), "freshness_min": (0, 1), "window_hours": (1, 24 * 30),
@@ -82,7 +84,7 @@ SLEEP_NUMBERS = {
     "dev_min_days": (1, 60), "dev_max_step": (0, 1), "dev_new_strength": (0, 1), "dev_cooldown_days": (0, 60),
 }
 SLEEP_OTHER = {"night_hours", "threaded", "dev_forbidden_words"}
-INTEGER_KEYS = {"learned_k", "learned_chars", "subject_window", "dwell_min", "wander_slots", "canvas", "max_points", "max_points_per_pass", "max_total", "max_tokens", "day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
+INTEGER_KEYS = {"long_cap", "max_open", "per_night", "expire_days", "on_mind", "text_chars", "learned_k", "learned_chars", "subject_window", "dwell_min", "wander_slots", "canvas", "max_points", "max_points_per_pass", "max_total", "max_tokens", "day_log_max", "consolidate_max", "core_per_night", "long_term_per_night", "pref_min_samples",
                 "dev_min_evidence", "dev_min_days", "recall_k", "notable_k", "recent", "thought_window",
                 "reflection_window", "retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
                 "on_mind", "on_mind_chars"}

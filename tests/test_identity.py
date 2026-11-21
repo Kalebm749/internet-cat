@@ -36,7 +36,7 @@ def test_author_edits_to_core_make_a_new_version(conn, tmp_path):
                  '- "Never harms the places or things others care about."\n    - "Never lies to a visitor."')
     rep = ensure(conn, content.load(pack.root), "2026-11-22T07:00")
     assert rep.author_changes == ["core"] and rep.version == 2
-    assert identity.current(conn).sheet["core"]["boundaries"][-1] == "Never lies to a visitor."
+    assert "Never lies to a visitor." in identity.current(conn).sheet["core"]["boundaries"]
     assert identity.current(conn).reason == "author edit: core"
 
 

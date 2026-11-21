@@ -155,3 +155,37 @@ def test_the_guard_says_it_was_already_wished_and_asks_again(lp):
     d = Decision(kind="full", action="make_wish", inputs={"kind": "I wish I could", "what": "fly"})
     problems = lp._reconsider_stale_choice(mind, d)
     assert len(problems) == 1 and "already wished" in problems[0]
+
+
+# ---------------------------------------------------------------- the same thought twice (§6.4)
+
+
+def test_the_guard_quotes_a_thought_that_copies_a_recent_one(lp):
+    said = "The quiet feels real now. I want to keep this moment."
+    with store.transaction(lp.conn):
+        lp.conn.execute("INSERT INTO thoughts(decision_id, sim_time, text, embedding, repeated) VALUES (NULL, ?, ?, ?, 0)",
+                        (lp.life.sim_time, said, memories.to_blob(hash_embed(said))))
+    mind = type("M", (), {"options": [], "option": lambda self, x: None})()
+    again = Decision(kind="full", action="inspect", inputs={}, thought=said)
+    problems = lp._reconsider_stale_choice(mind, again)
+    assert len(problems) == 1 and said in problems[0] and "different" in problems[0]
+    new = Decision(kind="full", action="inspect", inputs={}, thought="A bird sat on the stall roof for a while.")
+    assert lp._reconsider_stale_choice(mind, new) == []
+
+
+def test_a_guarded_but_valid_choice_beats_a_fallback(lp):
+    calls = []
+
+    def handler(msgs, schema):
+        calls.append(1)
+        if len(calls) == 1:
+            return {"thought": "same old thought", "reasoning": "r", "action": "inspect", "inputs": {}, "preserve": False,
+                    "letter": None}
+        return {"thought": "x", "reasoning": "r", "action": "no_such_action", "inputs": {}, "preserve": False, "letter": None}
+    lp.backend.handlers["decide"] = handler
+    with store.transaction(lp.conn):
+        lp.conn.execute("INSERT INTO thoughts(decision_id, sim_time, text, embedding, repeated) VALUES (NULL, ?, ?, ?, 0)",
+                        (lp.life.sim_time, "same old thought", memories.to_blob(hash_embed("same old thought"))))
+    lp.step()
+    row = lp.conn.execute("SELECT action, fallback FROM decisions ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["fallback"] == 0 and row["action"] == "inspect"

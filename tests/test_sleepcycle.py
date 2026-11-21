@@ -259,3 +259,61 @@ def test_the_clock_waits_for_the_night(tmp_path):
     fc.sleep(t["loop"]["step_seconds"])
     lp.step()
     assert not lp.life.asleep and lp.conn.execute("SELECT COUNT(*) FROM sleep_runs").fetchone()[0] == 1
+
+
+# ---------------------------------------------------------------- open loops (§5.7)
+
+
+def test_sleep_opens_a_loop_from_its_own_experiences_and_the_mind_shows_it(n):
+    from cat import loops
+    e = n.exp(text="I saw a door in the art room.")
+    n.b.handlers["sleep_loops"] = lambda m, s: {"close": [], "open": [
+        {"kind": "question", "text": "What is behind the door?", "sources": [e]},
+        {"kind": "want", "text": "Something invented.", "sources": [9999]}]}      # cites nothing real: dropped
+    p = n.plan()
+    assert [x["text"] for x in p.loops["open"]] == ["What is behind the door?"]
+    n.commit(p)
+    assert loops.on_mind(n.conn, n.t) == ["(something you wonder) What is behind the door?"]
+
+
+def test_a_loop_closes_only_on_real_evidence_and_never_opens_twice(n):
+    from cat import loops
+    e1 = n.exp(text="I saw a door.")
+    n.b.handlers["sleep_loops"] = lambda m, s: {"close": [], "open": [
+        {"kind": "question", "text": "What is behind the door?", "sources": [e1]}]}
+    n.commit(n.plan())
+    lid = loops.open_rows(n.conn)[0]["id"]
+    e2 = n.exp(text="I opened the door.", when="2026-11-22T10:00")
+    n.b.handlers["sleep_loops"] = lambda m, s: {"close": [{"id": lid, "why": "opened it", "sources": [123456]}], "open": [
+        {"kind": "question", "text": "What is behind the door?", "sources": [e2]}]}
+    p = n.plan("2026-11-22T22:00")
+    assert p.loops["close"] == [] and p.loops["open"] == []          # no real evidence; same loop is not opened twice
+    n.b.handlers["sleep_loops"] = lambda m, s: {"close": [{"id": lid, "why": "opened it", "sources": [e2]}], "open": []}
+    n.commit(n.plan("2026-11-22T22:00"))
+    row = n.q("SELECT status, why_closed FROM loops WHERE id = ?", lid)[0]
+    assert (row["status"], row["why_closed"]) == ("closed", "opened it") and loops.on_mind(n.conn, n.t) == []
+
+
+def test_loops_fade_and_a_full_mind_pushes_the_oldest_out(n):
+    from cat import loops
+    n.t["loops"].update(max_open=2, per_night=2, expire_days=3)
+    for i, when in enumerate(("2026-11-10T08:00", "2026-11-20T08:00", "2026-11-20T09:00")):
+        n.conn.execute("INSERT INTO loops(kind, text, opened_at) VALUES ('want', ?, ?)", (f"loop {i}", when))
+    e = n.exp(text="I did something new.", when="2026-11-21T09:00")
+    n.b.handlers["sleep_loops"] = lambda m, s: {"close": [], "open": [
+        {"kind": "want", "text": "a brand new thing", "sources": [e]}]}
+    p = n.plan("2026-11-21T22:00")
+    assert p.loops["fade"] == [1]                                      # older than expire_days
+    assert p.loops["push"] == [2]                                      # max 2 open: loop 3 + the new one
+    n.commit(p, "2026-11-22T05:00")
+    assert [r["text"] for r in loops.open_rows(n.conn)] == ["loop 2", "a brand new thing"]
+
+
+def test_a_full_memory_pushes_the_weakest_out(n):
+    n.t["memory"]["long_cap"] = 5
+    for i in range(7):
+        n.conn.execute("INSERT INTO memories(kind, text, importance, created_at, sources) VALUES ('long', ?, ?, ?, '[]')",
+                       (f"memory number {i}", 0.1 * (i + 1), "2026-11-21T07:00"))
+    p = n.plan("2026-11-21T22:00")
+    forgot = [r["text"] for r in n.q("SELECT text FROM memories WHERE id IN (%s)" % ",".join(map(str, p.forget)))]
+    assert sorted(forgot) == ["memory number 0", "memory number 1"]

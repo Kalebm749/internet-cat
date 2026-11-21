@@ -33,6 +33,7 @@ PROMPT_FIELDS = {
     "system": {"name", "nature", "senses", "abilities", "traits", "tendencies", "background", "boundaries", "core"},
     "core": {"lines"}, "note_liked": set(), "note_disliked": set(), "note_repeated": set(),
     "learned": {"lines"}, "dwelling": {"lines"}, "subject_repeat": {"count", "example"},
+    "loops": {"lines"}, "thought_repeat": {"example"},
     "stay": {"hours"}, "exit_never": set(), "exit_recent": set(), "exit_ago": {"hours"},
     "time": {"part_of_day", "clock", "weather"},
     "place": {"location", "description"},
@@ -169,6 +170,8 @@ def user_prompt(mind: Mind, kind: str, p: dict, *, recent: list[dict], memories:
     learned = mind.learned if learned is None else learned
     if learned:
         parts.append(p["learned"].format(lines=_lines(learned)))
+    if mind.loops:
+        parts.append(p["loops"].format(lines=_lines(mind.loops)))
     if mind.dwelling:
         parts.append(p["dwelling"].format(lines=_lines([f'"{d}"' for d in mind.dwelling])))
     if mind.letters:
@@ -351,6 +354,7 @@ def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict
     attempts: list[dict] = []
     retries = tuning["decisions"]["retries"]
     reconsidered = False
+    held: Decision | None = None          # a valid choice that only the reconsider guard questioned
     # One additional attempt is reserved for a behavioral reconsideration if its guard fires.
     for attempt in range(1, retries + 3):
         if attempt > retries + 1 + int(reconsidered):
@@ -362,6 +366,8 @@ def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict
             _record(backend, "decide", model, attempt, None, str(e))
             attempts.append({"raw": None, "problems": [str(e)]})
             if attempt >= retries + 1 + int(reconsidered):
+                if held is not None:
+                    break
                 raise
             continue
         try:
@@ -381,11 +387,12 @@ def decide(backend: LLMBackend, model: str, mind: Mind, kind: str, prompts: dict
                 msgs = msgs + [{"role": "assistant", "content": json.dumps(raw, ensure_ascii=False)},
                                {"role": "user", "content": prompts["retry"].format(problems=issue)}]
                 reconsidered = True
+                held = dec
                 continue
         _record(backend, "decide", model, attempt, raw, None)
         attempts.append({"raw": raw, "problems": []})
         return Result(dec, attempts, msgs, dropped)
-    return Result(fallback(mind, kind), attempts, msgs, dropped)
+    return Result(held or fallback(mind, kind), attempts, msgs, dropped)   # the guard only advises: never worse than a fallback
 
 
 def activity_view(name: str, started: str, planned_minutes: float, now: str) -> dict:

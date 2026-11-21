@@ -46,6 +46,17 @@ preferences: |
   For each, decide whether {name} truly feels this way (keep) and say it in a few words of its own
   (for example "I like making wishes."). Reject only what seems like chance.
 
+loops: |
+  What happened today, by {name} itself:
+  {lines}
+  What is already on {name}'s mind, not settled:
+  {open}
+
+  First: which of those open things did today settle (answered, done, or no longer wanted)? Give its id and the
+  ids of the experiences that settled it. Then: is there something new {name} wants, or wonders about, because of
+  what it did today? Open at most {max}, each a short plain sentence in {name}'s own voice, with the ids of the
+  experiences it comes from. Open nothing if nothing truly is. Never repeat something already open.
+
 develop: |
   Who {name} is now:
   {sheet}
