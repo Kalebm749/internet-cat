@@ -1,0 +1,96 @@
+id: garden
+name: the walled garden
+description: >
+  A small walled garden behind the fountain court. Herbs grow in crowded rows, a bed of flowers leans toward the
+  light, and an old iron watering can sits by a tap. A mossy bench stands in the corner. It is quieter here than
+  anywhere else in the square.
+exits: [fountain, workshop]
+sheltered: false
+
+# Purpose: the place for security, solitude and stress; a second, slower way to be fed; and somewhere to put what
+# you find (seeds) so that care now becomes something later.
+facts:
+  herbs: {type: int, default: 2, min: 0, max: 4, visible: full, regrow: {amount: 1, at_hours: [8, 16]}}
+  blooms: {type: int, default: 1, min: 0, max: 4, visible: full, regrow: {amount: 1, every_hours: 30}}
+
+events:
+  - {id: dew_on_the_leaves, text: "Cold dew shakes off a leaf onto your hand.", sense: touch, chance_per_hour: 0.4,
+     hours: [5, 9], salience: 0.3}
+  - {id: herb_warmth, text: "The herbs give off a sharp green smell in the warmth.", sense: smell, chance_per_hour: 0.4,
+     hours: [10, 16], weather_in: [clear], salience: 0.4}
+  - {id: petals_drift, text: "A few petals lift off the bed and drift across the path.", sense: sight, chance_per_hour: 0.3,
+     weather_in: [windy]}
+
+actions:
+  - id: sit_among_the_plants
+    diary: "{name} is sitting among the plants"
+    name: sit among the plants
+    description: "Sit on the mossy bench with the plants close around you, and let the quiet settle."
+    family: rest
+    inner: {solitude: -0.3, security: -0.2, stress: -0.15}
+    discovery: known_on_arrival
+    requires:
+      - {done_fewer_than: {action: sit_among_the_plants, times: 2, hours: 8}}
+    duration: {minutes: [12, 30]}
+    continuous: true
+    effort: none
+    per_minute: {energy: 0.0002}
+    on_finish:
+      creature: {mood: 0.05}
+      remember: {importance: 0.25, text: "I sat among the plants in the garden and felt held still."}
+
+  - id: water_the_plants
+    diary: "{name} is watering the garden"
+    name: water the plants
+    description: "Fill the watering can and go along the rows. The herbs and the flowers come on faster when they are looked after."
+    family: garden
+    inner: {accomplishment: -0.25, stress: -0.08}
+    discovery: known_on_arrival
+    requires:
+      - {energy_gte: 0.15}
+      - {weather_in: [clear, cloudy, windy, fog]}
+      - {done_fewer_than: {action: water_the_plants, times: 1, hours: 10}}
+    duration: {minutes: [10, 20]}
+    effort: low
+    on_finish:
+      world:
+        - {op: add, fact: garden.herbs, value: 1}
+        - {op: add, fact: garden.blooms, value: 1}
+      creature: {mood: 0.04}
+      remember: {importance: 0.35, text: "I watered the garden, and it was a little greener for it."}
+
+  - id: eat_fresh_herbs
+    diary: "{name} is picking herbs to eat"
+    name: pick herbs and eat them
+    description: "Pick a few leaves from the rows and eat them: sharp and green. Not much, but it is food."
+    family: eat
+    inner: {stress: -0.05, satisfaction: 0.05}
+    discovery: known_on_arrival
+    requires:
+      - {fact_gte: [garden.herbs, 1]}
+      - {hunger_gte: 0.25}
+    duration: {minutes: [3, 6]}
+    effort: low
+    on_finish:
+      world: [{op: add, fact: garden.herbs, value: -1}]
+      creature: {hunger: -0.15, mood: 0.03}
+      remember: {importance: 0.3, text: "I ate fresh herbs from the garden; it took the edge off my hunger."}
+
+  - id: plant_a_seed
+    diary: "{name} is planting a seed"
+    name: plant a seed
+    description: "Press the seed from your pocket into the bed. Nothing shows today; the flowers will be fuller for it."
+    family: garden
+    inner: {accomplishment: -0.2, expression: -0.1}
+    discovery: known_on_arrival
+    requires:
+      - {fact_count_where: [world.pocket, {kind: seed}, 1]}
+      - {fact_lte: [garden.blooms, 3]}
+    duration: {minutes: [5, 10]}
+    effort: low
+    on_finish:
+      world:
+        - {op: remove_where, fact: world.pocket, match: {kind: seed}, pick: oldest}
+        - {op: add, fact: garden.blooms, value: 2}
+      creature: {mood: 0.06}
+      remember: {importance: 0.5, text: "I planted a seed in the garden bed and will see what comes of it."}

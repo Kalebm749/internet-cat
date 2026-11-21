@@ -24,7 +24,10 @@ HERE = Path(__file__).parent
 LETTER_CODES = {"ok": "Your letter is in the mailbox at the market stall. Nit will read it when it chooses to.",
                 "empty": "The letter is empty.", "long": "The letter is too long.",
                 "blocked": "This letter cannot be delivered.", "slow": "You have sent enough letters for now.",
-                "full": "The mailbox is full for now. Try again later.", "error": "The letter could not be sent."}
+                "full": "The mailbox is full for now. Try again later.", "error": "The letter could not be sent.",
+                "name": "Choose a name of 3 to 20 letters, numbers, dashes or underscores.",
+                "secret": "A new name needs a passphrase of at least 6 characters: it is how you prove the name is yours.",
+                "denied": "That name is taken, or the passphrase does not match it."}
 SECURITY_HEADERS = {"X-Frame-Options": "DENY", "Referrer-Policy": "same-origin", "X-Content-Type-Options": "nosniff"}
 
 
@@ -109,8 +112,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             result = []
             for item in incoming:
                 saved = records.get(mail.letter_key(item["id"]), {})
-                replied = saved.get("status") == "answered" and isinstance(saved.get("reply"), str)
-                discarded = saved.get("status") == "discarded"
+                replied = saved.get("status") in ("answered", "discarded") and isinstance(saved.get("reply"), str)
+                discarded = saved.get("status") == "discarded" and not replied
                 result.append({"id": item["id"], "received_at": item["received_at"], "sender": item["sender"],
                                "text": item["text"], "reply": saved.get("reply") if replied else None,
                                "answered_at": saved.get("answered_at") if replied else None,
@@ -232,14 +235,15 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             conn.close()
 
     @app.post("/letters")
-    def send_letter(request: Request, text: str = Form(""), sender: str = Form(""), website: str = Form("")):
+    def send_letter(request: Request, text: str = Form(""), sender: str = Form(""), secret: str = Form(""),
+                    website: str = Form("")):
         if website:                                    # the honeypot: people never fill it in
             return RedirectResponse("/?letter=ok#letter", status_code=303)
         visitor = mail.visitor_id(request.client.host if request.client else "?", salt)
         try:
             conn = mail.open_for_writing(cfg.mail_db_path)
             try:
-                res = mail.submit(conn, web, sender, text, visitor)
+                res = mail.submit(conn, web, sender, text, visitor, secret=secret)
             finally:
                 conn.close()
         except sqlite3.Error:

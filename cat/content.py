@@ -37,11 +37,11 @@ FACT_KEYS = {"type", "default", "visible", "min", "max", "max_len", "choices", "
 EVENT_KEYS = {"id", "text", "sense", "chance_per_hour", "salience", "hours", "weather_in", "world"}
 ACTION_KEYS = {"id", "name", "description", "family", "discovery", "inspect_hint", "requires", "inputs",
                "duration", "continuous", "per_minute", "on_finish", "outcomes", "on_interrupt", "capability",
-               "revisit_key", "effort", "builtin", "diary", "subject", "distinct", "inner", "project"}
-EFFECT_KEYS = {"world", "creature", "discover", "remember", "reflection"}
+               "revisit_key", "effort", "builtin", "diary", "subject", "distinct", "inner", "project", "forgets"}
+EFFECT_KEYS = {"world", "creature", "discover", "remember", "reflection", "inner"}
 OUTCOME_KEYS = EFFECT_KEYS | {"when", "text"}
 WORLD_KEYS = {"name", "sim_start", "senses", "facts", "events", "effort", "body_words", "derived_conditions",
-              "mailbox", "wishes", "granted_wishes", "learned", "starving", "inner_words"}
+              "mailbox", "wishes", "granted_wishes", "learned", "starving", "inner_words", "carrying", "pinned", "letter_decision"}
 CHARACTER_KEYS = {"name", "pronoun", "core", "traits", "tendencies", "background", "likes", "dislikes",
                   "innate_knowledge", "start_location", "temperament", "holds"}
 CORE_KEYS = {"nature", "senses", "abilities", "boundaries", "prohibited_actions"}
@@ -144,6 +144,7 @@ class ActionSpec:
     subject: str | None = None    # what the action is about, in Nit's own words, e.g. "{inputs.intention}" (§6.6)
     distinct: dict | None = None  # {fact, field, value, match?, reason}: not if the list already holds the same thing
     inner: dict | None = None     # {need or affect: delta}: what finishing it does inside (negative eases a need)
+    forgets: str | None = None    # name of an input: what it remembers of the thing that input chose is forgotten
     project: str | None = None    # made | reworked | studied | finished | abandoned: what it does to a project (cat/projects.py)
     source: str = ""
 
@@ -353,7 +354,7 @@ def _parse_action(owner: str | None, d: Any, path: Path, probs: _Problems, line:
                    per_minute=d.get("per_minute") or {}, on_finish=d.get("on_finish"),
                    outcomes=d.get("outcomes"), on_interrupt=d.get("on_interrupt"),
                    capability=d.get("capability"), revisit_key=d.get("revisit_key") or [],
-                   effort=d.get("effort"), builtin=builtin, diary=d.get("diary"), subject=d.get("subject"), distinct=d.get("distinct"), inner=d.get("inner"), project=d.get("project"),
+                   effort=d.get("effort"), builtin=builtin, diary=d.get("diary"), subject=d.get("subject"), distinct=d.get("distinct"), inner=d.get("inner"), project=d.get("project"), forgets=d.get("forgets"),
                    source=f"{path.name}:{line}")
     if a.per_minute and not a.continuous:
         probs.add(path, line_of(d, "per_minute"), f"{what}: per_minute needs continuous: true")
@@ -520,7 +521,7 @@ def load(content_dir: Path | str = CONTENT_DIR) -> Content:
 
     # ---- second pass: references
     _check_character(content, chpath, probs)
-    for key in ("mailbox", "wishes", "learned"):
+    for key in ("mailbox", "wishes", "learned", "carrying", "pinned"):
         mb = world.get(key)
         if mb is not None and (not isinstance(mb, str) or facts.get(mb) is None or facts[mb].type != "list"):
             probs.add(wpath, line_of(world, key), f"world: {key} must name a list fact, got {mb!r}")
@@ -540,6 +541,10 @@ def load(content_dir: Path | str = CONTENT_DIR) -> Content:
                     for p in ops.validate(op, fact=content.fact, event_exists=lambda e: e in events,
                                           check_template=lambda t: None):
                         probs.add(wpath, sl, f"world: starving.restock: {p}")
+    ld = world.get("letter_decision")
+    if ld is not None and not (isinstance(ld, dict) and set(ld) == {"reply", "discard"}
+                               and all(isinstance(v, str) and v in actions for v in ld.values())):
+        probs.add(wpath, line_of(world, "letter_decision"), "world: letter_decision is {reply: <action id>, discard: <action id>}")
     gw = world.get("granted_wishes")
     if gw is not None:
         if "wishes" not in world:
@@ -754,6 +759,8 @@ def _check_action(c: Content, a: ActionSpec, path: Path, line: int, probs: _Prob
                 p = tmpl(ph)
                 if p:
                     probs.add(path, line, f"{w} subject: {p}")
+    if a.forgets is not None and a.forgets not in a.inputs:
+        probs.add(path, line_of(d, "forgets"), f"{w}: forgets must name one of its inputs ({', '.join(a.inputs) or 'none'})")
     if a.project is not None:
         from cat import projects as projectsmod
         if a.project not in projectsmod.EVENTS:
@@ -813,6 +820,11 @@ def _check_action(c: Content, a: ActionSpec, path: Path, line: int, probs: _Prob
             for p in ops.validate(op, fact=c.fact, event_exists=lambda e: e in c.events, check_template=tmpl):
                 probs.add(path, line_of(op) if isinstance(op, LineDict) else line_of(blk, "world"), f"{w}: {p}")
         _check_creature(blk.get("creature") or {}, w, path, line_of(blk, "creature"), probs)
+        if blk.get("inner") is not None:
+            from cat import inner as innermod
+            bi = blk["inner"]
+            if not isinstance(bi, dict) or not all(k in innermod.VARS and _is_num(v) and -1 <= v <= 1 for k, v in bi.items()):
+                probs.add(path, line_of(blk, "inner"), f"{w}: inner must map needs or affect to -1..1")
         for t in blk.get("discover") or []:
             if t not in c.actions:
                 probs.add(path, line_of(blk, "discover"), f"{w}: discovers unknown action '{t}'")

@@ -1,0 +1,122 @@
+id: fortune_booth
+name: the fortune teller's booth
+description: >
+  At the end of the lane stands a narrow painted booth with a faded striped awning and a hand-lettered sign:
+  FORTUNES, ONE COIN. Inside, behind a curtain of beads, an old woman in a patterned shawl shuffles a worn deck of
+  cards under a small brass lamp. The air smells of incense and old paper.
+exits: [lane]
+sheltered: true
+
+# Purpose: meaning from outside. A fortune is told at random and moves how it feels (some ease it, some unsettle it);
+# it is remembered, and it gives its mind something to turn over. It costs a coin (earned by sweeping) or something it
+# made, so the workshop, the lane and the booth work as one small chain.
+events:
+  - {id: incense_curls, text: "A thread of incense smoke curls up past the brass lamp.", sense: smell, chance_per_hour: 0.4}
+  - {id: beads_stir, text: "The bead curtain stirs and clicks, though no one touched it.", sense: sight, chance_per_hour: 0.2,
+     salience: 0.4}
+
+actions:
+  - id: have_a_fortune_told
+    diary: "{name} is having a fortune told"
+    name: have your fortune told
+    description: "Give the old woman a coin. She cuts the cards, turns one over, and tells you what it says. It may not be what you hoped."
+    family: fortune
+    discovery: known_on_arrival
+    requires:
+      - {fact_count_where: [world.pocket, {kind: coin}, 1]}
+      - {done_fewer_than: {action: have_a_fortune_told, times: 2, hours: 12}}
+    duration: {minutes: [6, 12]}
+    effort: none
+    outcomes:
+      - when: {random_lt: 0.125}
+        text: "She turns the card and says: \"You will hear from someone far away before the week is out.\""
+        world: &pay [{op: remove_where, fact: world.pocket, match: {kind: coin}, pick: oldest}]
+        inner: {social: -0.12, belonging: -0.08}
+        creature: {mood: 0.07}
+        discover: [ask_what_it_means]
+        remember: {importance: 0.65, text: "The fortune teller said I would hear from someone far away before the week is out."}
+      - when: {random_lt: 0.1429}
+        text: "She turns the card and says: \"Something you have put off will not wait much longer.\""
+        world: *pay
+        inner: {stress: 0.12, accomplishment: 0.15}
+        creature: {mood: -0.02}
+        discover: [ask_what_it_means]
+        remember: {importance: 0.65, text: "The fortune teller said something I have put off will not wait much longer."}
+      - when: {random_lt: 0.1667}
+        text: "She turns the card and says: \"The next thing you make will not be what you meant. It will be better.\""
+        world: *pay
+        inner: {confidence: 0.06, expression: -0.12}
+        creature: {mood: 0.09}
+        discover: [ask_what_it_means]
+        remember: {importance: 0.65, text: "The fortune teller said the next thing I make will not be what I meant, and will be better."}
+      - when: {random_lt: 0.2}
+        text: "She turns the card and says: \"Be careful of an easy yes.\""
+        world: *pay
+        inner: {security: 0.14, stress: 0.06}
+        creature: {mood: 0.0}
+        discover: [ask_what_it_means]
+        remember: {importance: 0.65, text: "The fortune teller told me to be careful of an easy yes."}
+      - when: {random_lt: 0.25}
+        text: "She turns the card and says: \"A door you pass every day is not as shut as it looks.\""
+        world: *pay
+        inner: {novelty: 0.18}
+        creature: {mood: 0.04}
+        discover: [ask_what_it_means]
+        remember: {importance: 0.65, text: "The fortune teller said a door I pass every day is not as shut as it looks."}
+      - when: {random_lt: 0.3333}
+        text: "She turns the card and says: \"You will lose a small thing and find a smaller one.\""
+        world: *pay
+        creature: {mood: 0.01}
+        discover: [ask_what_it_means]
+        remember: {importance: 0.6, text: "The fortune teller said I would lose a small thing and find a smaller one."}
+      - when: {random_lt: 0.5}
+        text: "She turns the card and says: \"Today is a good day to begin, and a poor one to finish.\""
+        world: *pay
+        inner: {accomplishment: -0.1, stress: -0.08}
+        creature: {mood: 0.06}
+        discover: [ask_what_it_means]
+        remember: {importance: 0.6, text: "The fortune teller said today is a good day to begin and a poor one to finish."}
+      - text: "She turns the card and says: \"Water remembers what you tell it.\""
+        world: *pay
+        inner: {novelty: -0.1, security: -0.05}
+        creature: {mood: 0.05}
+        discover: [ask_what_it_means]
+        remember: {importance: 0.65, text: "The fortune teller said water remembers what you tell it."}
+
+  - id: ask_what_it_means
+    diary: "{name} is asking what the fortune means"
+    name: ask what it means
+    description: "Ask the old woman what she meant. She will talk for a while; she never quite explains."
+    family: fortune
+    inner: {social: -0.2, belonging: -0.15, security: -0.08}
+    discovery: hidden
+    inspect_hint: "The old woman looks up from her cards as if she is waiting to be asked something."
+    requires:
+      - {done_before: have_a_fortune_told}
+      - {not_done_since_minutes: [ask_what_it_means, 180]}
+    duration: {minutes: [8, 20]}
+    effort: none
+    outcomes:
+      - when: {random_lt: 0.5}
+        text: "\"The card says what it says,\" she tells you. \"It is you who has to decide when it came true.\""
+        creature: {mood: 0.05}
+      - text: "She laughs, not unkindly. \"If I knew that, child, I would not be in a booth at the end of a lane.\""
+        creature: {mood: 0.07}
+        remember: {importance: 0.45, text: "I asked the fortune teller what her fortune meant and she laughed and said she did not know."}
+
+  - id: give_her_something_you_made
+    diary: "{name} is giving the old woman something it made"
+    name: give her something you made
+    description: "Take a small thing down from your shelf in the workshop and give it to the old woman. She will not tell you a fortune for it; she will be glad."
+    family: fortune
+    inner: {belonging: -0.3, accomplishment: -0.1, expression: -0.1}
+    discovery: known_on_arrival
+    requires:
+      - {fact_gte: [workshop.keepsakes, 1]}
+      - {done_fewer_than: {action: give_her_something_you_made, times: 1, hours: 24}}
+    duration: {minutes: [3, 8]}
+    effort: none
+    on_finish:
+      world: [{op: add, fact: workshop.keepsakes, value: -1}]
+      creature: {mood: 0.12}
+      remember: {importance: 0.7, text: "I gave the fortune teller something I had made, and she hung it on her lamp."}

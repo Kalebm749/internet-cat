@@ -3,14 +3,14 @@ name: the market stall
 description: >
   A single canvas-roofed stall at the edge of the square. Small offerings of food are left on its
   counter, and a wooden mailbox is nailed to its post.
-exits: [fountain]
+exits: [fountain, lane]
 sheltered: true
 
 facts:
   offerings: {type: int, default: 2, min: 0, max: 3, visible: full, regrow: {amount: 1, at_hours: [6, 12, 18]}}
   mailbox: {type: list, default: [], max_len: 50, visible: summary}     # visitor letters: unread / read. Open-ended:
                                                                         # read, unanswered ones stay on Nit's mind (§4.8)
-  answered: {type: list, default: [], max_len: 200, visible: summary}   # the answered pile (§4.8)
+  answered: {type: list, default: [], max_len: 8, visible: summary}      # the board: letters it replied to stay pinned here (§4.8)
   discarded: {type: list, default: [], max_len: 200, visible: summary} # read letters Nit chose not to answer
 
 events:
@@ -41,16 +41,20 @@ actions:
         creature: {hunger: -0.45, energy: 0.05, mood: 0.02}
         text: "You eat it."
 
+  # The letter flow: read a letter, then it MUST decide. Replying keeps the knowledge: the original letter is pinned on
+  # the board (room for 8) and may be read again as it was written. Setting it aside throws the knowledge away: nothing
+  # it remembers of that letter survives. A pinned letter stays until it takes it down (and then forgets it too).
   - id: read_messages
     diary: "{name} is reading a letter"
-    name: read messages
-    description: "Open the mailbox on the stall post and read a message."
+    name: read a new letter
+    description: "Open the mailbox on the stall post and read a letter. Once you have read it you must decide: write back, or set it aside."
     family: mail
     discovery: known_on_arrival
     requires:
-      - {fact_count_where: [market.mailbox, {status: [unread, read]}, 1]}
+      - {fact_count_where: [market.mailbox, {status: unread}, 1]}
+      - {not: {fact_count_where: [market.mailbox, {status: read}, 1]}}      # one decision at a time
     inputs:
-      which: {type: choice, options: "{fact:market.mailbox.labels}"}    # unread first, then read (the Mind builder)
+      which: {type: choice, options: "{fact:market.mailbox.unread.labels}"}
     inner: {social: -0.3, belonging: -0.1}
     duration: {minutes: [5, 15]}
     effort: low
@@ -59,17 +63,18 @@ actions:
       world:
         - {op: update_where, fact: market.mailbox, match: {id: "{inputs.which}", status: unread},
            set: {status: read, read_at: "{now}"}}
-      discover: [reply_message, discard_message]
-      remember: {importance: 0.7, text: "I read a message from {capability.sender}: {capability.summary}"}
+      discover: [reply_message, discard_message, reread_pinned_letter, take_a_letter_down]
+      creature: {mood: 0.05}
 
   - id: reply_message
     diary: "{name} is writing a reply"
-    name: write a reply
-    description: "Write a reply to a message you have read."
+    name: write back and pin the letter
+    description: "Write a reply to the letter you have read. The original letter is pinned on your board, so you can read it again."
     family: mail
     discovery: hidden
     requires:
       - {fact_count_where: [market.mailbox, {status: read}, 1]}
+      - {not: {fact_count_gte: [market.answered, 8]}}                      # the board has room for only so many
       - {energy_gte: 0.1}
     inputs:
       which: {type: choice, options: "{fact:market.mailbox.read.labels}"}
@@ -82,14 +87,15 @@ actions:
         - {op: move_where, from: market.mailbox, to: market.answered, match: {id: "{inputs.which}"},
            set: {status: answered, reply: "{inputs.reply}", answered_at: "{now}"}}
       creature: {mood: 0.05}
-      remember: {importance: 0.6, text: "I wrote a reply to a message: {inputs.reply}"}
+      remember: {importance: 0.6, text: "I wrote back to a letter and pinned it on my board: {inputs.reply}"}
 
   - id: discard_message
     diary: "{name} is setting a letter aside"
-    name: discard a letter without replying
-    description: "Decide whether this letter merits a reply. If you do not want to answer it, set it aside."
+    name: set the letter aside for good
+    description: "Do not write back. The letter is thrown away, and you will not keep anything of it."
     family: mail
     discovery: hidden
+    forgets: which
     requires:
       - {fact_count_where: [market.mailbox, {status: read}, 1]}
     inputs:
@@ -100,4 +106,39 @@ actions:
       world:
         - {op: move_where, from: market.mailbox, to: market.discarded, match: {id: "{inputs.which}"},
            set: {status: discarded, discarded_at: "{now}"}}
-      remember: {importance: 0.45, text: "I decided not to write back to a letter and set it aside."}
+
+  - id: reread_pinned_letter
+    diary: "{name} is rereading a pinned letter"
+    name: reread a pinned letter
+    description: "Take a letter from your board and read it again exactly as it was written, with what you wrote back. It stays pinned unless you take it down."
+    family: mail
+    inner: {social: -0.15, belonging: -0.1}
+    discovery: hidden
+    requires:
+      - {fact_count_where: [market.answered, {status: answered}, 1]}
+      - {not: {fact_count_where: [market.mailbox, {status: read}, 1]}}      # decide about the letter in hand first
+    inputs:
+      which: {type: choice, options: "{fact:market.answered.labels}"}
+    duration: {minutes: [4, 10]}
+    effort: low
+    capability: read_message
+    on_finish:
+      creature: {mood: 0.03}
+
+  - id: take_a_letter_down
+    diary: "{name} is taking a letter down from the board"
+    name: take a letter down for good
+    description: "Take a pinned letter off the board and throw it away. You will not keep anything of it."
+    family: mail
+    discovery: hidden
+    forgets: which
+    requires:
+      - {fact_count_where: [market.answered, {status: answered}, 1]}
+    inputs:
+      which: {type: choice, options: "{fact:market.answered.labels}"}
+    duration: {minutes: [2, 5]}
+    effort: low
+    on_finish:
+      world:
+        - {op: move_where, from: market.answered, to: market.discarded, match: {id: "{inputs.which}"},
+           set: {status: discarded, discarded_at: "{now}"}}

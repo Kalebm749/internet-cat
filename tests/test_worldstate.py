@@ -55,8 +55,8 @@ def test_failed_apply_leaves_state_alone():
 def test_regrow_at_hours_across_days_and_clamped():
     ws = WorldState.fresh(content.load())
     ws.values["market.offerings"] = 0
-    assert ws.regrow("2026-11-21T07:00", "2026-11-21T12:00") == {"market.offerings": 1}   # 12:00 counts
-    assert ws.regrow("2026-11-21T12:00", "2026-11-21T17:59") == {}                         # 12:00 already counted
+    assert ws.regrow("2026-11-21T07:00", "2026-11-21T12:00")["market.offerings"] == 1      # 12:00 counts
+    assert "market.offerings" not in ws.regrow("2026-11-21T12:00", "2026-11-21T17:59")     # 12:00 already counted
     ws.values["market.offerings"] = 0
     ws.regrow("2026-11-21T19:00", "2026-11-22T13:00")                                      # 06:00 and 12:00 next day
     assert ws.get("market.offerings") == 2
@@ -96,38 +96,32 @@ def test_world_changes_survive_a_restart(conn):
 
 def test_sync_with_changed_content(conn, tmp_path):
     pack = copy_pack(tmp_path)
+    pack.replace("locations/market.yaml", "  discarded: {", "  chime: {type: int, default: 1}\n  discarded: {")
     c1 = content.load(pack.root)
     ws = WorldState.fresh(c1)
     ws.apply([{"op": "add", "fact": "market.offerings", "value": -2}], {}, random.Random(0))   # touched
     save(ws, conn, all=True)
 
     # new fact, removed fact, a changed default on an untouched fact, a changed default on a touched fact
-    pack.replace("locations/market.yaml", "  answered: {type: list, default: [], max_len: 200, visible: summary}",
-                 "  bell: {type: bool, default: true}")
+    pack.replace("locations/market.yaml", "  chime: {type: int, default: 1}", "  bell: {type: bool, default: true}")
     pack.replace("locations/market.yaml", "offerings: {type: int, default: 2,", "offerings: {type: int, default: 1,")
     pack.replace("locations/fountain.yaml", "wishes: {type: list, default: [],", "wishes: {type: list, default: [{text: old}],")
-    pack.replace("locations/market.yaml", "{op: move_where, from: market.mailbox, to: market.answered,",
-                 "{op: remove_where, fact: market.mailbox,")
-    pack.replace("locations/market.yaml", "\n           set: {status: answered, reply: \"{inputs.reply}\", answered_at: \"{now}\"}}", "}")
     c2 = content.load(pack.root)
     back, rep = WorldState.load(conn, c2)
-    assert rep.added == ["market.bell"] and rep.removed == ["market.answered"]
+    assert rep.added == ["market.bell"] and rep.removed == ["market.chime"]
     assert rep.updated == ["fountain.wishes"] and back.get("fountain.wishes") == [{"text": "old"}]
     assert back.get("market.offerings") == 0            # the creature's change wins over the new default
     save(back, conn)
     keys = {r["key"] for r in conn.execute("SELECT key FROM facts")}
-    assert "market.answered" not in keys and "market.bell" in keys
+    assert "market.chime" not in keys and "market.bell" in keys
 
 
 def test_touched_value_that_no_longer_fits_is_reset(conn, tmp_path):
     pack = copy_pack(tmp_path)
     ws = WorldState.fresh(content.load(pack.root))
-    ws.apply([{"op": "set", "fact": "world.weather", "value": "rain"}], {}, random.Random(0))
+    ws.values["world.weather"] = "hail"                           # a value the content no longer allows
+    ws.touched.add("world.weather")
     save(ws, conn, all=True)
-    pack.replace("world.yaml", "choices: [clear, cloudy, rain]", "choices: [clear, cloudy]")
-    pack.replace("world.yaml", "weather_in: [cloudy], salience: 0.7, world: [{op: set, fact: world.weather, value: rain}]",
-                 "weather_in: [cloudy], salience: 0.7")
-    pack.replace("world.yaml", "weather_in: [rain], world: [{op: set, fact: world.weather, value: cloudy}]", "weather_in: [cloudy]")
     back, rep = WorldState.load(conn, content.load(pack.root))
     assert rep.reset == ["world.weather"] and back.get("world.weather") == "clear"
 

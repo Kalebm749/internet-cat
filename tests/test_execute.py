@@ -212,12 +212,13 @@ def test_reading_and_replying_to_a_letter(rig):
     rig.wait(20)
     assert rig.life.world.get("market.mailbox")[0]["status"] == "read"
     assert "reply_message" in knowledge.known_ids(rig.conn)
-    assert rig.rows("SELECT text FROM experiences WHERE action_id = 'read_messages'")[0][0] == \
-        "I read a message from Ann: Will you make a wish for me?"
+    assert rig.rows("SELECT text FROM experiences WHERE action_id = 'read_messages'")[0][0] == "You read a new letter."
+    assert not rig.ex.formed or all(f["action_id"] != "read_messages" for f in rig.ex.formed)   # reading keeps nothing
     rig.do("reply_message", {"which": "1", "reply": "I will, at the fountain."})
     rig.wait(30)
     assert rig.life.world.get("market.mailbox") == []
-    assert rig.life.world.get("market.answered")[0]["reply"] == "I will, at the fountain."
+    assert rig.life.world.get("market.answered")[0]["reply"] == "I will, at the fountain."      # pinned on the board
+    assert any(f["action_id"] == "reply_message" for f in rig.ex.formed)                        # replying keeps it
 
 
 def test_capability_limits_are_enforced(rig):
@@ -228,6 +229,8 @@ def test_capability_limits_are_enforced(rig):
     assert rig.do("read_messages", {"which": "1"})["status"] == "started"
     rig.wait(20)
     assert not rig.ex.capability_ok("read_message")
+    rig.do("discard_message", {"which": "1"})                       # it must decide about a letter before the next
+    rig.wait(10)
     res = rig.do("read_messages", {"which": "2"})
     assert res["status"] == "rejected" and "used 1 times today" in res["text"]
     rig.life.sim_time = "2026-11-22T08:00"

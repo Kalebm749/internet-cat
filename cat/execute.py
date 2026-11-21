@@ -37,7 +37,7 @@ WORLD_TEXT_PATH = CONFIG_DIR / "prompts" / "world.yaml"
 WORLD_TEXT_FIELDS = {
     "arrive": {"location"}, "inspect_found": {"hint", "name"}, "inspect_nothing": set(), "discovered": {"name"},
     "finished": {"name"}, "interrupted": {"name"}, "rejected": {"name", "reason"}, "fall_asleep": set(),
-    "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_gone": set(),
+    "wake": set(), "reflection": set(), "letter_read": {"sender", "text"}, "letter_reread": {"sender", "text", "reply"}, "letter_gone": set(),
     "capability_failed": set(), "same_thought": set(), "nothing_new": set(), "concern_back": {"text"}, **{f"belief_{k}_{o}": {"subject"} for k in ("effect", "place", "weather") for o in ("lift", "wear")},
     "habit_line": {"what", "place", "band"}, "acquired_fear": {"statement"}, "acquired_interest": {"statement"},
     "belief_failure_self": {"subject"}, "belief_failure_world": {"subject"}, "starving_go": set(), "starving_restock": set(), "mail_arrived": set(),
@@ -160,9 +160,9 @@ class Executor:
         """Keep the record of what it made and of who it heard from (inside the caller's transaction)."""
         if r.action.project:
             projectsmod.record(self.conn, r.action.project, r.inputs, r.cap, self.life.sim_time)
-        sender = ((r.cap or {}).get("fields") or {}).get("sender")
         which = r.inputs.get("which")
-        if not sender and which and r.action.family == "mail":          # answering: whose letter was it?
+        sender = None
+        if which and r.action.id == (self.c.world.get("letter_decision") or {}).get("reply"):   # it wrote back: now it knows them
             for items in self.life.world.values.values():
                 if isinstance(items, list):
                     sender = next((i.get("sender") for i in items if isinstance(i, dict) and str(i.get("id")) == str(which)
@@ -523,6 +523,9 @@ class Executor:
             self.mood_base = 0.0
         if status == "finished":                           # what it did inside: needs eased, affect moved (inner.py)
             effects = dict(r.action.inner or {})
+            for k, v in (getattr(self, "_block_inner", None) or {}).items():
+                effects[k] = effects.get(k, 0.0) + v
+            self._block_inner = None
             for k, v in ((r.cap or {}).get("inner") or {}).items():
                 effects[k] = effects.get(k, 0.0) + v
             self._relationships_and_projects(r)
@@ -549,7 +552,9 @@ class Executor:
                                      "weather": self.life.world.values.get("world.weather"),
                                      **({"external": True} if external else {}), **data},
                                thought=r.thought or None, importance=importance, remember=remember)
-        if status == "finished":                                    # the loop decides whether it leaves an impression
+        if status == "finished" and r.action.forgets:               # setting a letter aside: nothing of it is kept
+            memories.forget_about(self.conn, r.action.forgets, r.inputs.get(r.action.forgets))
+        if status == "finished" and not external:                   # a letter's words are not its own experience
             self.formed.append({"id": eid, "text": remember_text or text, "action_id": r.action.id,
                                 "location": self.life.location, "importance": importance, "remember": remember,
                                 "mood_base": self.mood_base, "freshness": r.freshness})
@@ -575,6 +580,7 @@ class Executor:
             self.perception.append(text)
             return self._close("finished", text, [], {"slept_minutes": round(r.elapsed(self.life.sim_time))})
         block = self._pick_block(a)
+        self._block_inner = block.get("inner")                    # what this particular outcome did inside
         changes, found, vars = self._apply_block(a, block, r)
         try:
             text = templating.render(block.get("text"), {**vars, "facts": self.life.world.values}) \

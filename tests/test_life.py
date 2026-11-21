@@ -39,15 +39,15 @@ def test_reopen_carries_everything_forward(conn):
 
 def test_a_removed_location_moves_it_home(conn, tmp_path):
     pack = copy_pack(tmp_path)
-    pack.write("locations/garden.yaml", 'id: garden\nname: the garden\ndescription: "x"\nexits: [fountain]\n')
-    pack.replace("locations/fountain.yaml", "exits: [market", "exits: [market, garden")
+    pack.write("locations/attic.yaml", 'id: attic\nname: the attic\ndescription: "x"\nexits: [fountain]\n')
+    pack.replace("locations/fountain.yaml", "exits: [market", "exits: [market, attic")
     t = tuning.load()
     lf = life.open_life(conn, content.load(pack.root), t)
-    lf.location = "garden"
+    lf.location = "attic"
     with store.transaction(conn):
         life.save(conn, lf)
-    (pack.root / "locations/garden.yaml").unlink()
-    pack.replace("locations/fountain.yaml", "exits: [market, garden", "exits: [market")
+    (pack.root / "locations/attic.yaml").unlink()
+    pack.replace("locations/fountain.yaml", "exits: [market, attic", "exits: [market")
     back = life.open_life(conn, content.load(pack.root), t)
     assert back.location == "fountain"
     assert any("no longer exists" in n for n in back.notes)

@@ -1,0 +1,96 @@
+id: lookout
+name: the clock tower lookout
+description: >
+  At the top of a narrow stone stair, a small room opens onto a low wall above the square. The great clock face
+  stands behind you, its works ticking in the wall. From here the fountain, the stall, the art room and the garden
+  are small and far apart, and the whole sky is open.
+exits: [fountain]
+sheltered: false
+
+# Purpose: the place for novelty and for waiting on the day: some things can only be done here at dawn, in wind, or
+# when the clock needs winding.
+events:
+  - {id: pigeons_wheel, text: "A flock of pigeons wheels once around the tower and settles again.", sense: sight,
+     chance_per_hour: 0.3, salience: 0.4}
+  - {id: wind_tugs, text: "The wind tugs hard at your clothes up here.", sense: touch, chance_per_hour: 0.5,
+     weather_in: [windy], salience: 0.5}
+  - {id: lamps_glow, text: "One by one the lamps come on in the square below.", sense: sight, chance_per_hour: 0.8,
+     hours: [18, 21], salience: 0.5}
+
+actions:
+  - id: look_out_over_the_square
+    diary: "{name} is looking out over the square"
+    name: look out over the square
+    description: "Lean on the low wall and look out over everything. What you can see depends on the day."
+    family: look
+    inner: {novelty: -0.3, security: -0.05}
+    discovery: known_on_arrival
+    requires:
+      - {done_fewer_than: {action: look_out_over_the_square, times: 2, hours: 6}}
+    duration: {minutes: [8, 20]}
+    effort: none
+    outcomes:
+      - when: {weather_in: [fog]}
+        text: "You can see only white; even the fountain is gone. It is strangely restful."
+        inner: {stress: -0.1, novelty: 0.1}
+        creature: {mood: 0.01}
+      - when: {weather_in: [rain]}
+        text: "Rain blurs the square into grey shapes; the lamps and the water shine."
+        creature: {mood: 0.03}
+      - when: {weather_in: [windy]}
+        text: "Everything below is moving: awnings, leaves, the water. You feel the whole square breathing."
+        creature: {mood: 0.07}
+        remember: {importance: 0.4, text: "I looked out from the tower on a windy day and the whole square was moving."}
+      - text: "The whole square lies open: the fountain, the stall, the art room's window, the garden wall. You can see how it all fits together."
+        creature: {mood: 0.06}
+        remember: {importance: 0.3, text: "From the tower I could see how the whole square fits together."}
+
+  - id: watch_the_sunrise
+    diary: "{name} is watching the sunrise"
+    name: watch the sunrise
+    description: "Wait on the wall for the light to come over the roofs. It happens once a day and only for a little while."
+    family: look
+    inner: {novelty: -0.2, security: -0.15, satisfaction: 0.08}
+    discovery: known_on_arrival
+    requires:
+      - {hours: [5, 8]}
+      - {weather_in: [clear, windy, cloudy]}
+      - {done_fewer_than: {action: watch_the_sunrise, times: 1, hours: 18}}
+    duration: {minutes: [15, 30]}
+    continuous: true
+    effort: none
+    on_finish:
+      creature: {mood: 0.1}
+      remember: {importance: 0.6, text: "I watched the sun come up over the roofs from the tower."}
+
+  - id: wind_the_clock
+    diary: "{name} is winding the great clock"
+    name: wind the clock
+    description: "Turn the heavy brass crank under the clock face until it will turn no more. It keeps the square's time; it runs down in half a day."
+    family: tend
+    inner: {accomplishment: -0.35, satisfaction: 0.1, confidence: 0.04}
+    discovery: hidden
+    inspect_hint: "A brass crank is set into the wall under the clock face, worn bright where hands have turned it."
+    requires:
+      - {energy_gte: 0.3}
+      - {not_done_since_minutes: [wind_the_clock, 720]}
+    duration: {minutes: [8, 15]}
+    effort: high
+    on_finish:
+      creature: {mood: 0.08}
+      remember: {importance: 0.5, text: "I wound the great clock, and the square's time went on because of it."}
+
+  - id: feel_the_wind
+    diary: "{name} is standing in the wind"
+    name: stand in the wind
+    description: "Stand at the wall with your face into the wind and let it blow everything out of your head."
+    family: look
+    inner: {stress: -0.2, frustration: -0.15, novelty: -0.08}
+    discovery: known_on_arrival
+    requires:
+      - {weather_in: [windy]}
+      - {done_fewer_than: {action: feel_the_wind, times: 1, hours: 6}}
+    duration: {minutes: [6, 14]}
+    effort: none
+    on_finish:
+      creature: {mood: 0.08}

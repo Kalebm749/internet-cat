@@ -72,10 +72,13 @@ def test_mail_choices_and_reply_need_a_read_letter(conn, lf, t):
     assert "read_messages" not in ids(build(lf, conn, t))          # empty mailbox
     lf.world.values["market.mailbox"] = [letter(1, "read", read_at="2026-11-21T06:00"), letter(2, "unread", "a question")]
     m = build(lf, conn, t)
-    choices = m.option("read_messages").inputs["which"]["choices"]
-    assert [c["value"] for c in choices] == ["2", "1"]              # unread first
-    assert choices[0]["label"] == 'Ann: "a question" (unread)'
+    assert m.option("read_messages") is None                        # a letter it has read must be decided first
     assert [c["value"] for c in m.option("reply_message").inputs["which"]["choices"]] == ["1"]
+    lf.world.values["market.mailbox"][0]["status"] = "answered"
+    m = build(lf, conn, t)
+    choices = m.option("read_messages").inputs["which"]["choices"]
+    assert [c["value"] for c in choices] == ["2"]                   # only unread ones are read; the read one waits
+    assert choices[0]["label"] == 'Ann: "a question" (unread)'
 
 
 def test_letters_on_mind_are_read_unanswered_recent_and_bounded(conn, lf, t):

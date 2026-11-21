@@ -8,6 +8,12 @@ senses: [sight, sound, smell, touch, taste]
 # The list fact that holds visitor letters (§4.8). Read, unanswered letters stay on the creature's mind.
 mailbox: market.mailbox
 
+# The letter decision (cat/loop.py, cat/execute.py): after reading a letter it must write back (the original is pinned on
+# the board `pinned`, room for 8, and can be reread) or set it aside (it keeps nothing of it). While a read letter waits,
+# these two actions are always offered at the mailbox's place.
+pinned: market.answered
+letter_decision: {reply: reply_message, discard: discard_message}
+
 # The list fact that holds what the creature chose to keep from its reading (items with status "kept", a title, and
 # its own summary and meaning). The newest of these stay on its mind for a while (§6.6).
 learned: terminal.articles
@@ -22,8 +28,13 @@ wishes: fountain.wishes
 #     - {wish: "1", note: "A ladder now leads up the clock tower."}
 granted_wishes: []
 
+# What it carries (coins, seed packets), shown to it as "You are carrying: ...". Items are {kind, name}; actions put
+# them in and take them out with ordinary list ops.
+carrying: world.pocket
+
 facts:                                   # global facts, addressed as world.<name>
-  weather: {type: text, default: clear, choices: [clear, cloudy, rain], visible: full}
+  weather: {type: text, default: clear, choices: [clear, cloudy, rain, windy, fog], visible: full}
+  pocket: {type: list, default: [], max_len: 5, visible: summary}
 
 events:                                  # things that can happen anywhere
   - {id: clouds_gather, text: "Clouds slide over the sun.", sense: sight, chance_per_hour: 0.06,
@@ -34,6 +45,14 @@ events:                                  # things that can happen anywhere
      weather_in: [rain], world: [{op: set, fact: world.weather, value: cloudy}]}
   - {id: clouds_part, text: "The clouds part and the light comes back.", sense: sight, chance_per_hour: 0.1,
      weather_in: [cloudy], world: [{op: set, fact: world.weather, value: clear}]}
+  - {id: wind_rises, text: "The wind picks up and sets everything moving.", sense: touch, chance_per_hour: 0.05,
+     weather_in: [clear, cloudy], world: [{op: set, fact: world.weather, value: windy}]}
+  - {id: wind_drops, text: "The wind drops away to nothing.", sense: touch, chance_per_hour: 0.2,
+     weather_in: [windy], world: [{op: set, fact: world.weather, value: clear}]}
+  - {id: fog_forms, text: "A low white fog fills the square; the far side vanishes.", sense: sight, chance_per_hour: 0.15,
+     hours: [4, 9], weather_in: [cloudy], salience: 0.7, world: [{op: set, fact: world.weather, value: fog}]}
+  - {id: fog_lifts, text: "The fog thins and lifts, and the square comes back.", sense: sight, chance_per_hour: 0.3,
+     hours: [8, 14], weather_in: [fog], world: [{op: set, fact: world.weather, value: clear}]}
 
 # Energy spent per sim minute, by effort level; an action may name a level or give a number.
 effort: {none: 0.0, low: 0.0005, medium: 0.0012, high: 0.0025}

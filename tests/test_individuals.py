@@ -463,3 +463,126 @@ def test_practice_saturates_and_makes_the_work_cost_less_effort(lp):
         lp.conn.execute("UPDATE knowledge SET times_done = 200 WHERE action_id = 'inspect'")
     assert lp.exec._effort(spec) < new * 0.75
     assert "you are well practised at this" in lp._notes()(spec)
+
+
+# ---------------------------------------------------------------- the letter decision and the board
+
+def at_market_with_letter(tmp_path):
+    from tests.test_execute import Rig, letters
+    rig = Rig(tmp_path)
+    rig.life.content.events.clear()
+    rig.do("move", {"to": "market"})
+    rig.wait(10)
+    letters(rig, ("unread", "Will you make a wish for me?"))
+    return rig
+
+
+def test_a_letter_it_set_aside_leaves_nothing_in_its_memory(tmp_path):
+    from cat import memories
+    rig = at_market_with_letter(tmp_path)
+    rig.do("read_messages", {"which": "1"})
+    rig.wait(20)
+    # something it remembers because of that letter (made from the reading experience)
+    eid = rig.rows("SELECT id FROM experiences WHERE action_id = 'read_messages'")[0][0]
+    with store.transaction(rig.conn):
+        rig.conn.execute("INSERT INTO memories(kind, text, importance, created_at, sources) VALUES ('short', 'Ann asked me "
+                         "for a wish', 0.6, ?, ?)", (rig.life.sim_time, json.dumps([eid])))
+        rig.conn.execute("INSERT INTO memories(kind, text, importance, created_at, sources) VALUES ('short', 'unrelated', 0.6, ?, '[]')",
+                         (rig.life.sim_time,))
+    rig.do("discard_message", {"which": "1"})
+    rig.wait(10)
+    assert [m.text for m in memories.all_memories(rig.conn, "short")] == ["unrelated"]
+    assert rig.life.world.get("market.answered") == []
+
+
+def test_replying_pins_the_original_and_it_can_be_reread_then_taken_down_and_forgotten(tmp_path):
+    from cat import memories
+    rig = at_market_with_letter(tmp_path)
+    rig.do("read_messages", {"which": "1"})
+    rig.wait(20)
+    rig.do("reply_message", {"which": "1", "reply": "I will, at the fountain."})
+    rig.wait(30)
+    board = rig.life.world.get("market.answered")
+    assert board[0]["text"] == "Will you make a wish for me?" and board[0]["status"] == "answered"   # the original, kept
+    rig.ex.perception.clear()
+    rig.do("reread_pinned_letter", {"which": "1"})
+    rig.wait(15)
+    said = rig.ex.perception[0]
+    assert "<<<Will you make a wish for me?>>>" in said and "<<<I will, at the fountain.>>>" in said
+    assert rig.life.world.get("market.answered")                                                      # it stays unless taken down
+    eid = rig.rows("SELECT id FROM experiences WHERE action_id = 'reply_message'")[0][0]
+    with store.transaction(rig.conn):
+        rig.conn.execute("INSERT INTO memories(kind, text, importance, created_at, sources) VALUES ('long', 'I answered Ann', "
+                         "0.6, ?, ?)", (rig.life.sim_time, json.dumps([eid])))
+    rig.do("take_a_letter_down", {"which": "1"})
+    rig.wait(10)
+    assert rig.life.world.get("market.answered") == [] and memories.all_memories(rig.conn, "long") == []
+
+
+def test_a_read_letter_forces_the_decision_into_the_menu(lp):
+    lp.life.location = "market"
+    lp.life.world.values["market.mailbox"] = [{"id": "1", "sender": "Ann", "text": "hi", "status": "read"}]
+    assert {"reply_message", "discard_message"} <= lp._protected_options()
+    lp.life.world.values["market.mailbox"] = []
+    assert not {"reply_message", "discard_message"} & lp._protected_options()
+
+
+# ---------------------------------------------------------------- the larger world: every action has a purpose
+
+NEW_PLACES = ("garden", "lookout", "workshop", "lane", "fortune_booth")
+
+
+def test_every_new_action_does_something_for_a_need_or_changes_the_world():
+    c = content.load()
+    assert set(NEW_PLACES) <= set(c.locations) and all(c.locations[p].exits for p in NEW_PLACES)
+    for place in NEW_PLACES:
+        for a in c.actions_at(place):
+            blocks = [a.on_finish or {}] + list(a.outcomes or [])
+            changes_world = any(b.get("world") for b in blocks)
+            relieves = bool(a.inner) and any(k in __import__("cat.inner", fromlist=["x"]).NEEDS for k in a.inner)
+            assert relieves or changes_world, f"{a.id} serves no need and changes nothing"
+
+
+def test_coins_earned_by_work_pay_for_a_fortune_that_moves_how_it_feels(tmp_path):
+    from tests.test_execute import Rig
+    rig = Rig(tmp_path)
+    rig.life.content.events.clear()
+    for a in ("move",):
+        pass
+    rig.life.location = "workshop"
+    learn_ids = ("sweep_the_floor", "have_a_fortune_told", "ask_what_it_means")
+    from cat import knowledge
+    with store.transaction(rig.conn):
+        for a in learn_ids:
+            knowledge.learn(rig.conn, a, rig.life.content.actions[a].location or "", "inspect", rig.life.sim_time)
+    rig.do("sweep_the_floor")
+    rig.wait(30)
+    assert [i["kind"] for i in rig.life.world.get("world.pocket")] == ["coin"]
+    assert "a coin" in rig.life.mind_carry if hasattr(rig.life, "mind_carry") else True
+    from cat import mind as mindmod
+    assert mindmod.carrying_now(rig.life) == ["a coin"]
+    rig.life.location = "fortune_booth"
+    before = dict(rig.life.inner.v)
+    rig.do("have_a_fortune_told")
+    rig.wait(20)
+    assert rig.life.world.get("world.pocket") == []                          # the coin was the price
+    assert "ask_what_it_means" in knowledge.known_ids(rig.conn)             # the fortune opens a conversation
+    assert rig.rows("SELECT text FROM activities WHERE action_id = 'have_a_fortune_told'")[0][0].startswith("She turns the card")
+    assert rig.life.inner.v != before
+    assert rig.do("have_a_fortune_told")["status"] == "rejected"            # no coin, no fortune
+
+
+def test_the_cat_comes_and_goes_and_trust_builds_slowly(tmp_path):
+    from tests.test_execute import Rig
+    from cat import knowledge
+    rig = Rig(tmp_path)
+    rig.life.content.events.clear()
+    rig.life.location = "lane"
+    with store.transaction(rig.conn):
+        for a in ("watch_the_cat", "stroke_the_cat"):
+            knowledge.learn(rig.conn, a, "lane", "inspect", rig.life.sim_time)
+    assert rig.do("watch_the_cat")["status"] == "rejected"                   # no cat here yet
+    rig.life.world.values["lane.cat_here"] = True
+    assert rig.do("stroke_the_cat")["status"] == "rejected"                  # it does not know you yet
+    rig.life.world.values["lane.cat_trust"] = 3
+    assert rig.do("stroke_the_cat")["status"] == "started"

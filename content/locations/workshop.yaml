@@ -1,0 +1,91 @@
+id: workshop
+name: the workshop
+description: >
+  A cluttered shed at the back of the square that smells of sawdust and oil. A long workbench runs under the
+  window, hung with small hand tools; a broom leans in the corner, and a chest of shallow drawers stands against
+  the wall. A shelf above the bench holds small things people have made here.
+exits: [garden, lane]
+sheltered: true
+
+# Purpose: the place for expression and accomplishment through work with the hands. It is where coins are earned
+# (sweeping), seeds are found (the drawers), and where what it makes stays (the shelf).
+facts:
+  keepsakes: {type: int, default: 0, min: 0, max: 6, visible: full}
+
+events:
+  - {id: sawdust_smell, text: "The smell of fresh sawdust rises as the wood warms.", sense: smell, chance_per_hour: 0.3}
+  - {id: shutter_light, text: "Light through the shutters draws bright stripes across the bench.", sense: sight,
+     chance_per_hour: 0.3, hours: [9, 16]}
+
+actions:
+  - id: whittle_something
+    diary: "{name} is whittling something small"
+    name: whittle something
+    description: "Take a bit of wood and a knife and make something small. You do not have to know what it will be. When it is done it goes on the shelf."
+    family: make
+    inner: {expression: -0.35, accomplishment: -0.15}
+    discovery: known_on_arrival
+    requires:
+      - {energy_gte: 0.25}
+      - {fact_lte: [workshop.keepsakes, 5]}
+    duration: {minutes: [15, 35]}
+    effort: medium
+    on_finish:
+      world: [{op: add, fact: workshop.keepsakes, value: 1}]
+      creature: {mood: 0.08}
+      remember: {importance: 0.6, text: "I whittled something small in the workshop and put it on the shelf."}
+
+  - id: sweep_the_floor
+    diary: "{name} is sweeping the workshop"
+    name: sweep the floor
+    description: "Sweep the shavings into a heap. The woodworker leaves a coin on the bench for anyone who does."
+    family: tend
+    inner: {accomplishment: -0.25, stress: -0.1}
+    discovery: known_on_arrival
+    requires:
+      - {energy_gte: 0.2}
+      - {not: {fact_count_gte: [world.pocket, 5]}}
+      - {done_fewer_than: {action: sweep_the_floor, times: 1, hours: 8}}
+    duration: {minutes: [10, 20]}
+    effort: low
+    on_finish:
+      world: [{op: append, fact: world.pocket, value: {kind: coin, name: "a coin"}}]
+      creature: {mood: 0.05}
+      remember: {importance: 0.4, text: "I swept the workshop floor and was left a coin for it."}
+
+  - id: sort_the_drawers
+    diary: "{name} is going through the drawers"
+    name: go through the drawers
+    description: "Open the shallow drawers one by one and see what has been left in them."
+    family: look
+    inner: {novelty: -0.12, expression: -0.03}
+    discovery: known_on_arrival
+    requires:
+      - {not: {fact_count_gte: [world.pocket, 5]}}
+      - {done_fewer_than: {action: sort_the_drawers, times: 1, hours: 6}}
+    duration: {minutes: [6, 14]}
+    effort: low
+    outcomes:
+      - when: {random_lt: 0.4}
+        text: "Under a tangle of string you find a paper packet of seeds and put it in your pocket."
+        world: [{op: append, fact: world.pocket, value: {kind: seed, name: "a packet of seeds"}}]
+        creature: {mood: 0.07}
+        remember: {importance: 0.45, text: "I found a packet of seeds in a drawer in the workshop."}
+      - text: "Nuts, nails, string, a broken ruler. Nothing you need."
+        inner: {novelty: 0.05}
+
+  - id: look_over_what_you_have_made
+    diary: "{name} is looking over the shelf"
+    name: look over what you have made
+    description: "Take down the small things you have whittled and look at them, one at a time."
+    family: reflect
+    inner: {satisfaction: 0.12, confidence: 0.05, accomplishment: -0.1}
+    discovery: known_on_arrival
+    requires:
+      - {fact_gte: [workshop.keepsakes, 1]}
+      - {done_fewer_than: {action: look_over_what_you_have_made, times: 1, hours: 8}}
+    duration: {minutes: [5, 12]}
+    effort: none
+    on_finish:
+      creature: {mood: 0.07}
+      remember: {importance: 0.35, text: "I looked over the small things I have made, and they were mine."}

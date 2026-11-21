@@ -1,0 +1,99 @@
+id: lane
+name: the lane behind the stall
+description: >
+  A narrow lane runs behind the market stall, with a plane tree, a worn wooden bench, and a view of the backs of
+  houses. People cut through it on their way somewhere else. A cat sometimes sits on the wall.
+exits: [market, workshop, fortune_booth]
+sheltered: false
+
+# Purpose: the place for company without obligation (people passing) and for a slow friendship (the cat), plus a quiet
+# bench for solitude.
+facts:
+  cat_here: {type: bool, default: false, visible: full}
+  cat_trust: {type: int, default: 0, min: 0, max: 5, visible: full}
+
+events:
+  - {id: cat_arrives, text: "A grey cat jumps onto the wall and settles there, watching you.", sense: sight,
+     chance_per_hour: 0.18, hours: [6, 20], weather_in: [clear, cloudy, windy], salience: 0.6,
+     world: [{op: set, fact: lane.cat_here, value: true}]}
+  - {id: cat_leaves, text: "The cat stretches, drops off the wall and wanders away.", sense: sight, chance_per_hour: 0.3,
+     salience: 0.4, world: [{op: set, fact: lane.cat_here, value: false}]}
+  - {id: leaves_skitter, text: "Dry leaves skitter along the lane around your feet.", sense: touch, chance_per_hour: 0.4,
+     weather_in: [windy]}
+
+actions:
+  - id: sit_on_the_bench
+    diary: "{name} is sitting on the bench"
+    name: sit on the bench
+    description: "Sit on the worn bench under the plane tree, out of the way, and let the lane go on without you."
+    family: rest
+    inner: {solitude: -0.3, security: -0.1}
+    discovery: known_on_arrival
+    requires:
+      - {done_fewer_than: {action: sit_on_the_bench, times: 2, hours: 8}}
+    duration: {minutes: [10, 25]}
+    continuous: true
+    effort: none
+    per_minute: {energy: 0.0002}
+    on_finish:
+      creature: {mood: 0.04}
+
+  - id: watch_people_go_by
+    diary: "{name} is watching people go by"
+    name: watch people go by
+    description: "Watch the people who cut through the lane. They do not know you are there, and you are not alone."
+    family: look
+    inner: {social: -0.12, belonging: -0.08, novelty: -0.1}
+    discovery: known_on_arrival
+    requires:
+      - {hours: [7, 19]}
+      - {done_fewer_than: {action: watch_people_go_by, times: 2, hours: 6}}
+    duration: {minutes: [8, 20]}
+    effort: none
+    outcomes:
+      - when: {random_lt: 0.34}
+        text: "A woman hurries past with a loaf under her arm, and a boy chases a hoop after her."
+        creature: {mood: 0.05}
+      - when: {random_lt: 0.5}
+        text: "Two men argue cheerfully about a ladder and carry it off between them."
+        creature: {mood: 0.05}
+      - text: "A girl stops, looks straight at you, and waves before she runs on."
+        inner: {belonging: -0.1}
+        creature: {mood: 0.09}
+        remember: {importance: 0.45, text: "A girl in the lane stopped and waved at me."}
+
+  - id: watch_the_cat
+    diary: "{name} is watching the cat"
+    name: watch the cat
+    description: "Sit quietly and let the cat get used to you. It trusts slowly."
+    family: friend
+    inner: {belonging: -0.1, satisfaction: 0.05}
+    discovery: known_on_arrival
+    requires:
+      - {fact_eq: [lane.cat_here, true]}
+      - {fact_lte: [lane.cat_trust, 4]}
+      - {done_fewer_than: {action: watch_the_cat, times: 2, hours: 8}}
+    duration: {minutes: [10, 25]}
+    continuous: true
+    effort: none
+    on_finish:
+      world: [{op: add, fact: lane.cat_trust, value: 1}]
+      creature: {mood: 0.06}
+      remember: {importance: 0.4, text: "I sat with the grey cat in the lane and it came a little closer."}
+
+  - id: stroke_the_cat
+    diary: "{name} is stroking the cat"
+    name: stroke the cat
+    description: "The cat knows you now. Put out a hand."
+    family: friend
+    inner: {belonging: -0.3, security: -0.1, loneliness: -0.15}
+    discovery: known_on_arrival
+    requires:
+      - {fact_eq: [lane.cat_here, true]}
+      - {fact_gte: [lane.cat_trust, 3]}
+      - {done_fewer_than: {action: stroke_the_cat, times: 1, hours: 8}}
+    duration: {minutes: [5, 12]}
+    effort: none
+    on_finish:
+      creature: {mood: 0.12}
+      remember: {importance: 0.65, text: "The grey cat let me stroke it, and purred."}

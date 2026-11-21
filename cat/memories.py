@@ -189,6 +189,21 @@ def add_memory(conn: sqlite3.Connection, m: dict, now: str, text: str, vec: list
     return "direct" if kind == "long" else "added"
 
 
+def forget_about(conn: sqlite3.Connection, input_name: str, value: Any) -> int:
+    """Throw away what it remembers of one thing (a letter it set aside): every memory made from an experience whose
+    action was given this input value is deleted. The raw experience log stays (it is the record, not the mind)."""
+    ids = [r["id"] for r in conn.execute("SELECT id, data FROM experiences WHERE kind = 'activity'")
+           if str((json.loads(r["data"] or "{}").get("inputs") or {}).get(input_name)) == str(value)]
+    if not ids:
+        return 0
+    gone = 0
+    for row in conn.execute("SELECT id, sources FROM memories WHERE kind IN ('short', 'long', 'faded')").fetchall():
+        if set(json.loads(row["sources"])) & set(ids):
+            conn.execute("DELETE FROM memories WHERE id = ?", (row["id"],))
+            gone += 1
+    return gone
+
+
 def faded_cue(conn: sqlite3.Connection, m: dict, query_vec: list[float] | None) -> list[str]:
     """A faded memory comes back only when something in front of the creature touches it (and it knows it is old)."""
     if query_vec is None:

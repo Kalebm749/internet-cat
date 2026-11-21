@@ -16,15 +16,24 @@ class ReadMessage:
     external = True           # a visitor's words: never evidence of who the creature is (§4.8, §5.6)
 
     def run(self, ctx: CapContext, inputs: dict) -> CapabilityResult:
-        key = ctx.content.world.get("mailbox")
         which = str(inputs.get("which"))
-        letter = next((it for it in ctx.facts.get(key, []) if isinstance(it, dict) and str(it.get("id")) == which), None)
+        pinned = False
+        letter = None
+        for fact, is_pinned in ((ctx.content.world.get("mailbox"), False), (ctx.content.world.get("pinned"), True)):
+            letter = next((it for it in ctx.facts.get(fact, []) if isinstance(it, dict) and str(it.get("id")) == which), None)
+            if letter is not None:
+                pinned = is_pinned
+                break
         if letter is None:
             return CapabilityResult(ok=False, text=ctx.texts["letter_gone"],
                                     fields={"sender": "nobody", "summary": "", "text": ""})
         text = str(letter.get("text", ""))
         sender = letter.get("sender") or "someone"
         summary = text if len(text) <= SUMMARY_CHARS else text[: SUMMARY_CHARS - 3].rstrip() + "..."
+        if pinned:                                         # reread exactly as written, with what it wrote back
+            return CapabilityResult(ok=True, text=ctx.texts["letter_reread"].format(
+                sender=sender, text=text, reply=str(letter.get("reply", ""))),
+                fields={"sender": sender, "summary": summary, "text": text})
         return CapabilityResult(
             ok=True,
             text=ctx.texts["letter_read"].format(sender=sender, text=text),
