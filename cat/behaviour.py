@@ -124,3 +124,74 @@ def repetition_score(conn: sqlite3.Connection, n: int) -> float:
     if not rows:
         return 0.0
     return round(1 - sum(r[0] for r in rows) / len(rows), 4)
+
+
+# ---------------------------------------------------------------- subjects (§6.6)
+# Repetition of *what* the creature is about, not only of which action: "draw the water in the fountain" and
+# "sketch the moving water" are different inputs but the same subject. Actions that declare a `subject` (content)
+# have it embedded; a new one close to recent ones is less fresh. Code never names or chooses a subject: it only
+# compares the creature's own words with its own earlier words.
+
+def subject_text(action: ActionSpec, inputs: dict) -> str | None:
+    if not action.subject:
+        return None
+    from cat import templating
+    try:
+        text = templating.render(action.subject, {"inputs": inputs or {}})
+    except templating.TemplateError:
+        return None
+    text = " ".join(str(text).split())
+    return text or None
+
+
+@dataclass
+class Echo:
+    text: str
+    similarity: float
+    minutes_ago: float
+
+
+def echoes(conn: sqlite3.Connection, vec: Any, now: str, tuning: dict,
+           exclude_activity: int | None = None) -> list[Echo]:
+    """Recent subjects close to this one (similarity at or above `subject_floor`), most similar first."""
+    from cat.memories import cosine, from_blob
+    import numpy as np
+    if vec is None:
+        return []
+    rp = tuning["repetition"]
+    since = clock.fmt(clock.parse(now) - timedelta(minutes=rp["subject_half_life_minutes"] * 4))
+    v = np.asarray(vec, dtype=np.float32)
+    out = []
+    for r in conn.execute("SELECT activity_id, sim_time, text, embedding FROM subjects WHERE sim_time >= ? "
+                          "AND embedding IS NOT NULL ORDER BY id DESC LIMIT ?", (since, rp["subject_window"])):
+        if exclude_activity is not None and r["activity_id"] == exclude_activity:
+            continue
+        sim = cosine(from_blob(r["embedding"]), v)
+        if sim >= rp["subject_floor"]:
+            out.append(Echo(r["text"], round(sim, 3), _minutes(r["sim_time"], now)))
+    out.sort(key=lambda e: -e.similarity)
+    return out
+
+
+def subject_freshness(found: list[Echo], tuning: dict) -> float:
+    rp = tuning["repetition"]
+    floor = rp["subject_floor"]
+    weight = sum(_decay(e.minutes_ago, rp["subject_half_life_minutes"]) * (e.similarity - floor) / max(1e-6, 1 - floor)
+                 for e in found)
+    return round(max(rp["freshness_min"], min(1.0, 1 - rp["subject_weight"] * weight)), 4)
+
+
+def dwelling(conn: sqlite3.Connection, now: str, tuning: dict) -> list[str]:
+    """When the recent subjects keep circling one thing: the creature's own words for it (up to two)."""
+    from cat.memories import cosine, from_blob
+    rp = tuning["repetition"]
+    since = clock.fmt(clock.parse(now) - timedelta(minutes=rp["subject_half_life_minutes"] * 2))
+    rows = [(r["text"], from_blob(r["embedding"])) for r in conn.execute(
+        "SELECT text, embedding FROM subjects WHERE sim_time >= ? AND embedding IS NOT NULL ORDER BY id DESC LIMIT ?",
+        (since, rp["subject_window"]))]
+    best: list[str] = []
+    for i, (text, v) in enumerate(rows):
+        near = [t for j, (t, w) in enumerate(rows) if j != i and cosine(v, w) >= rp["subject_floor"]]
+        if len(near) + 1 >= rp["dwell_min"] and len(near) + 1 > len(best):
+            best = [text] + [t for t in near if t != text]
+    return list(dict.fromkeys(best))[:2]

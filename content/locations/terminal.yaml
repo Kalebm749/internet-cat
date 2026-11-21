@@ -17,6 +17,7 @@ events: []
 actions:
   - id: search_wikipedia
     diary: "{name} at the information terminal"
+    subject: "{inputs.query}"
     name: search Wikipedia
     description: "Use the terminal to look up a topic that interests you. Choose the question or subject yourself."
     family: explore

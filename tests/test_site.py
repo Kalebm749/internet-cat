@@ -83,7 +83,7 @@ def test_website_pages(site):
     assert r.status_code == 200 and "Write to Nit" in r.text and "Diary" in r.text and "Who Nit is" in r.text
     assert "A humanoid creature" in r.text
     d = site.get("/api/now").json()
-    assert d["now"]["name"] == "Nit" and d["now"]["place"] in ("the fountain", "the market stall")
+    assert d["now"]["name"] == "Nit" and d["now"]["place"] in [l.name for l in content.load().locations.values()]
     page = site.get("/api/diary").json()
     assert page["entries"] and page["next"]
     act = next(e for e in page["entries"] if e["kind"] == "activity" and e["status"] == "finished")

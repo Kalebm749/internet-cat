@@ -54,7 +54,7 @@ def test_options_are_known_and_possible_actions_only(conn, lf, t):
 
 def test_move_offers_the_exits(conn, lf, t):
     mv = build(lf, conn, t).option("move")
-    assert mv.inputs["to"]["choices"] == [{"value": "market", "label": "the market stall"}]
+    assert {"value": "market", "label": "the market stall"} in mv.inputs["to"]["choices"]
 
 
 def letter(i, status, text="hello", sender="Ann", read_at=None):

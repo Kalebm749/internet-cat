@@ -116,7 +116,7 @@ def test_online_requires_configured_models(cfg):
 
 def test_bare_model_name_matches_latest_tag(cfg):
     assert backend(cfg, tags("qwen3:14b", "qwen3:4b", "nomic-embed-text:latest")).missing_models() == []
-    cfg.settings["nit"]["models"].update(decision_model="llama3.1", sleep_model="llama3.1")
+    cfg.settings["nit"]["models"].update({k: "llama3.1" for k in cfg.settings["nit"]["models"] if k != "embed_model"})
     assert backend(cfg, tags("llama3.1:latest", "nomic-embed-text")).missing_models() == []
     assert backend(cfg, tags("llama3.1:8b", "nomic-embed-text")).missing_models() == ["llama3.1"]
 

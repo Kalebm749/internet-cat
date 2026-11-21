@@ -17,7 +17,7 @@ def test_spawn(conn):
     assert lf.spawned and lf.location == "fountain" and lf.sim_time == "2026-11-21T07:00"
     assert (lf.bodystate.mood, lf.bodystate.energy, lf.bodystate.hunger) == (0.1, 0.8, 0.2)
     assert lf.character.version == 1 and lf.world.get("market.offerings") == 2
-    assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 5
+    assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == len(content.load().facts)
 
 
 def test_reopen_carries_everything_forward(conn):
@@ -40,14 +40,14 @@ def test_reopen_carries_everything_forward(conn):
 def test_a_removed_location_moves_it_home(conn, tmp_path):
     pack = copy_pack(tmp_path)
     pack.write("locations/garden.yaml", 'id: garden\nname: the garden\ndescription: "x"\nexits: [fountain]\n')
-    pack.replace("locations/fountain.yaml", "exits: [market]", "exits: [market, garden]")
+    pack.replace("locations/fountain.yaml", "exits: [market", "exits: [market, garden")
     t = tuning.load()
     lf = life.open_life(conn, content.load(pack.root), t)
     lf.location = "garden"
     with store.transaction(conn):
         life.save(conn, lf)
     (pack.root / "locations/garden.yaml").unlink()
-    pack.replace("locations/fountain.yaml", "exits: [market, garden]", "exits: [market]")
+    pack.replace("locations/fountain.yaml", "exits: [market, garden", "exits: [market")
     back = life.open_life(conn, content.load(pack.root), t)
     assert back.location == "fountain"
     assert any("no longer exists" in n for n in back.notes)

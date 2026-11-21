@@ -35,6 +35,7 @@ actions:
 
   - id: make_wish
     diary: "{name} is making a wish at {location.name}: {inputs.kind} {inputs.what}"
+    subject: "{inputs.what}"
     name: make a wish
     description: "Wish at the moving water for a place you do not have, or something you cannot yet do."
     family: wish
