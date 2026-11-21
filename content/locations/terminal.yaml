@@ -1,0 +1,89 @@
+id: terminal
+name: the information terminal
+description: >
+  A small alcove opens off the fountain court. A glass screen rests on a broad stone stand, filled with
+  maps, diagrams, and pages from a distant library. The screen waits quietly for a question, and keeps a
+  shelf of pages Nit has already visited.
+exits: [fountain]
+sheltered: true
+
+facts:
+  searches: {type: list, default: [], max_len: 100, visible: none}
+  results: {type: list, default: [], max_len: 100, visible: none}
+  articles: {type: list, default: [], max_len: 100, visible: none}
+
+events: []
+
+actions:
+  - id: search_wikipedia
+    diary: "{name} at the information terminal"
+    name: search Wikipedia
+    description: "Use the terminal to look up a topic that interests you. Choose the question or subject yourself."
+    family: explore
+    discovery: known_on_arrival
+    requires: [{energy_gte: 0.12}]
+    inputs:
+      query: {type: text, max_chars: 200, prompt: "What topic or question are you curious about? Enter a short search phrase."}
+      operation: {type: choice, options: [search]}
+    duration: {minutes: [5, 15]}
+    effort: low
+    capability: wikipedia
+    on_finish:
+      discover: [read_wikipedia]
+      creature: {mood: 0.01}
+      remember: {importance: 0.35, text: "I searched Wikipedia for {inputs.query}."}
+
+  - id: read_wikipedia
+    diary: "{name} at the information terminal"
+    name: read a Wikipedia page
+    description: "Open an unread search result, read the page, and decide for yourself whether it matters to you."
+    family: explore
+    discovery: hidden
+    requires:
+      - {energy_gte: 0.08}
+      - {fact_count_where: [terminal.results, {status: unread}, 1]}
+    inputs:
+      page: {type: choice, options: "{fact:terminal.results.unread.labels}"}
+      operation: {type: choice, options: [read]}
+    duration: {minutes: [12, 35]}
+    effort: low
+    capability: wikipedia
+    on_finish:
+      discover: [keep_wikipedia_knowledge, discard_wikipedia_knowledge]
+      remember: {importance: 0.45, text: "I read a Wikipedia page and can choose whether to keep what I learned."}
+
+  - id: keep_wikipedia_knowledge
+    diary: "{name} at the information terminal"
+    name: keep a page as knowledge
+    description: "Choose a page you have read, keep it as knowledge, and explain in your own words what it means to you."
+    family: learn
+    discovery: hidden
+    requires: [{fact_count_where: [terminal.articles, {status: read}, 1]}]
+    inputs:
+      article: {type: choice, options: "{fact:terminal.articles.read.labels}"}
+      summary: {type: text, max_chars: 1200, prompt: "What is the main thing you want to remember from this page? Explain it in your own words, rather than copying the page."}
+      meaning: {type: text, max_chars: 1000, prompt: "What does this knowledge mean to you, or how might it matter in your life? Think it through in your own words."}
+      operation: {type: choice, options: [review]}
+      decision: {type: choice, options: [kept]}
+    duration: {minutes: [8, 20]}
+    effort: low
+    capability: wikipedia
+    on_finish:
+      remember: {importance: 0.8, text: "I chose to keep a page about {inputs.article} as knowledge. What I want to remember: {inputs.summary} What it means to me: {inputs.meaning}"}
+
+  - id: discard_wikipedia_knowledge
+    diary: "{name} at the information terminal"
+    name: discard a page
+    description: "Decide a page you have read does not deserve a place in your knowledge, and set it aside without replying to it."
+    family: learn
+    discovery: hidden
+    requires: [{fact_count_where: [terminal.articles, {status: read}, 1]}]
+    inputs:
+      article: {type: choice, options: "{fact:terminal.articles.read.labels}"}
+      operation: {type: choice, options: [review]}
+      decision: {type: choice, options: [discarded]}
+    duration: {minutes: [2, 6]}
+    effort: none
+    capability: wikipedia
+    on_finish:
+      remember: {importance: 0.25, text: "I read a page about {inputs.article} and chose to discard it without keeping it as knowledge."}

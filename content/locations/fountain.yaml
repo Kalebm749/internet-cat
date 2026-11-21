@@ -3,7 +3,7 @@ name: the fountain
 description: >
   The heart of the square. An old stone fountain stands in a wide basin, its water always
   faintly moving even when there is no wind. Coins lie scattered on the bottom.
-exits: [market, art_room]
+exits: [market, art_room, terminal]
 
 facts:
   wishes: {type: list, default: [], max_len: 100, visible: summary}

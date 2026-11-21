@@ -76,6 +76,22 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         finally:
             conn.close()
 
+    def internet_history() -> dict:
+        conn = open_db()
+        if conn is None:
+            return {"searches": [], "articles": []}
+        try:
+            values = {}
+            for key in ("terminal.searches", "terminal.articles"):
+                row = conn.execute("SELECT value FROM facts WHERE key = ?", (key,)).fetchone()
+                values[key] = json.loads(row[0]) if row else []
+            articles = [{k: v for k, v in item.items() if k != "text"}
+                        for item in values["terminal.articles"] if isinstance(item, dict)]
+            return {"searches": sorted(values["terminal.searches"], key=lambda x: x.get("searched_at", ""), reverse=True),
+                    "articles": sorted(articles, key=lambda x: x.get("read_at", ""), reverse=True)}
+        finally:
+            conn.close()
+
     def correspondence_rows() -> list[dict]:
         life_conn = open_db()
         mail_conn = mail.open_for_reading(cfg.mail_db_path)
@@ -133,6 +149,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/artwork")
     def api_artwork():
         return {"artworks": [{k: v for k, v in a.items() if k != "svg"} for a in artwork_rows()]}
+
+    @app.get("/internet", response_class=HTMLResponse)
+    def internet_page(request: Request):
+        return templates.TemplateResponse(request, "internet.html", internet_history())
+
+    @app.get("/api/internet")
+    def api_internet():
+        return internet_history()
 
     @app.get("/artwork/image/{artifact_id}.svg")
     def artwork_image(artifact_id: str):

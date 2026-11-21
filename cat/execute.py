@@ -361,6 +361,17 @@ class Executor:
                 self.emitted += [(clock.advance(self.life.sim_time, e["delay_minutes"]), e["event"]) for e in res.events]
             except OpError as e:
                 log.warning("action %s: world change failed, nothing changed: %s", a.id, e)
+        # Capabilities may return outside text (for example, a Wikipedia extract). Apply these
+        # narrowly scoped raw fact updates without interpreting that text as a template.
+        if world:
+            for op in (r.cap or {}).get("world", []):
+                try:
+                    if op.get("op") == "append_raw":
+                        self.life.world.append_raw(op["fact"], op["value"], by="creature")
+                    elif op.get("op") == "update_item_raw":
+                        self.life.world.update_item_raw(op["fact"], str(op["id"]), op["fields"], by="creature")
+                except (KeyError, OpError) as e:
+                    log.warning("action %s: capability world change failed: %s", a.id, e)
         effects = {k: v * factor for k, v in (block.get("creature") or {}).items()}
         if effects.get("mood", 0.0) > 0:
             effects["mood"] *= r.freshness                    # a tired repetition really does feel flat (§6.2)
@@ -399,7 +410,8 @@ class Executor:
                           (status, self.life.sim_time, text, _dump([asdict(c) for c in changes]), r.id))
         if status == "finished":
             knowledge.done(self.conn, r.action.id, self.life.sim_time, text)
-        external = self.registry.is_external(r.action.capability)
+        cap_external = (r.cap or {}).get("external")
+        external = self.registry.is_external(r.action.capability) if cap_external is None else cap_external
         self._experience("activity", remember_text or text, action_id=r.action.id, activity_id=r.id,
                          data={"status": status, "inputs": r.inputs, "minutes": round(r.elapsed(self.life.sim_time), 1),
                                "changes": [asdict(c) for c in changes], "mood_base": round(self.mood_base, 5),

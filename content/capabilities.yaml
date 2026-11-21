@@ -18,3 +18,8 @@ web_search:
   enabled: false                            # off at start; enabling it later needs an API key and an allowed host
   handler: cat.capabilities.web_search
   limits: {per_day: 5, max_results: 3}
+
+wikipedia:
+  enabled: true
+  handler: cat.capabilities.wikipedia
+  limits: {per_day: 20}

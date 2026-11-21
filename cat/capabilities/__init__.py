@@ -41,6 +41,7 @@ class CapabilityResult:
     artifact: dict | None = None                            # something made, kept and shown (later steps)
     world: list = field(default_factory=list)               # extra world ops (validated when applied)
     creature: dict = field(default_factory=dict)            # extra creature effects
+    external: bool | None = None                            # override handler default for this particular result
 
 
 class Capability(Protocol):
