@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Nit's artwork</title><link rel="stylesheet" href="/static/css/site.css"><link rel="icon" href="/static/img/nit/nit.svg"></head>
+<body>
+<header class="top"><img class="portrait" src="/static/img/nit/nit.svg" alt=""><div><h1>Nit's artwork</h1><p class="where">A growing collection from the art room.</p></div><nav class="tabs"><a href="/">Now &amp; diary</a> <a href="/places">Places &amp; wishes</a> <a href="/artwork" class="on">Artwork</a> <a href="/letters">Letters</a></nav></header>
+<main class="layout"><section class="col" style="grid-column: span 2"><div class="art-gallery">
+{% for a in artworks %}<article class="card art-piece"><a href="/artwork/{{ a.id }}" aria-label="Open {{ a.title }}"><img src="/artwork/image/{{ a.id }}.svg" alt="{{ a.description }}"></a><h2><a href="/artwork/{{ a.id }}">{{ a.title }}</a></h2><p class="when">{{ a.created_at }}{% if a.status == "unfinished" %} · In progress{% endif %}</p><p>{{ a.description }}</p>{% if a.revision_of %}<p class="hint">A later version of an earlier drawing.</p>{% endif %}</article>{% else %}<article class="card"><p class="hint">The shelf is waiting for its first drawing.</p></article>{% endfor %}
+</div></section></main>
+</body></html>

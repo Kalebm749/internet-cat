@@ -81,7 +81,7 @@ INTEGER_KEYS = {"day_log_max", "consolidate_max", "core_per_night", "long_term_p
                 "dev_min_evidence", "dev_min_days", "recall_k", "notable_k", "recent", "thought_window",
                 "reflection_window", "retries", "recent_activities", "prompt_tokens", "thought_max_chars", "reasoning_max_chars",
                 "on_mind", "on_mind_chars"}
-MODEL_KEYS = ("decision_model", "sleep_model", "embed_model")
+MODEL_KEYS = ("decision_model", "sleep_model", "embed_model", "art_model")
 TOP = {"db_path", "content_dir", "time_scale", "body", "models", "sleep"} | set(SECTIONS)
 
 

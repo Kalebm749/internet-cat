@@ -383,6 +383,16 @@ class Executor:
     def _close(self, status: str, text: str, changes: list, data: dict, importance: float = 0.0,
                remember: bool = False, remember_text: str | None = None, note: bool = True) -> dict:
         r = self.running
+        # If a drawing session is interrupted, keep the image already made by its capability as an
+        # unfinished piece so Nit can return to it later. Completed works are added by on_finish.
+        if status == "interrupted" and r.action.capability == "draw" and (r.cap or {}).get("artifact"):
+            piece = dict(r.cap["artifact"])
+            piece["status"] = "unfinished"
+            try:
+                self.life.world.apply([{"op": "append", "fact": "art_room.artworks", "value": piece}],
+                                      self._vars(r.action, r.inputs, r.cap), self.rng, by="creature")
+            except OpError as e:
+                log.warning("could not preserve interrupted drawing: %s", e)
         if not changes:
             self.mood_base = 0.0
         self.conn.execute("UPDATE activities SET status = ?, ended_at = ?, text = ?, changes = ? WHERE id = ?",

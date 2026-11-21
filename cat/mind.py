@@ -54,6 +54,8 @@ def _item_label(item: Any) -> str:
         return str(item)
     if "label" in item:
         return str(item["label"])
+    if "title" in item:
+        return str(item["title"])
     text = str(item.get("text", ""))
     short = text if len(text) <= 60 else text[:57].rstrip() + "..."
     who = item.get("sender") or "someone"

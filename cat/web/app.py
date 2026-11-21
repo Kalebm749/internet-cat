@@ -6,12 +6,13 @@ Reads nit.db read-only and never calls a model. Its ONLY write is a visitor's le
 from __future__ import annotations
 
 import os
+import json
 import secrets
 import sqlite3
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -65,6 +66,43 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         finally:
             conn.close()
 
+    def artwork_rows() -> list[dict]:
+        conn = open_db()
+        if conn is None:
+            return []
+        try:
+            row = conn.execute("SELECT value FROM facts WHERE key = 'art_room.artworks'").fetchone()
+            return sorted(json.loads(row[0]), key=lambda x: x.get("created_at", ""), reverse=True) if row else []
+        finally:
+            conn.close()
+
+    def correspondence_rows() -> list[dict]:
+        life_conn = open_db()
+        mail_conn = mail.open_for_reading(cfg.mail_db_path)
+        try:
+            records = {}
+            key = content.world.get("mailbox")
+            row = life_conn.execute("SELECT value FROM facts WHERE key = ?", (key,)).fetchone() if life_conn and key else None
+            if row:
+                for item in json.loads(row[0]):
+                    if isinstance(item, dict):
+                        records[str(item.get("id", ""))] = item
+            incoming = mail_conn.execute("SELECT id, received_at, sender, text FROM letters ORDER BY received_at DESC, id DESC").fetchall() if mail_conn else []
+            result = []
+            for item in incoming:
+                saved = records.get(mail.letter_key(item["id"]), {})
+                replied = saved.get("status") == "answered" and isinstance(saved.get("reply"), str)
+                result.append({"id": item["id"], "received_at": item["received_at"], "sender": item["sender"],
+                               "text": item["text"], "reply": saved.get("reply") if replied else None,
+                               "answered_at": saved.get("answered_at") if replied else None,
+                               "status": "answered" if replied else "unanswered"})
+            return result
+        finally:
+            if life_conn:
+                life_conn.close()
+            if mail_conn:
+                mail_conn.close()
+
     @app.get("/healthz")
     def healthz():
         return {"status": "ok", "service": "web"}
@@ -75,6 +113,37 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return templates.TemplateResponse(request, "index.html", {
             **s, "before": before, "letter_message": LETTER_CODES.get(letter or ""), "letter_ok": letter == "ok",
             "max_chars": web["mail_max_chars"], "name_max": web["mail_name_max"], "refresh_s": web["refresh_seconds"]})
+
+    @app.get("/artwork", response_class=HTMLResponse)
+    def artwork_page(request: Request):
+        return templates.TemplateResponse(request, "artwork.html", {"artworks": artwork_rows()})
+
+    @app.get("/artwork/{artifact_id}", response_class=HTMLResponse)
+    def artwork_detail(request: Request, artifact_id: str):
+        item = next((a for a in artwork_rows() if a.get("id") == artifact_id), None)
+        if item is None:
+            return Response(status_code=404)
+        return templates.TemplateResponse(request, "artwork_detail.html", {"artwork": item})
+
+    @app.get("/api/artwork")
+    def api_artwork():
+        return {"artworks": [{k: v for k, v in a.items() if k != "svg"} for a in artwork_rows()]}
+
+    @app.get("/artwork/image/{artifact_id}.svg")
+    def artwork_image(artifact_id: str):
+        item = next((a for a in artwork_rows() if a.get("id") == artifact_id), None)
+        if item is None or not item.get("svg"):
+            return Response(status_code=404)
+        return Response(item["svg"], media_type="image/svg+xml",
+                        headers={"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
+
+    @app.get("/letters", response_class=HTMLResponse)
+    def letters_page(request: Request):
+        return templates.TemplateResponse(request, "letters.html", {"letters": correspondence_rows()})
+
+    @app.get("/api/letters")
+    def api_letters():
+        return {"letters": correspondence_rows()}
 
     @app.get("/api/now")
     def api_now(after: str | None = None):

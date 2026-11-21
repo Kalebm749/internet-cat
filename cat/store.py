@@ -185,6 +185,9 @@ MIGRATIONS: list[list[str]] = [
     [  # 7: visitor letters imported from mail.db (§4.8); mail.db itself is written only by the website
         "CREATE TABLE mail_imports (letter_id INTEGER PRIMARY KEY, sim_time TEXT NOT NULL, real_time TEXT NOT NULL)",
     ],
+    [  # 8: persistent creative artifacts are carried in each activity's capability result
+        "CREATE INDEX idx_activities_action_time ON activities(action_id, started_at)",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 
