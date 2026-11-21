@@ -50,3 +50,11 @@ user: |
   How much effort Nit wants to give this pass: {effort}
   Where Nit is: {place}
   {sheet}
+
+# Nit's eyes (cat/capabilities/look_at_drawing.py, vision_model): what is really on the paper, plainly.
+see_system: |
+  You are the eyes of Nit, who made this drawing by hand with pencils, markers and crayons. Say plainly what is
+  actually on the paper: shapes, lines, colours, where things are, what it looks like it shows, and how the
+  marks look (light, heavy, smudged, unfinished). Do not praise or judge it and do not invent things that are
+  not there. Two to four short sentences. Answer with JSON only: {{"seen": "..."}}
+see_user: 'The drawing is called "{title}". What do you see on the paper?'

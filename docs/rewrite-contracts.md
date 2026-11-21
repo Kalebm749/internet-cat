@@ -666,7 +666,10 @@ when to come back to a drawing, and when it is finished. Nothing in the system c
   earlier operations on the same sheet and adds the new ones; it is a new row (`revision_of`, `root_id`), and the
   earlier row is never changed. The world (`art_room.artworks`) and the activity keep only a small reference.
 - **Looking back**: `study_drawing` uses `look_at_drawing`, which tells Nit what each version shows, with what,
-  and when, from the first pass to the one it is looking at.
+  and when, from the first pass to the one it is looking at. With `vision_model` (qwen2.5vl:3b, prompts
+  `see_system`/`see_user` in `art.yaml`) it also sees the latest PNG itself: the model is sent the image with
+  `keep_alive: 0`, so it is unloaded straight after and never shares the GPU with the decision model. If it is
+  missing or fails, Nit has the descriptions only. It is optional: a missing vision model never makes Ollama offline.
 - **Old drawings** (inline SVG from before) stay in `art_room.artworks` and are still shown, sandboxed, at
   `/artwork/image/<id>`; a new pass on one starts a fresh sheet that carries it forward.
 - **Growing later** without redesign: supply wear and running out (a field on the supply and a world op on use),
@@ -862,6 +865,7 @@ were never repeats. Three things keep a small model from circling one subject:
 | `decision_model` | `qwen3:4b` | Decisions, check-ins, capability calls |
 | `sleep_model` | `qwen3:14b` | All sleep stages, the conflict check |
 | `embed_model` | `nomic-embed-text` | Memories, thoughts, recall |
+| `vision_model` | `qwen2.5vl:3b` | Seeing its own drawings (optional; loaded per look, then unloaded) |
 
 - All calls go through `call_json` with a JSON schema (Ollama `format`), retries, and full tracing.
 - The decision prompt has a hard budget (`decision_prompt_tokens`, default 1500). If the Mind does not

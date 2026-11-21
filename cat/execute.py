@@ -40,6 +40,7 @@ WORLD_TEXT_FIELDS = {
     "capability_failed": set(), "same_thought": set(), "mail_arrived": set(),
     "wish_granted": {"wish", "note"}, "drawing_made": {"materials", "description"},
     "drawing_looked_at": {"title", "status", "history"}, "drawing_version": {"n", "when", "description", "materials"},
+    "drawing_seen": {"seen"},
 }
 
 

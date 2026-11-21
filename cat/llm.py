@@ -119,10 +119,15 @@ def extract_json(text: str) -> dict:
     return v
 
 
-def wanted_models(settings: dict) -> list[str]:
+OPTIONAL_MODELS = {"vision_model"}     # Nit gets by without these (it falls back); they never make Ollama "offline"
+
+
+def wanted_models(settings: dict, required_only: bool = False) -> list[str]:
     """The models the engine uses (settings `nit.models`), each once."""
     out: list[str] = []
-    for m in (settings.get("nit") or {}).get("models", {}).values():
+    for k, m in (settings.get("nit") or {}).get("models", {}).items():
+        if required_only and k in OPTIONAL_MODELS:
+            continue
         if m not in out:
             out.append(m)
     return out
@@ -158,7 +163,7 @@ class OllamaBackend(LLMBackend):
             have = [m.get("name", "") for m in r.json().get("models", [])]
         except (httpx.HTTPError, ValueError):
             return None
-        wanted = set(wanted_models(self.s))
+        wanted = set(wanted_models(self.s, required_only=True))
         return sorted(m for m in wanted if not model_present(m, have))
 
     def is_online(self) -> bool:
@@ -215,8 +220,11 @@ class OllamaBackend(LLMBackend):
         options = {"temperature": self.s["llm_temperature"].get("sleep" if task.startswith("sleep_") else task, 0.7),
             "num_ctx": self.s["llm_num_ctx"]}
         options.update(extra_options)
+        keep_alive = options.pop("keep_alive", None)       # 0: unload right after (a model used rarely)
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False,
                                    "format": schema, "options": options}
+        if keep_alive is not None:
+            payload["keep_alive"] = keep_alive
         if "ollama_think" in self.s:
             payload["think"] = bool(self.s["ollama_think"])
         sysm, user = split_messages(messages)
@@ -383,6 +391,8 @@ class MockBackend(LLMBackend):
                     "points": [[40, 430], [180, 410 + r.random() * 30], [330, 420], [470, 405]], "pressure": 0.8}]
             return {"title": r.choice(["The round thing", "Something by the water", "A small sun"]),
                     "description": "A round shape coloured in, above a long line.", "operations": ops}
+        if task == "look_at_drawing":      # Nit's eyes (cat/capabilities/look_at_drawing.py)
+            return {"seen": "A round shape coloured in, above a long wavy line."}
         if task == "decide":       # the rewrite's waking decision (cat/decision.py): pick from the schema
             props = (schema or {}).get("properties", {})
             ids = props.get("action", {}).get("enum") or ["idle"]

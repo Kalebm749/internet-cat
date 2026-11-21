@@ -19,3 +19,4 @@ wish_granted: "Something has changed. A wish of yours has come true: {wish}. {no
 drawing_made: "You draw with {materials}. On the paper now: {description}"
 drawing_looked_at: "You look closely at \"{title}\" ({status}). {history}"
 drawing_version: "Version {n} ({when}): {description} Made with {materials}."
+drawing_seen: "Looking at the paper itself now, you see: {seen}"

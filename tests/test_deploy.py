@@ -24,7 +24,7 @@ def test_compose_runs_the_new_engine_with_content_mounted():
 
 
 def test_the_models_to_pull_are_the_creatures(cfg):
-    assert wanted_models(cfg.settings) == ["qwen3:4b", "qwen3:14b", "nomic-embed-text"]
+    assert wanted_models(cfg.settings) == ["qwen3:4b", "qwen3:14b", "nomic-embed-text", "qwen2.5vl:3b"]
 
 
 def test_engine_heartbeat_and_health(cfg):
