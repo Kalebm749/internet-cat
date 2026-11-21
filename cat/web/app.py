@@ -1,12 +1,12 @@
-"""The public website (docs/rewrite-contracts.md §8): Nit now, its diary, who it is, and a letter form.
+"""The public website (docs/rewrite-contracts.md §8): Nit now, its diary, correspondence and artwork.
 
 Reads nit.db read-only and never calls a model. Its ONLY write is a visitor's letter into data/mail.db
-(cat/mail.py), which the engine imports into the mailbox at the market stall. Replies are not shown yet.
+(cat/mail.py), which the engine imports into the mailbox at the market stall.
 """
 from __future__ import annotations
 
-import os
 import json
+import os
 import secrets
 import sqlite3
 from pathlib import Path
@@ -82,11 +82,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         try:
             records = {}
             key = content.world.get("mailbox")
-            row = life_conn.execute("SELECT value FROM facts WHERE key = ?", (key,)).fetchone() if life_conn and key else None
-            if row:
-                for item in json.loads(row[0]):
-                    if isinstance(item, dict):
-                        records[str(item.get("id", ""))] = item
+            if life_conn and key:
+                location = key.split(".", 1)[0]
+                for fact_key in (key, f"{location}.answered"):
+                    row = life_conn.execute("SELECT value FROM facts WHERE key = ?", (fact_key,)).fetchone()
+                    if row:
+                        for item in json.loads(row[0]):
+                            if isinstance(item, dict):
+                                records[str(item.get("id", ""))] = item
             incoming = mail_conn.execute("SELECT id, received_at, sender, text FROM letters ORDER BY received_at DESC, id DESC").fetchall() if mail_conn else []
             result = []
             for item in incoming:
