@@ -25,7 +25,7 @@ def test_spawn_writes_version_one_once(conn):
     v = identity.current(conn)
     assert v.reason == "spawn" and v.sheet["name"] == "Nit"
     assert v.sheet["core"]["nature"].startswith("A humanoid creature")
-    assert v.sheet["traits"] == {"curious": 0.8, "truthful": 0.7, "inward": 0.5}
+    assert v.sheet["traits"] == {"curious": 0.8, "truthful": 0.7, "practical": 0.5}
     assert not ensure(conn, c).created and len(identity.history(conn)) == 1
 
 
@@ -56,7 +56,7 @@ def sheet():
 @pytest.mark.parametrize("change, check", [
     ({"kind": "add_trait", "target": "patient", "value": 0.2}, lambda s: s["traits"]["patient"] == 0.2),
     ({"kind": "adjust_trait", "target": "curious", "value": 0.75}, lambda s: s["traits"]["curious"] == 0.75),
-    ({"kind": "remove_trait", "target": "inward"}, lambda s: "inward" not in s["traits"]),
+    ({"kind": "remove_trait", "target": "practical"}, lambda s: "practical" not in s["traits"]),
     ({"kind": "add_tendency", "target": "lingers near water", "value": 0.2},
      lambda s: s["tendencies"] == {"lingers near water": 0.2}),
     ({"kind": "background_note", "value": "It has made a wish."},
